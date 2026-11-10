@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
-    "record": "tsx scripts/record-fixtures.ts"
+    "record": "tsx scripts/record-fixtures.ts && tsx scripts/trim-fixtures.ts"
   },
   "dependencies": {
     "viem": "^2.21.0"
