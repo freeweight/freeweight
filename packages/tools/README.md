@@ -102,30 +102,46 @@ Can a buyer sell, and what can the owner do?
   `eth_call` and a state override that gives the address the probe's code and some native coin (`sol/SellProbe.sol`).
   It buys about 0.3% of the pool's quote side (at least 0.0005, at most 1 native unit), sells everything it received,
   and reports `round_trip_cost` plus approximate `buy_cost` / `sell_cost` against the DexScreener mid price (fractions of
-  value lost). More than 15% lost is **COSTLY**, more than 50% **EFFECTIVELY CANNOT SELL**, a failed sale **SELL
-  REVERTED**. Uniswap v2/v3 style pools against the wrapped native coin and Uniswap v4 pools against the native coin or
-  its wrapped form are covered, hooks included (pool key from `PositionManager.poolKeys` or the `Initialize` event).
-  When a fresh wallet cannot be used (other quote token, the buy reverts, no state-override support), sales of a small
-  amount are simulated from up to three real holders (recent small recipients first; never the largest holder, owner or
-  creator), and the reason is in `fresh_wallet_unavailable`. Every result names the wallet(s) it ran from; without a
-  cost figure it says "did not revert; cost not measured", never "OK". Last resort: a plain transfer from a holder.
-- **Two sale orders on Uniswap v4**: the round trip's sale runs twice, in separate calls. `wallet_held`: the tokens stay
-  in the selling wallet until the swap has run and are paid at settlement (the selling wallet is also the transaction
-  origin). `pre_transferred`: the tokens are moved to the pool manager and settled first, then swapped against that
-  credit, the order many bots and aggregators use. Both costs are in `wallets[0].route_costs`. If one loses more than
-  50% and the other under 15%, the verdict is `route_dependent` and the summary says **SELL DEPENDS ON THE ROUTE** with
-  both figures. (v2 pools always take the tokens before the swap; v3 pools pull them during the swap, so there is one
-  order each.)
-- **Index reconciliation**: when the Freeweight index has its own sell test (run through a router), the two readings are
-  merged into one statement. If they agree, the simulation's figures come first; if they disagree, the worse reading
-  sets the verdict and the summary says **SELL TESTS DISAGREE** with both figures, to be treated as a route-dependent
-  trap until shown otherwise. `sell_simulation.index_reading` and `sell_simulation.agreement` record this.
+  value lost). A round trip losing more than 15% is **COSTLY** (15% itself is not), more than 50% **EFFECTIVELY CANNOT
+  SELL**, a failed sale **SELL REVERTED**. Uniswap v2/v3 style pools against the wrapped native coin and Uniswap v4 pools
+  against the native coin or its wrapped form are covered, hooks included (pool key from `PositionManager.poolKeys` or
+  the `Initialize` event). When a fresh wallet cannot be used (other quote token, the buy reverts, no state-override
+  support), sales of a small amount are simulated from up to three real holders (recent small recipients first; never
+  the largest holder, owner or creator), and the reason is in `fresh_wallet_unavailable`. Every result names the
+  wallet(s) it ran from; without a cost figure it says "did not revert; cost not measured", never "OK". Last resort: a
+  plain transfer from a holder.
+- **Two sale orders on Uniswap v4**: the round trip's sale runs twice, in separate calls pinned to the same block number.
+  `wallet_held`: the tokens stay in the selling wallet until the swap has run and are paid at settlement (the selling
+  wallet is also the transaction origin). `pre_transferred`: the tokens are moved to the pool manager and settled
+  first, then swapped against that credit, and any credit the swap does not use is taken back. This approximates the
+  settle-first order used by some executors, which usually move the tokens through their own contract first; see the
+  blind spots below. Both results are in `wallets[0].route_costs` (`wallet_held`, `pre_transferred`, an outcome for
+  each, `pre_transferred_unavailable` when the second call could not run, `transfer_tax` when the token charged one,
+  and `decided_by`). `round_trip_cost` is the cost of the order that decided the verdict; `buy_cost` / `sell_cost`
+  always belong to the wallet-held order. If one order fails or loses more than 50% and the other loses 15% or less,
+  the verdict is `route_dependent` and the summary says **SELL DEPENDS ON THE ROUTE** with both figures. If the
+  wallet-held sale reverts only because the pool manager was credited less than was sent (a transfer tax), the summary
+  says "transfer tax N%; routes that settle an exact amount after the swap revert" instead. When the orders differ
+  otherwise, both figures are printed, labelled `wallet-held` and `moved-first`. (v2 pools always take the tokens
+  before the swap; v3 pools pull them during the swap, so there is one order each.)
+- **Index reconciliation**: when the Freeweight index has its own sell test (a $1 round trip, with the time it was read),
+  the two readings are merged into one statement and the index's sell sentence is not repeated. Same verdict class:
+  "agree", the simulation's figures first. A large gap (one side fails or loses more than 50%, the other loses 15% or
+  less or went through): **SELL TESTS DISAGREE**, worse reading first, both figures and the index reading's age, noting
+  that the readings differ by route, size or time. Any other difference: both figures, worse first, no label. The
+  worse reading sets the verdict. Index costs outside 0..1 are ignored; index values this package does not know are
+  reported as "unrecognised" and never quoted. `sell_simulation.index_reading` and `sell_simulation.agreement`
+  (`agree`, `differ`, `disagree`, `index_only`, `simulation_only`, `none`) record this.
+- **Probe verification**: the probe's v4 accounting (both orders, partial fills, transfer-taxed tokens, token0- or
+  token1-in, native or ERC20 quote) is hand-traced against the v4 pool manager's rules and checked live on real pools;
+  there is no forked or local pool-manager test in this package.
 - **Static flags**: EIP-1967 / EIP-1167 proxy, `owner()` and whether it is renounced, owner-power functions found in
   the bytecode by a PUSH4 scan (mint, blacklist, pause, trading switch, fee setters, limits, exclusions, upgrade),
   Sourcify verification, and GoPlus token security where GoPlus covers the chain.
 - It never says "safe". Still blind: exemptions or penalties for specific wallets (the probe is one fresh address),
-  trade size (one small size), time (now only), logic keyed to a particular router or calldata (the probe calls the
-  pool manager or pool directly), bonding-curve venues, and front-end tricks. GoPlus does not see Uniswap v4 hook logic.
+  trade size (one small size), time (one block, now), logic keyed to a particular router, executor contract, sender
+  or calldata (the probe calls the pool manager or pool directly from its own address), bonding-curve venues, and
+  front-end tricks. GoPlus does not see Uniswap v4 hook logic.
 
 ### `holders` `{ chain?, token, limit? }`
 Top holders with % of supply and tags (`pool`, `burn`, `creator`, `contract`), top-10 concentration excluding pools and
