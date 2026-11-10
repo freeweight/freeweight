@@ -494,8 +494,10 @@ v0.1. This list has no `tools_ok`: read that from `GET /api/models`.
 POST /api/sessions/{id}/chat
 ```
 
-This route runs the [tools](/docs/tools) on the server, so a model can look things up without your code
-running anything. The server puts the `tool_system_note` from `GET /api/config` in front of the conversation.
+With `tools: true` this route runs the [tools](/docs/tools) on the server, so a model can look things up without
+your code running anything, and puts the `tool_system_note` from `GET /api/config` in front of the conversation.
+`tools` is off unless you send `true`. Without it the route is a plain chat on the session, with no tools and no
+note.
 
 ```json
 {
