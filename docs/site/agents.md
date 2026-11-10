@@ -124,7 +124,8 @@ rents around the clock. A full day costs $43.20 on Light, $86.40 on Medium and $
 the agent's own logic, and keep the balance small.
 
 To see the spend, read `GET /api/me` for the balance and the amount held, the session for `spent_usd_micro`, and
-`GET /api/receipts` for ended sessions. Amounts are in millionths of a US dollar. To cut an agent off, revoke its
+`GET /api/sessions/{id}` again after the end for its `receipt`. `GET /api/receipts` is the public list of the last
+20 ended sessions of all accounts, without ids. Amounts are in millionths of a US dollar. To cut an agent off, revoke its
 key on the account page. A session that is already live keeps running until its time is up or it has been
 idle for 5 minutes, so stop it as well.
 
