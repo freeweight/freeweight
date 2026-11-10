@@ -8,6 +8,7 @@ import { useConfig, useEvery, useMe } from "../../lib/hooks";
 import { showHidden, toolSummary, visible } from "../../lib/inert";
 import { Markdown } from "../../lib/markdown";
 import type { Live } from "../../lib/session";
+import { snippets, type Lang } from "../../lib/snippets";
 import { Link } from "../../router";
 import { Code, Copy, Icon, Notice, Segmented, TierMark } from "../../ui/bits";
 import { Ticket, TicketActions } from "./Receipt";
@@ -464,43 +465,6 @@ function MiniClock({ live, session: s }: { live: Live; session: Session }) {
 
 // ---------- the endpoint ----------
 
-type Lang = "curl" | "python" | "js";
-
-function snippets(base: string, model: string): Record<Lang, string> {
-  return {
-    curl: `curl ${base}/chat/completions \\
-  -H "Authorization: Bearer $FREEWEIGHT_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "${model}",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'`,
-    python: `import os
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="${base}",
-    api_key=os.environ["FREEWEIGHT_KEY"],
-)
-r = client.chat.completions.create(
-    model="${model}",
-    messages=[{"role": "user", "content": "Hello"}],
-)
-print(r.choices[0].message.content)`,
-    js: `import OpenAI from "openai";
-
-const client = new OpenAI({
-  baseURL: "${base}",
-  apiKey: process.env.FREEWEIGHT_KEY,
-});
-const r = await client.chat.completions.create({
-  model: "${model}",
-  messages: [{ role: "user", content: "Hello" }],
-});
-console.log(r.choices[0].message.content);`,
-  };
-}
-
 export function absoluteBase(baseUrl: string): string {
   try {
     return new URL(baseUrl || "/v1", location.origin).href.replace(/\/$/, "");
@@ -513,7 +477,10 @@ function Endpoint({ session: s }: { session: Session }) {
   const me = useMe();
   const [lang, setLang] = useState<Lang>("curl");
   const base = absoluteBase(s.base_url);
-  const code = snippets(base, s.model_id)[lang];
+  // An API key belongs to a wallet and reaches the sessions it rents. A free session, or a visitor who is not signed
+  // in, has no key: the session id is the credential, so the snippet shows that form.
+  const keyed = Boolean(me?.address) && !s.free;
+  const code = snippets(base, s.model_id, keyed ? null : s.id)[lang];
   return (
     <section className="endpoint" aria-label="Endpoint">
       <div className="meter-h">
@@ -547,22 +514,34 @@ function Endpoint({ session: s }: { session: Session }) {
         ]}
       />
       <Code code={code} title={lang === "curl" ? "shell" : lang === "python" ? "python" : "javascript"} wrap />
-      <p className="small dimmer">The address of this page works like a key to this session until it ends. Do not share it while the session runs.</p>
+      <p className="small dimmer">
+        {keyed
+          ? "The address of this page works like a key to this session until it ends. Do not share it while the session runs."
+          : "The session id, in the snippet and in the address of this page, works like a key to this session until it ends. Do not share either while the session runs."}
+      </p>
       <p className="small dim">
-        {me?.address ? (
+        {keyed ? (
           <>
             Calls need an API key. A key reaches any session of yours that is awake, this one included.{" "}
             <Link href="/account#keys" className="link">
               Your keys
             </Link>
           </>
+        ) : me?.address ? (
+          <>
+            A free session has no API key: calls carry the session id instead. The sessions you rent take{" "}
+            <Link href="/account#keys" className="link">
+              your keys
+            </Link>
+            .
+          </>
         ) : (
           <>
-            Calls need an API key, and keys belong to a wallet.{" "}
+            A free session has no API key: calls carry the session id instead. Keys belong to a wallet.{" "}
             <Link href="/account" className="link">
               Sign in
             </Link>{" "}
-            to make one. The chat on this page needs nothing.
+            to make one.
           </>
         )}
       </p>

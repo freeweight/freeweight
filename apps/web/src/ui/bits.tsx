@@ -1,8 +1,9 @@
 // Primitives: the mark, plates, state tags, icons, copy, code, segmented control.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ModelState, Tier } from "../api/types";
 import { TIER_NAME, TIER_PLATES } from "../lib/format";
+import { addressPieces } from "../lib/snippets";
 
 /** The mark: three plates in descending width. An F, and the three weight classes. */
 export function Mark({ size = 20, live = false }: { size?: number; live?: boolean }) {
@@ -105,6 +106,28 @@ export function Copy({ text, label = "Copy" }: { text: string; label?: string })
   );
 }
 
+/** A line of folding code. An address in it folds after a slash, and its host is never broken. */
+function folding(line: string): ReactNode {
+  const parts = line.split(/(https?:\/\/[^\s"'\\]+)/);
+  if (parts.length === 1) return line;
+  return parts.map((part, i) =>
+    i % 2 === 0
+      ? part
+      : addressPieces(part).map((piece, j) =>
+          j === 0 ? (
+            <span key={`${i}.0`} className="nb">
+              {piece}
+            </span>
+          ) : (
+            <Fragment key={`${i}.${j}`}>
+              <wbr />
+              {piece}
+            </Fragment>
+          ),
+        ),
+  );
+}
+
 /**
  * A block of code with a copy button. It scrolls sideways when a line is too long; with `wrap` (narrow panels,
  * one-line values) long lines fold instead, and the folded part hangs under its line.
@@ -117,7 +140,16 @@ export function Code({ code, title, wrap = false }: { code: string; title?: stri
         <Copy text={code} />
       </div>
       <pre className={wrap ? "wrap" : undefined} tabIndex={0}>
-        <code>{wrap ? code.split("\n").map((line, i) => <span key={i}>{`${line}\n`}</span>) : code}</code>
+        <code>
+          {wrap
+            ? code.split("\n").map((line, i) => (
+                <span key={i} className="ln">
+                  {folding(line)}
+                  {"\n"}
+                </span>
+              ))
+            : code}
+        </code>
       </pre>
     </div>
   );

@@ -681,14 +681,18 @@ table {
 }
 /* A folded line hangs under its own start. */
 .code pre.wrap {
-  overflow-x: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.code pre.wrap span {
+.code pre.wrap .ln {
   display: block;
   padding-left: 2ch;
   text-indent: -2ch;
+}
+/* The host of an address stays in one piece: the address folds after a slash, and a host wider than the block
+   scrolls inside it. */
+.code pre.wrap .nb {
+  white-space: nowrap;
 }
 /* A block with more to the right fades at that edge until it has been scrolled to its end. A block that fits
    has no scroll range, so the animation never applies and nothing fades. */
