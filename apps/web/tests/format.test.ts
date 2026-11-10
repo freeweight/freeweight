@@ -37,6 +37,21 @@ describe("money", () => {
     // Rounds to a whole dollar, so it is printed as one.
     expect(usd(999_990)).toBe("$1.00");
   });
+  it("rounds a half up, on whole micro-units", () => {
+    expect(usd(1_005_000)).toBe("$1.01");
+    expect(usd(1_015_000)).toBe("$1.02");
+    expect(usd(2_675_000)).toBe("$2.68");
+    expect(usd(1_125_000)).toBe("$1.13");
+    expect(usd(1_450)).toBe("$0.0015");
+    expect(usd(4_950)).toBe("$0.0050");
+    expect(usd(-1_005_000)).toBe("-$1.01");
+    // Every whole cent from zero to $100, and from a dollar up every half cent too.
+    const cents = (c: number) => `$${Math.floor(c / 100)}.${String(c % 100).padStart(2, "0")}`;
+    for (let c = 0; c <= 10_000; c++) {
+      expect(usd(c * 10_000)).toBe(cents(c));
+      if (c >= 100) expect(usd(c * 10_000 + 5_000)).toBe(cents(c + 1));
+    }
+  });
   it("keeps the sign and the floor", () => {
     expect(usd(-500_000)).toBe("-$0.50");
     expect(usd(-2_500)).toBe("-$0.0025");

@@ -9,14 +9,18 @@ const MICRO = 1_000_000;
  * dollar and the third or fourth decimal is not zero (which covers everything under one cent). Never three.
  */
 export function usd(micro: number): string {
-  const v = Math.abs(micro) / MICRO;
+  const a = Math.abs(micro);
   const sign = micro < 0 ? "-" : "";
   // An amount too small for four decimals is still not nothing.
-  if (v > 0 && v < 0.0001) return `${sign}<$0.0001`;
-  // Whole ten-thousandths of a dollar, so the choice is made on the digits that would be printed.
-  const t = Math.round(v * 10_000);
-  if (t >= 10_000 || t % 100 === 0) return `${sign}$${v.toFixed(2)}`;
-  return `${sign}$${(t / 10_000).toFixed(4)}`;
+  if (a > 0 && a < MICRO / 10_000) return `${sign}<$0.0001`;
+  // Rounding is done on whole micro-units, never on a float dollar, so a half rounds up every time: 1_005_000 is
+  // $1.01, as 1_015_000 is $1.02. The choice is made on the ten-thousandths that would be printed.
+  const t = Math.round(a / 100);
+  if (t >= 10_000 || t % 100 === 0) {
+    const c = Math.round(a / 10_000);
+    return `${sign}$${Math.floor(c / 100)}.${String(c % 100).padStart(2, "0")}`;
+  }
+  return `${sign}$0.${String(t).padStart(4, "0")}`;
 }
 
 /** A code this build has no words for, as plain text: "minimum_applied" reads "minimum applied". */
