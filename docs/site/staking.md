@@ -29,6 +29,7 @@ to the amount staked.
 - A stake counts for a day only if it was in place for at least 24 hours before that UTC day began. Staking in the
   morning does not earn credit the same day.
 - Adding to a stake restarts that waiting time for the whole stake.
+- Cancelling an unstake request also restarts the waiting time for the whole stake.
 - Tokens that you have asked to unstake stop counting at once.
 - Credit is counted in US dollars and can be spent on any tier. $0.30 of credit pays for ten minutes on a Light
   model.
