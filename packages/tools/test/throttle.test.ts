@@ -82,3 +82,77 @@ describe("pool lookup falls back to GeckoTerminal when DexScreener is throttled"
     expect(run.notes.join(" ")).toMatch(/GeckoTerminal fallback unavailable/);
   });
 });
+
+// ------------------------------------------------------------------ safety_check: pool named by the index
+import { encodeAbiParameters } from "viem";
+import { RPC, rpcRoute, word } from "./mock.js";
+
+const RH_TOKEN = "0x" + "7e".repeat(20);
+const RH_POOL = "0x" + "9a".repeat(20);
+const RH_WETH = "0x0bd7d308f8e1639fab988df18a8011f41eacad73";
+const FACTS = "https://facts.example.org";
+const OUT = [{ type: "uint8" }, { type: "uint256" }, { type: "uint256" }, { type: "bytes" }] as const;
+
+function rhNet(venue: { main_venue: string; main_venue_type: string } | null, seen: string[] = []) {
+  return fakeFetch([
+    (url) => (url.includes("api.dexscreener.com") || url.includes("geckoterminal") ? new Response('{"error":"rate"}', { status: 429 }) : null),
+    (url) =>
+      url.startsWith(`${FACTS}/v1/token_overview`)
+        ? json(venue ? { found: true, as_of: 1, token: RH_TOKEN, data: { ...venue, launched_at: 1_700_000_000 } } : { found: false, data: null })
+        : url.startsWith(FACTS)
+          ? json({ found: false, data: null })
+          : null,
+    (url) => (url.includes("gopluslabs") ? json({ code: 1, message: "OK", result: {} }) : null),
+    rpcRoute((method, params) => {
+      const p = params as [{ to?: string; data?: string } | string, string, unknown?];
+      if (method === "eth_getCode") return "0x6080";
+      if (method === "eth_getStorageAt") return word(0n);
+      if (method === "eth_blockNumber") return "0x100";
+      if (method === "eth_getLogs") return [];
+      if (method === "eth_call") {
+        const c = p[0] as { to: string; data: string };
+        if (p[2]) {
+          seen.push(c.to);
+          return encodeAbiParameters(OUT, [0, 10n ** 21n, 98n * 10n ** 13n, "0x"]); // ~0.00098 of 0.0009 back
+        }
+        if (c.to === RH_POOL && c.data.startsWith("0x0dfe1681")) return word(BigInt(RH_TOKEN));
+        if (c.to === RH_POOL && c.data.startsWith("0xd21220a7")) return word(BigInt(RH_WETH));
+        if (c.data.startsWith("0x313ce567")) return word(18n);
+        if (c.data.startsWith("0x8da5cb5b")) throw { code: 3, message: "execution reverted" };
+        return "0x";
+      }
+      return null;
+    }),
+  ]);
+}
+const rhEnv = { FACTS_URL: FACTS, FACTS_KEY: "k", RPC_URLS: { "4663": RPC } };
+
+describe("safety_check when no public source lists a pool", () => {
+  it("tests the pool the Freeweight index names on Robinhood Chain, and says so", async () => {
+    resetState();
+    const seen: string[] = [];
+    const r = await runTool("safety_check", { token: RH_TOKEN }, { env: rhEnv, fetch: rhNet({ main_venue: RH_POOL, main_venue_type: "v3" }, seen) });
+    const s = r.data.sell_simulation as { method: string; pool_source: string; pool_kind: string };
+    expect(s.method).toBe("fresh_wallet_round_trip");
+    expect(s.pool_source).toBe("freeweight_index");
+    expect(r.summary).toMatch(/uniswap v3 \(pool named by the Freeweight index\)/);
+    expect(seen.length).toBe(1);
+  });
+  it("reports a bonding-curve venue instead of simulating it", async () => {
+    resetState();
+    const r = await runTool("safety_check", { token: RH_TOKEN }, { env: rhEnv, fetch: rhNet({ main_venue: "0x" + "cc".repeat(20), main_venue_type: "curve" }) });
+    expect(r.summary).toMatch(/sell not simulated \(the main venue is a bonding curve \(named by the Freeweight index\); bonding curves are not simulated\)/);
+  });
+  it("says the pool lookup was throttled when that is what happened", async () => {
+    resetState();
+    const r = await runTool("safety_check", { token: RH_TOKEN }, { env: rhEnv, fetch: rhNet(null) });
+    expect(r.summary).toMatch(/sell not simulated \(the pool lookup was throttled \(HTTP 429\) and no other source named a pool\)/);
+    expect(r.partial).toBe(true);
+  });
+  it("says no pool is listed when the sources answered with none", async () => {
+    resetState();
+    const f = fakeFetch([(url) => (url.includes("api.dexscreener.com") ? json([]) : null), rhNet(null)]);
+    const r = await runTool("safety_check", { token: RH_TOKEN }, { env: rhEnv, fetch: f });
+    expect(r.summary).toMatch(/sell not simulated \(no pool is listed \(DexScreener and the Freeweight index name none\)\)/);
+  });
+});

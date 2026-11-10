@@ -170,6 +170,8 @@ export type SellSim = {
   method: "fresh_wallet_round_trip" | "holder_sell" | "none";
   verdict: Verdict;
   pool_kind: string | null;
+  /** Which source named the pool that was tested (DexScreener unless it failed or listed none). */
+  pool_source?: "dexscreener" | "geckoterminal" | "freeweight_index";
   hooks?: string | null;
   fee_raw?: number;
   quote_symbol?: string | null;

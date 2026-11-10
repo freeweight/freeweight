@@ -8,7 +8,8 @@ import { scanTransfers } from "../util/logs.js";
 import { DEAD_ADDRESSES, EIP1967_ADMIN, EIP1967_BEACON, EIP1967_IMPL, minimalProxyTarget, push4Selectors, scanRisk, slotAddress } from "../util/bytecode.js";
 import { goplusToken, flag, type GoPlusToken } from "../sources/goplus.js";
 import { sourcify } from "../sources/sourcify.js";
-import { pickMainPool, tokenPairs } from "../sources/dexscreener.js";
+import { pickMainPool, tokenPairs, type DsPair } from "../sources/dexscreener.js";
+import { fetchEnrichment } from "../sources/facts.js";
 import { tokenHolders } from "../sources/explorer.js";
 import { cleanSnippet } from "../util/page.js";
 import { describe } from "../sources/facts.js";
@@ -69,6 +70,48 @@ function routeFigures(w: WalletSim): string {
   return rc?.pre_transferred_outcome === "unavailable" ? `${cost} (the moved-first order did not run)` : cost;
 }
 
+/** The tested pool, with the source that named it when that was not DexScreener. */
+function poolLabel(s: SellSim): string {
+  const from = s.pool_source === "geckoterminal" ? "GeckoTerminal" : s.pool_source === "freeweight_index" ? "the Freeweight index" : null;
+  return from ? `${s.pool_kind} (pool named by ${from})` : String(s.pool_kind);
+}
+
+const SEL_TOKEN0 = "0x0dfe1681";
+const SEL_TOKEN1 = "0xd21220a7";
+
+/**
+ * Robinhood Chain: the Freeweight index names a token's main venue. Turn it into a pool record the sell test can
+ * use when no public source listed a pool. Bonding-curve venues are reported, not simulated.
+ */
+async function indexVenue(run: Run, chain: Chain, token: string): Promise<{ pair?: DsPair; alt?: number; curve?: boolean }> {
+  const enr = await fetchEnrichment(run, "token_overview", token).catch(() => undefined);
+  if (enr?.status !== "merged") return {};
+  const f = enr.fields;
+  const venue = typeof f.main_venue === "string" ? f.main_venue.toLowerCase() : "";
+  const type = typeof f.main_venue_type === "string" ? f.main_venue_type : "";
+  if (type === "curve") return { curve: true };
+  const launched = typeof f.launched_at === "number" ? f.launched_at * 1000 : undefined;
+  const graduated = typeof f.graduated_at === "number" ? f.graduated_at * 1000 : undefined;
+  const base = { address: token, name: "", symbol: "" };
+  if (/^0x[0-9a-f]{64}$/.test(venue)) {
+    const pair: DsPair = { chainId: chain.dexscreener ?? chain.key, dexId: "uniswap", pairAddress: venue, labels: ["v4"], baseToken: base, quoteToken: { address: "", name: "", symbol: "" }, pairCreatedAt: launched, source: "freeweight_index" };
+    return { pair, alt: graduated };
+  }
+  if (/^0x[0-9a-f]{40}$/.test(venue) && /v[23]/.test(type)) {
+    // v2/v3 pools: read the pair's tokens from the chain to find the quote side.
+    const [t0, t1] = await Promise.all([ethCall(run, chain, venue, SEL_TOKEN0 as Hex, { ttl: 3600 }), ethCall(run, chain, venue, SEL_TOKEN1 as Hex, { ttl: 3600 })].map((p) => p.catch(() => null)));
+    const a0 = t0 && t0.length >= 66 ? ("0x" + t0.slice(26, 66)).toLowerCase() : null;
+    const a1 = t1 && t1.length >= 66 ? ("0x" + t1.slice(26, 66)).toLowerCase() : null;
+    const other = a0 === token ? a1 : a1 === token ? a0 : null;
+    if (!other) return {};
+    const pair: DsPair = { chainId: chain.dexscreener ?? chain.key, dexId: "uniswap", pairAddress: venue, labels: [/v3/.test(type) ? "v3" : "v2"], baseToken: base, quoteToken: { address: other, name: "", symbol: other === chain.wrappedNative ? "WETH" : "" }, pairCreatedAt: launched, source: "freeweight_index" };
+    return { pair };
+  }
+  return {};
+}
+
+const THROTTLED = /\b(429|4029)\b|rate.?limit|too many requests/i;
+
 /** One sentence about the sell test; always names the wallet and never says OK without a cost. */
 export function describeSell(s: SellSim): string {
   if (s.method === "none") return `sell not simulated (${s.detail ?? "no pool or holder to test with"})`;
@@ -76,7 +119,7 @@ export function describeSell(s: SellSim): string {
     const w = s.wallets[0]!;
     const size = s.trade_size_quote !== null && s.trade_size_quote !== undefined ? `${Number(s.trade_size_quote.toPrecision(2))} ${s.quote_symbol ?? ""}`.trim() : "a small amount";
     const rc = w.route_costs;
-    const where = `fresh wallet, round trip of ${size} on ${s.pool_kind}`;
+    const where = `fresh wallet, round trip of ${size} on ${poolLabel(s)}`;
     if (w.verdict === "route_dependent" && rc) {
       return `SELL DEPENDS ON THE ROUTE (${where}): selling straight from the wallet ${orderPhrase(rc.wallet_held_outcome, rc.wallet_held)}, moving the tokens to the pool manager first ${orderPhrase(rc.pre_transferred_outcome, rc.pre_transferred)}`;
     }
@@ -105,7 +148,7 @@ export function describeSell(s: SellSim): string {
   const max = Math.max(...costs);
   const head = s.verdict === "cannot_sell" ? "EFFECTIVELY CANNOT SELL, " : s.verdict === "costly" ? "COSTLY, " : "";
   const unmeasured = costs.length < n ? ` (${n - costs.length} without a cost figure)` : "";
-  return `sell test from ${n} real holder${n > 1 ? "s" : ""} (${who}) on ${s.pool_kind}: ${head}a sale costs up to ${pct(max)}${unmeasured}`;
+  return `sell test from ${n} real holder${n > 1 ? "s" : ""} (${who}) on ${poolLabel(s)}: ${head}a sale costs up to ${pct(max)}${unmeasured}`;
 }
 
 /** The index's sell_test values this package understands; anything else is "unrecognised" and never quoted. */
@@ -277,14 +320,17 @@ export const safetyCheck = defineTool({
     if (code === "0x") return { ok: false, summary: `${token} has no contract code on ${chain.name}.`, data: { chain: chain.key, token } };
 
     const slot = (s: string) => tri(rpc<string>(run, chain, "eth_getStorageAt", [token, s, "latest"], { ttl: 300 }));
-    const [implW, adminW, beaconW, ownerT, gp, verified, pairs, explorerHolders, decT] = await Promise.all([
+    const [implW, adminW, beaconW, ownerT, gp, verified, pairsR, explorerHolders, decT] = await Promise.all([
       slot(EIP1967_IMPL),
       slot(EIP1967_ADMIN),
       slot(EIP1967_BEACON),
       ownerOf(run, chain, token),
       chain.goplus ? soft(run, "goplus", goplusToken(run, chain, token)) : Promise.resolve(undefined),
       soft(run, "sourcify", sourcify(run, chain, token, false)),
-      soft(run, "dexscreener", tokenPairs(run, chain, token)),
+      tokenPairs(run, chain, token).then(
+        (v) => ({ ok: v }) as const,
+        (e: unknown) => ({ err: e instanceof Error ? e.message : String(e) }) as const,
+      ),
       tokenHolders(run, chain, token).catch(() => null),
       tri(ethCall(run, chain, token, encodeFunctionData({ abi: ERC20, functionName: "decimals" }), { ttl: 3600 })),
     ]);
@@ -308,17 +354,41 @@ export const safetyCheck = defineTool({
     const decimals = decRaw && decRaw !== "0x" ? Number(BigInt(decRaw.slice(0, 66))) : null;
 
     // --- sell test
-    const { main } = pickMainPool(pairs ?? [], token);
+    const pairsErr = "err" in pairsR ? pairsR.err : null;
+    if (pairsErr) run.miss("dexscreener", new Error(pairsErr));
+    const pairs = "ok" in pairsR ? pairsR.ok : undefined;
+    const { main: listed } = pickMainPool(pairs ?? [], token);
+    let main: DsPair | null = listed;
+    let poolSource: SellSim["pool_source"] = listed ? (listed.source ?? "dexscreener") : undefined;
+    let noPool: string | null = null;
+    let venueAlt: number | undefined;
+    if (!main && chain.id === 4663) {
+      const v = await indexVenue(run, chain, token);
+      if (v.pair) {
+        main = v.pair;
+        venueAlt = v.alt;
+        poolSource = "freeweight_index";
+        run.sources.add("Freeweight index");
+      } else if (v.curve) noPool = "the main venue is a bonding curve (named by the Freeweight index); bonding curves are not simulated";
+    }
+    if (!main && !noPool) {
+      noPool = pairsErr
+        ? `the pool lookup ${THROTTLED.test(pairsErr) ? "was throttled" : "failed"} (${pairsErr.slice(0, 60)}) and no other source named a pool`
+        : `no pool is listed${chain.id === 4663 ? " (DexScreener and the Freeweight index name none)" : " on DexScreener"}`;
+    }
     const creator = gp?.creator_address?.toLowerCase();
     let sell: SellSim = { method: "none", verdict: "not_simulated", pool_kind: null, wallets: [] };
     const sims: TransferSim[] = [];
     let candidates: string[] = [];
+    if (!main) sell = { ...sell, detail: noPool ?? undefined };
     if (main) {
-      const info = await poolInfo(run, chain, token, main).catch((e) => ({ error: e instanceof Error ? e.message.slice(0, 80) : "error" }));
+      let info = await poolInfo(run, chain, token, main).catch((e) => ({ error: e instanceof Error ? e.message.slice(0, 80) : "error" }));
+      // An index-named v4 pool may have been created at graduation rather than at launch.
+      if ("error" in info && venueAlt !== undefined) info = await poolInfo(run, chain, token, { ...main, pairCreatedAt: venueAlt }).catch(() => info);
       if ("error" in info) {
         sell = { ...sell, detail: info.error };
       } else {
-        sell = { method: "none", verdict: "not_simulated", pool_kind: info.label, quote_symbol: info.quoteSymbol, wallets: [] };
+        sell = { method: "none", verdict: "not_simulated", pool_kind: info.label, pool_source: poolSource, quote_symbol: info.quoteSymbol, wallets: [] };
         if (info.key) {
           sell.hooks = info.key.hooks.toLowerCase();
           sell.fee_raw = info.key.fee;
