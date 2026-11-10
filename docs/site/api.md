@@ -607,8 +607,9 @@ check is `{ name, ok, detail }`. `proof_line` is the line the check looks for in
 
 ## Tools over MCP
 
-`POST /mcp` is a Model Context Protocol endpoint with ten read-only research tools. It needs no session and no
-key. See [tools](/docs/tools) and [agents](/docs/agents).
+`POST /mcp` is a Model Context Protocol endpoint with ten read-only research tools. It needs no session. Nine of
+the tools need no key. `web_search` runs only with an API key, or the browser sign-in. See [tools](/docs/tools)
+and [agents](/docs/agents).
 
 This route speaks JSON-RPC 2.0, so its errors do not have the shape above. A refusal is a JSON-RPC error object
 with an HTTP status:
