@@ -31,6 +31,14 @@ export function inert(text: string, max = 600): string {
   return chars.length > max ? `${chars.slice(0, max - 1).join("").trimEnd()}${ELLIPSIS}` : plain;
 }
 
+/**
+ * Running prose from a model: the text as written, line breaks and all, with each hidden character shown as the
+ * mark the tool rows use. A joiner between two emoji is part of one picture and stays.
+ */
+export function visible(text: string): string {
+  return text.replace(HIDDEN, (c, at: number, all: string) => (c === "\u200d" && /\p{Extended_Pictographic}/u.test(all.slice(at + 1, at + 3)) && at > 0 ? c : UNSEEN));
+}
+
 /** For a raw view (JSON, arguments): the text as it is, with each hidden character written out as its escape. */
 export function showHidden(text: string): string {
   return text.replace(HIDDEN, (c) => {

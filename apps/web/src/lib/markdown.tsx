@@ -4,6 +4,7 @@
 import { Fragment, type ReactNode } from "react";
 import { Link } from "../router";
 import { Code } from "../ui/bits";
+import { visible } from "./inert";
 import "../styles/md.css";
 
 export type Block =
@@ -140,40 +141,178 @@ export function parseBlocks(src: string): Block[] {
   return out;
 }
 
-const INLINE = /(`+)([^`]|[^`].*?[^`])\1(?!`)|\*\*([^\s*](?:.*?[^\s*])?)\*\*|(?<![\w*])\*([^\s*](?:.*?[^\s*])?)\*(?![\w*])|(?<![\w_])_([^\s_](?:.*?[^\s_])?)_(?![\w_])|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>)\]]*[^\s<>)\].,;:!?'"])/s;
-
+/** Where a link may go: a web address, a mail address, a path on this site, or a place on this page. */
 export function safeHref(href: string): string | null {
-  return /^(https?:\/\/|mailto:|\/|#)/i.test(href) ? href : null;
+  // A site path starts with one slash. Two slashes, or a slash and a backslash, name another host.
+  return /^(https?:\/\/|mailto:|\/(?![/\\])|#)/i.test(href) ? href : null;
 }
 
-export function inline(text: string, key = "i", resolve: (href: string) => string | null = safeHref, plain = false): ReactNode[] {
-  const out: ReactNode[] = [];
-  let rest = text;
-  let n = 0;
-  while (rest) {
-    const m = INLINE.exec(rest);
-    if (!m) {
-      out.push(rest);
-      break;
-    }
-    if (m.index > 0) out.push(rest.slice(0, m.index));
-    const k = `${key}${n++}`;
-    if (m[1]) out.push(<code key={k} className="ic">{m[2]}</code>);
-    else if (m[3] !== undefined) out.push(<strong key={k}>{inline(m[3], k, resolve, plain)}</strong>);
-    else if (m[4] !== undefined) out.push(<em key={k}>{inline(m[4], k, resolve, plain)}</em>);
-    else if (m[5] !== undefined) out.push(<em key={k}>{inline(m[5], k, resolve, plain)}</em>);
-    else if (plain && m[6] !== undefined) out.push(<Fragment key={k}>{inline(m[6], k, resolve, plain)} ({m[7]})</Fragment>);
-    else if (plain && m[8] !== undefined) out.push(m[8]);
-    else if (m[6] !== undefined || m[8] !== undefined) {
-      const href = m[7] !== undefined ? resolve(m[7]) : safeHref(m[8]!);
-      const label = m[6] !== undefined ? inline(m[6], k, resolve) : m[8];
-      if (!href) out.push(label);
-      else if (href.startsWith("/")) out.push(<Link key={k} className="link" href={href}>{label}</Link>);
-      else out.push(<a key={k} className="link" href={href} {...(href.startsWith("#") ? {} : { target: "_blank", rel: "noopener noreferrer" })}>{label}</a>);
-    }
-    rest = rest.slice(m.index + m[0].length);
+/** True when a link's label reads as an address on one host while the link goes to another. */
+export function namesOtherHost(label: string, href: string): boolean {
+  let to: string;
+  try {
+    to = new URL(href).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return false;
   }
+  const named = [...label.matchAll(/(?:https?:\/\/|www\.)((?:[a-z0-9-]+\.)+[a-z]{2,})/gi)].map((m) => m[1]!);
+  const whole = /^\s*((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[/:?#]\S*)?\s*$/i.exec(label)?.[1];
+  if (whole) named.push(whole);
+  return named.some((h) => {
+    const host = h.toLowerCase().replace(/^www\./, "");
+    return host !== to && !to.endsWith(`.${host}`);
+  });
+}
+
+const TICK = 96;
+const STAR = 42;
+const UNDER = 95;
+const OPEN = 91;
+const spaceOr = (c: string | undefined, mark: string): boolean => c === undefined || c === mark || /\s/.test(c);
+const wordOr = (c: string | undefined, mark: string): boolean => c !== undefined && (c === mark || /\w/.test(c));
+/** Emphasis nested deeper than this is written out as it is. */
+const MAX_DEPTH = 6;
+
+type Ticks = { at: number[]; len: number[]; byLen: Map<number, number[]>; next: Map<number, number> };
+function tickRuns(text: string): Ticks {
+  const t: Ticks = { at: [], len: [], byLen: new Map(), next: new Map() };
+  for (let q = text.indexOf("`"); q >= 0; ) {
+    let len = 1;
+    while (text.charCodeAt(q + len) === TICK) len++;
+    const list = t.byLen.get(len) ?? [];
+    if (!list.length) t.byLen.set(len, list);
+    list.push(t.at.length);
+    t.at.push(q);
+    t.len.push(len);
+    q = text.indexOf("`", q + len);
+  }
+  return t;
+}
+
+/**
+ * Inline markdown: code, bold, emphasis, links and bare web addresses. One pass from left to right. A search for a
+ * closing mark that fails is not made again, and what a match covers is not read again at the same depth, so the
+ * work grows with the length of the text and not with how many marks open and never close.
+ */
+export function inline(text: string, key = "i", resolve: (href: string) => string | null = safeHref, plain = false, depth = 0): ReactNode[] {
+  if (depth > MAX_DEPTH) return [text];
+  const out: ReactNode[] = [];
+  const n = text.length;
+  let i = 0;
+  let from = 0;
+  let count = 0;
+  const none = { strong: false, star: false, under: false, bracket: false };
+  let ticks: Ticks | null = null;
+  let run = 0;
+  let closeAt = -1;
+  let stopFrom = -1;
+  let stopAt = -1;
+  const put = (start: number, end: number, node: (k: string) => ReactNode): void => {
+    if (start > from) out.push(text.slice(from, start));
+    out.push(node(`${key}${count++}`));
+    from = i = end;
+  };
+  const inner = (part: string, k: string, asPlain = plain): ReactNode[] => inline(part, k, resolve, asPlain, depth + 1);
+  /** `mark` opens at `at`: where does the emphasis close? -1 when it does not. */
+  const closing = (mark: string, at: number): number => {
+    let q = text.indexOf(mark, at + 2);
+    while (q >= 0 && (spaceOr(text[q - 1], mark) || wordOr(text[q + 1], mark))) q = text.indexOf(mark, q + 1);
+    return q;
+  };
+
+  while (i < n) {
+    const c = text.charCodeAt(i);
+    if (c === TICK) {
+      ticks ??= tickRuns(text);
+      while (ticks.at[run]! < i) run++;
+      const len = ticks.len[run]!;
+      let done = false;
+      // The whole run opens a span if a run of the same length follows. Failing that, its last marks may.
+      for (let l = len; l >= 1 && !done; l--) {
+        const list = ticks.byLen.get(l);
+        if (!list) continue;
+        let p = ticks.next.get(l) ?? 0;
+        while (p < list.length && list[p]! <= run) p++;
+        ticks.next.set(l, p);
+        if (p >= list.length) continue;
+        const end = ticks.at[list[p]!]!;
+        const code = text.slice(i + len, end);
+        put(i + len - l, end + l, (k) => <code key={k} className="ic">{code}</code>);
+        done = true;
+      }
+      if (!done) i += len;
+      continue;
+    }
+    if (c === STAR && text.charCodeAt(i + 1) === STAR && !none.strong && !spaceOr(text[i + 2], "*")) {
+      let q = text.indexOf("**", i + 3);
+      while (q >= 0 && spaceOr(text[q - 1], "*")) q = text.indexOf("**", q + 1);
+      if (q >= 0) {
+        const part = text.slice(i + 2, q);
+        put(i, q + 2, (k) => <strong key={k}>{inner(part, k)}</strong>);
+        continue;
+      }
+      none.strong = true;
+    }
+    if ((c === STAR && !none.star) || (c === UNDER && !none.under)) {
+      const mark = c === STAR ? "*" : "_";
+      if (!wordOr(text[i - 1], mark) && !spaceOr(text[i + 1], mark)) {
+        const q = closing(mark, i);
+        if (q >= 0) {
+          const part = text.slice(i + 1, q);
+          put(i, q + 1, (k) => <em key={k}>{inner(part, k)}</em>);
+          continue;
+        }
+        if (c === STAR) none.star = true;
+        else none.under = true;
+      }
+    }
+    if (c === OPEN && !none.bracket) {
+      if (closeAt < i + 1) closeAt = text.indexOf("]", i + 1);
+      if (closeAt < 0) none.bracket = true;
+      else if (closeAt > i + 1 && text[closeAt + 1] === "(") {
+        const h0 = closeAt + 2;
+        if (h0 < stopFrom || h0 > stopAt) {
+          stopFrom = h0;
+          stopAt = h0;
+          while (stopAt < n && text[stopAt] !== ")" && !/\s/.test(text[stopAt]!)) stopAt++;
+        }
+        if (stopAt > h0 && text[stopAt] === ")") {
+          const label = text.slice(i + 1, closeAt);
+          const raw = text.slice(h0, stopAt);
+          put(i, stopAt + 1, (k) => {
+            if (plain) return <Fragment key={k}>{inner(label, k)} ({raw})</Fragment>;
+            const href = resolve(raw);
+            // The text of a link is never itself a link.
+            const shown = inner(label, k, true);
+            if (!href) return shown;
+            // A label that reads as one address over a link to another is written out, so both can be seen.
+            if (namesOtherHost(label, href)) return <Fragment key={k}>{shown} ({href})</Fragment>;
+            return link(href, shown, k);
+          });
+          continue;
+        }
+      }
+    }
+    if (c === 104 && (text.startsWith("http://", i) || text.startsWith("https://", i))) {
+      const s0 = i + (text[i + 4] === "s" ? 8 : 7);
+      let e = s0;
+      while (e < n && !/[\s<>)\]]/.test(text[e]!)) e++;
+      while (e > s0 && ".,;:!?'\"".includes(text[e - 1]!)) e--;
+      if (e > s0) {
+        const url = text.slice(i, e);
+        put(i, e, (k) => (plain ? url : link(url, url, k)));
+        continue;
+      }
+    }
+    i++;
+  }
+  if (from < n) out.push(text.slice(from));
   return out;
+}
+
+function link(href: string, label: ReactNode, k: string): ReactNode {
+  if (href.startsWith("/")) return <Link key={k} className="link" href={href}>{label}</Link>;
+  return <a key={k} className="link" href={href} {...(href.startsWith("#") ? {} : { target: "_blank", rel: "noopener noreferrer" })}>{label}</a>;
 }
 
 const NOTE_LABEL: Record<Note, string> = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" };
@@ -256,7 +395,8 @@ export function Blocks({ blocks, anchors = false, href, plainLinks = false }: { 
   return <Fragment>{blocks.map((b, k) => renderBlock(b, k, ctx))}</Fragment>;
 }
 
-export function Markdown({ text, anchors = false, plainLinks = false }: { text: string; anchors?: boolean; plainLinks?: boolean }) {
-  const blocks = parseBlocks(text);
+/** `clean` is for text we did not write: hidden and direction-changing characters are shown as a mark. */
+export function Markdown({ text, anchors = false, plainLinks = false, clean = false }: { text: string; anchors?: boolean; plainLinks?: boolean; clean?: boolean }) {
+  const blocks = parseBlocks(clean ? visible(text) : text);
   return <Blocks blocks={anchors ? uniqueIds(blocks) : blocks} anchors={anchors} plainLinks={plainLinks} />;
 }
