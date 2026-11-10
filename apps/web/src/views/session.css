@@ -834,6 +834,14 @@ ol .rk-t::after {
 .meter-left.low {
   color: var(--accent-ink);
 }
+/* A stopped clock holds its reading, or says "paused" when it has none, in the quieter ink. */
+.meter-left.held {
+  color: var(--ink-2);
+}
+.meter-paused {
+  margin-top: var(--s3);
+  color: var(--ink-2);
+}
 .meter-bar {
   display: grid;
   grid-template-columns: repeat(var(--n), minmax(0, 1fr));

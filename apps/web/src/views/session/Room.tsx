@@ -335,35 +335,45 @@ function Clock({ live, session: s, model }: { live: Live; session: Session; mode
   const used = elapsed / 60_000 / unit;
   const low = !stopped && left < 60_000;
   const rate = model?.price_usd_micro_per_min ?? 0;
+  // Opened while the model was being woken again: this page never saw the clock run, so it has no reading and no
+  // scale to draw. It says so in words and draws nothing.
+  const blank = stopped && total === 0;
 
   return (
     <section className="meter" aria-label="Clock">
       <div className="meter-h">
-        <span className="micro">Time left</span>
+        <span className="micro">{blank ? "Clock" : "Time left"}</span>
         <span className="micro">
-          {stopped ? "clock stopped" : s.free ? "free session" : model ? perMin(rate) : ""}
+          {stopped ? (blank ? "stopped" : "clock stopped") : s.free ? "free session" : model ? perMin(rate) : ""}
         </span>
       </div>
-      <div className={`meter-left${low ? " low" : ""}`} role="timer" aria-label={`Time left ${leftText(meter)}`}>
-        {[...leftText(meter)].map((c, i) => (
-          <b key={i} className={/\d/.test(c) ? undefined : "sep"}>
-            {c}
-          </b>
-        ))}
-      </div>
-      <div className="meter-bar" aria-hidden="true" style={{ "--n": n } as CSSProperties}>
-        {Array.from({ length: n }, (_, i) => {
-          const f = Math.max(0, Math.min(1, used - i));
-          return <i key={i} style={{ "--f": f.toFixed(3) } as CSSProperties} />;
-        })}
-      </div>
-      <div className="meter-scale micro" aria-hidden="true">
-        <span>0</span>
-        <span>
-          1 plate = {unit} min
-        </span>
-        <span>{totalMin} min</span>
-      </div>
+      {blank ? (
+        <p className="meter-left held">paused</p>
+      ) : (
+        <>
+          <div className={`meter-left${low ? " low" : ""}${stopped ? " held" : ""}`} role="timer" aria-label={`Time left ${leftText(meter)}`}>
+            {[...leftText(meter)].map((c, i) => (
+              <b key={i} className={/\d/.test(c) ? undefined : "sep"}>
+                {c}
+              </b>
+            ))}
+          </div>
+          <div className="meter-bar" aria-hidden="true" style={{ "--n": n } as CSSProperties}>
+            {Array.from({ length: n }, (_, i) => {
+              const f = Math.max(0, Math.min(1, used - i));
+              return <i key={i} style={{ "--f": f.toFixed(3) } as CSSProperties} />;
+            })}
+          </div>
+          <div className="meter-scale micro" aria-hidden="true">
+            <span>0</span>
+            <span>
+              1 plate = {unit} min
+            </span>
+            <span>{totalMin} min</span>
+          </div>
+        </>
+      )}
+      {stopped && <p className="small meter-paused">The clock is stopped while the model is woken again. This time is not billed.</p>}
 
       <dl className="meter-read">
         <div className="readout">
