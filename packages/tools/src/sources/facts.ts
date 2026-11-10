@@ -227,7 +227,11 @@ export function describe(tool: string, f: Record<string, unknown>, omit: Set<str
                 ? `sell test ok${typeof f.round_trip_cost === "number" ? ` (round trip cost ${pct(f.round_trip_cost)})` : ""}`
                 : t === "not_tested"
                   ? "sell not tested (bonding curve or plain pool)"
-                  : `sell test ${t ?? "unknown"}`;
+                  : t === "inconclusive"
+                    ? "sell test inconclusive"
+                    : t === null || t === undefined
+                      ? "no sell test"
+                      : "sell test: unrecognised index value";
       return [s, extra, tpl].filter(Boolean).join(", ");
     }
     case "holders": {

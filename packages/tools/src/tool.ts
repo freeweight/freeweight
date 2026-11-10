@@ -55,7 +55,11 @@ async function execute(spec: ToolSpec, args: Record<string, unknown>, ctx: ToolC
     const body = await spec.run(args, run);
     const enr = await enrichP.catch(() => undefined);
     let line = enr?.status === "merged" ? enr.line : undefined;
-    if (enr?.status === "merged" && spec.reconcile) line = spec.reconcile(body, enr.fields) ?? line;
+    if (enr?.status === "merged" && spec.reconcile) {
+      // undefined = keep the default index sentence; "" = no further index sentence.
+      const rl = spec.reconcile(body, { as_of: enr.as_of, ...enr.fields });
+      if (rl !== undefined) line = rl;
+    }
     let summary = (run.partial ? "[partial] " : "") + (body.parts ? partsSummary(body.parts) : body.summary);
     if (enr?.status === "merged" && line) summary += ` Freeweight index: ${line}.`;
     else if (enr?.status === "not_found") run.note("Not tracked by the Freeweight index (it never reached about $5k market cap or about 30 buyers); public sources only.");
