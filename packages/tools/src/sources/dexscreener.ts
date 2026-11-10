@@ -24,7 +24,7 @@ export type DsPair = {
   info?: { imageUrl?: string; websites?: { label?: string; url: string }[]; socials?: { type: string; url: string }[] };
 };
 
-/** Pools with less than this USD liquidity, or under 2% of the deepest pool, are treated as junk for pricing. */
+/** Pools under this USD liquidity, or under 1% of the deepest pool while also under $25k, are junk for pricing. */
 export const JUNK_LIQ_USD = 1000;
 
 export async function tokenPairs(run: Run, chain: Chain, token: string): Promise<DsPair[]> {
@@ -93,7 +93,7 @@ export function pickMainPool(pairs: DsPair[], token: string): { main: DsPair | n
   const junk: DsPair[] = [];
   for (const p of sorted) {
     const l = p.liquidity?.usd ?? 0;
-    if (p === sorted[0] || (l >= JUNK_LIQ_USD && l >= top * 0.02)) real.push(p);
+    if (p === sorted[0] || (l >= JUNK_LIQ_USD && (l >= top * 0.01 || l >= 25_000))) real.push(p);
     else junk.push(p);
   }
   return { main: sorted[0] ?? null, real, junk };

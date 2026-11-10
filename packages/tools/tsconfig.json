@@ -3,7 +3,10 @@
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022", "WebWorker"],
+    "lib": [
+      "ES2022",
+      "WebWorker"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -15,5 +18,7 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["src", "test", "scripts"]
+  "include": [
+    "src"
+  ]
 }

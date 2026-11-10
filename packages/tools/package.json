@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
     "record": "tsx scripts/record-fixtures.ts"
@@ -22,6 +22,7 @@
     "@modelcontextprotocol/sdk": "^1.20.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0"
   }
 }
