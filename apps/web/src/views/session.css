@@ -713,12 +713,10 @@ ol .rk-t::after {
   gap: var(--s3);
   padding: var(--s2) var(--s2) var(--s2) var(--s4);
 }
+/* The hint is never cut: beside the switch it folds onto a second line when the row is short. */
 .composer-hint {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 /* On a phone the hint does not fit beside the switch and the button, so it takes its own line under them. */
 @media (max-width: 519px) {
@@ -732,7 +730,6 @@ ol .rk-t::after {
   .composer-hint {
     order: 3;
     flex: 0 0 100%;
-    white-space: normal;
     padding-bottom: 2px;
   }
 }
