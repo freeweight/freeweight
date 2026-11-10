@@ -7,11 +7,40 @@ describe("money", () => {
     expect(usd(1_250_000)).toBe("$1.25");
     expect(usd(12_000_000)).toBe("$12.00");
   });
-  it("keeps the cents that matter below a dollar", () => {
+  // The rule, for every amount the site prints:
+  //   1. At least two decimals, always.
+  //   2. Four decimals only under a dollar, and only when the third or fourth decimal is not zero. Every amount
+  //      under one cent is such an amount.
+  //   3. Never three decimals. A dollar and up is always two.
+  it("prints two decimals when the cents say everything", () => {
     expect(usd(30_000)).toBe("$0.03");
     expect(usd(100_000)).toBe("$0.10");
-    expect(usd(125_000)).toBe("$0.125");
+    expect(usd(500_000)).toBe("$0.50");
+    expect(usd(990_000)).toBe("$0.99");
+  });
+  it("prints four decimals under a dollar when the extra digits are not zero", () => {
+    expect(usd(218_500)).toBe("$0.2185");
+    expect(usd(125_000)).toBe("$0.1250");
+    expect(usd(120_100)).toBe("$0.1201");
     expect(usd(2_500)).toBe("$0.0025");
+    expect(usd(5_000)).toBe("$0.0050");
+    expect(usd(100)).toBe("$0.0001");
+  });
+  it("never prints three decimals, and never four from a dollar up", () => {
+    for (const micro of [1, 40, 100, 999, 1_000, 5_000, 12_340, 125_000, 218_500, 500_000, 999_949, 999_990, 1_000_000, 1_118_500, 1_125_000, 37_400_100]) {
+      const digits = usd(micro).split(".")[1] ?? "";
+      expect([2, 4]).toContain(digits.length);
+      if (micro >= 1_000_000) expect(digits.length).toBe(2);
+    }
+    expect(usd(1_118_500)).toBe("$1.12");
+    expect(usd(999_949)).toBe("$0.9999");
+    // Rounds to a whole dollar, so it is printed as one.
+    expect(usd(999_990)).toBe("$1.00");
+  });
+  it("keeps the sign and the floor", () => {
+    expect(usd(-500_000)).toBe("-$0.50");
+    expect(usd(-2_500)).toBe("-$0.0025");
+    expect(usd(40)).toBe("<$0.0001");
   });
   it("prints a price per minute", () => {
     expect(perMin(60_000)).toBe("$0.06/min");

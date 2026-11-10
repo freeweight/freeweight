@@ -4,14 +4,19 @@ import type { Tier } from "../api/types";
 
 const MICRO = 1_000_000;
 
-/** USD from micro-units. Sub-dollar amounts keep up to 4 decimals, never fewer than 2. */
+/**
+ * USD from micro-units. One rule for every amount on the site: two decimals, or four when the amount is under a
+ * dollar and the third or fourth decimal is not zero (which covers everything under one cent). Never three.
+ */
 export function usd(micro: number): string {
   const v = Math.abs(micro) / MICRO;
   const sign = micro < 0 ? "-" : "";
-  if (v >= 1 || v === 0) return `${sign}$${v.toFixed(2)}`;
   // An amount too small for four decimals is still not nothing.
-  if (v < 0.0001) return `${sign}<$0.0001`;
-  return `${sign}$${v.toFixed(4).replace(/0{1,2}$/, "")}`;
+  if (v > 0 && v < 0.0001) return `${sign}<$0.0001`;
+  // Whole ten-thousandths of a dollar, so the choice is made on the digits that would be printed.
+  const t = Math.round(v * 10_000);
+  if (t >= 10_000 || t % 100 === 0) return `${sign}$${v.toFixed(2)}`;
+  return `${sign}$${(t / 10_000).toFixed(4)}`;
 }
 
 export function perMin(micro: number): string {
