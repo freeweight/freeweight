@@ -210,3 +210,20 @@ describe("holders with no list from any source", () => {
     expect((r.data.top as unknown[]).length).toBe(0);
   });
 });
+
+describe("GeckoTerminal pools against obscure quote tokens", () => {
+  it("are dropped when pools against the native coin, its wrapped form or a stablecoin exist", async () => {
+    resetState();
+    const odd = "0x" + "0d".repeat(20);
+    const withOdd = {
+      data: [
+        { ...gtPools.data[0], id: `base_0x${"ee".repeat(20)}`, attributes: { ...gtPools.data[0]!.attributes, address: `0x${"ee".repeat(20)}`, reserve_in_usd: "3900000", base_token_price_usd: "0.02" }, relationships: { ...gtPools.data[0]!.relationships, quote_token: { data: { id: `base_${odd}` } } } },
+        gtPools.data[0],
+      ],
+      included: [...gtPools.included, { id: `base_${odd}`, type: "token", attributes: { symbol: "mmETH", name: "Some Wrapper" } }],
+    };
+    const f = fakeFetch([throttled, (url) => (url.includes("geckoterminal") ? json(withOdd) : null)]);
+    const pairs = await tokenPairs(new Run({ env: {}, fetch: f }), resolveChain("base")!, TOKEN);
+    expect(pairs.map((p) => p.pairAddress)).toEqual([POOL]);
+  });
+});

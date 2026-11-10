@@ -116,8 +116,17 @@ export async function geckoPairs(run: Run, chain: Chain, token: string): Promise
     `https://api.geckoterminal.com/api/v2/networks/${chain.geckoterminal}/tokens/${token}/pools?page=1&include=base_token,quote_token,dex`,
     { source: "geckoterminal", ttl: 60, retries: 0, timeoutMs: 6000, headers: { accept: "application/json" } },
   );
-  return (j.data ?? []).map((p) => geckoToPair(p, chain, j.included ?? []));
+  const all = (j.data ?? []).map((p) => geckoToPair(p, chain, j.included ?? []));
+  // GeckoTerminal values pools against any quote token, so a thin pool against an obscure token can report a large
+  // reserve and a wild price. Keep pools quoted in the native coin, its wrapped form or a major stablecoin when any exist.
+  const solid = all.filter((p) => {
+    const q = (p.baseToken.address === token ? p.quoteToken : p.baseToken);
+    return q.address === chain.wrappedNative || /^0x0{40}$|^0xe{40}$/i.test(q.address) || SOLID_QUOTES.has(q.symbol.toUpperCase());
+  });
+  return solid.length ? solid : all;
 }
+
+const SOLID_QUOTES = new Set(["WETH", "ETH", "WBNB", "BNB", "WPOL", "POL", "WMATIC", "USDC", "USDT", "USDG", "DAI", "USDC.E"]);
 
 export async function searchPairs(run: Run, q: string): Promise<DsPair[]> {
   const j = await run.json<{ pairs?: DsPair[] }>(`${BASE}/latest/dex/search?q=${encodeURIComponent(q)}`, { source: "dexscreener", ttl: 60 });
