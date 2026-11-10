@@ -178,7 +178,8 @@ export function rpcUrls(chain: Chain, overrides?: Record<string, string>): strin
     for (const k of [String(chain.id), chain.key, ...chain.aliases]) {
       const v = overrides[k];
       if (v) {
-        const list = v.split(",").map((s) => s.trim()).filter((s) => s.startsWith("https://") || s.startsWith("http://"));
+        // https only: a keyed RPC URL must never travel in clear text.
+        const list = v.split(",").map((s) => s.trim()).filter((s) => s.startsWith("https://"));
         if (list.length) return list;
       }
     }

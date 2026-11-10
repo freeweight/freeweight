@@ -161,6 +161,8 @@ export type Enrichment = { status: "merged"; as_of: number | null; fields: Recor
 export async function fetchEnrichment(run: Run, tool: string, token: string): Promise<Enrichment | undefined> {
   const { FACTS_URL, FACTS_KEY, FACTS_ACCESS_ID, FACTS_ACCESS_SECRET } = run.ctx.env;
   if (!FACTS_URL || !FACTS_KEY || !ENRICHED_TOOLS.has(tool)) return undefined;
+  // The key travels in a header: https only.
+  if (!FACTS_URL.startsWith("https://")) return { status: "failed", why: "index URL is not https" };
   const base = FACTS_URL.replace(/\/+$/, "");
   const url = `${base}/v1/${tool}?token=${token.toLowerCase()}`;
   const headers: Record<string, string> = { "X-FW-Facts-Key": FACTS_KEY, "user-agent": UA, accept: "application/json" };

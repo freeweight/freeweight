@@ -587,3 +587,33 @@ describe("#21 project_check sends a trimmed token to the index", () => {
     expect(seen.find((u) => u.startsWith("https://facts.example.org"))).toBe(`https://facts.example.org/v1/project_check?token=0x${"ab".repeat(20)}`);
   });
 });
+
+describe("Info: plain-HTTP endpoints are refused for keyed traffic", () => {
+  it("RPC_URLS ignores http:// entries", async () => {
+    const { rpcUrls, resolveChain } = await import("../src/chains.js");
+    const base = resolveChain("base")!;
+    expect(rpcUrls(base, { base: "http://plain.example.org" })).toEqual(base.rpcs);
+    expect(rpcUrls(base, { base: "http://plain.example.org, https://tls.example.org" })).toEqual(["https://tls.example.org"]);
+  });
+  it("an http:// index URL is never called", async () => {
+    fresh();
+    const seen: string[] = [];
+    const f = (async (input: RequestInfo | URL) => (seen.push(String(input)), json([]))) as typeof fetch;
+    const r = await runTool("token_overview", { token: "0x" + "ab".repeat(20) }, { env: { FACTS_URL: "http://facts.example.org", FACTS_KEY: "k", RPC_URLS: { "4663": RPC } }, fetch: f });
+    expect(seen.some((u) => u.startsWith("http://facts"))).toBe(false);
+    expect(r.notes.join(" ")).toMatch(/index URL is not https/);
+  });
+});
+
+describe("Checked and fine: URL spellings that resolve to internal hosts are blocked", () => {
+  it("normalises before checking", async () => {
+    const { checkUrl } = await import("../src/util/ssrf.js");
+    for (const f of [
+      "https://0x7f.1/", "https://127.1/", "https://0177.0.0.1/", "https://127.0.0.1./", "https://LOCALHOST./", "https://foo.LocalHost./",
+      "https://[::ffff:127.0.0.1]/", "https://[0:0:0:0:0:0:0:1]/", "https://①②⑦.0.0.1/", "https://127。0。0。1/", "https:\\\\127.0.0.1\\x",
+      "https://example.org@127.0.0.1/", "https://127.0.0.1%2f@example.org/", "https://evil.com:443@127.0.0.1", "https://169.254.169.254.", "https://a.b.internal./", "HTTPS://127.0.0.1",
+    ]) {
+      expect(() => checkUrl(f), f).toThrow();
+    }
+  });
+});
