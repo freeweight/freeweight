@@ -178,8 +178,10 @@ export type SellSim = {
   wallets: WalletSim[];
   /** Why the fresh-wallet path could not be used, when it was not. */
   fresh_wallet_unavailable?: string;
-  /** The Freeweight index's own sell test (router route), when the index has one. */
-  /** The index's own sell test: sell_test is one of the known values or "unrecognised"; cost 0..1 or null. */
+  /**
+   * The Freeweight index's own sell test, when the index has one: sell_test is one of the known values or
+   * "unrecognised"; cost 0..1 or null; as_of is when the index read it.
+   */
   index_reading?: { sell_test: string | null; round_trip_cost: number | null; as_of: number | null };
   /**
    * How our simulation and the index's test relate: agree (same class), differ (different, small gap), disagree
