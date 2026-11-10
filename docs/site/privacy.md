@@ -68,7 +68,8 @@ search service. Those sources see our server, not your network address. They do 
 
 ## Logs
 
-- Our code logs failures: an error message with a session id or a model id. It does not log prompts or answers.
+- Our code logs failures: an error message with a short hash of the session id, or a model id. It does not log
+  prompts or answers.
 - Our hosting platform records request logs for the gateway. In v0.1 this is switched on. A log line can include
   the time, the path, the status, your network address and your browser's user agent. Bodies are not part of these
   logs. The platform deletes them after its retention period.
