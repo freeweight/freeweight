@@ -155,8 +155,8 @@ the wake has not been measured yet. In v0.1 that is the Heavy model.
 A wake can be faster than the estimate, when the weights are still cached near the GPU. It can be slower, when
 GPUs are scarce or the weights have to be fetched again. It can fail. A failed wake costs nothing.
 
-A wake usually takes under a minute. It can take minutes on a cold GPU pool. The catalog carries the estimate
-for each model. At the start of v0.1 it says:
+A wake takes from under a minute to a few minutes, depending on the size of the model. The catalog carries the
+estimate for each model. At the start of v0.1 it says:
 
 | Model | `wake_estimate_s` |
 | ----- | ----------------- |

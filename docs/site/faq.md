@@ -24,9 +24,9 @@ Yes. The clock starts when the model is ready. A wake that fails costs nothing.
 
 ### How long does a wake take?
 
-Usually under a minute. It can take minutes on a cold GPU pool. Each model shows an estimate, which is the
-median of its recent wakes: 40 seconds for the Light model and 60 seconds for the Medium model at the start of
-v0.1. Heavy has not been measured yet. We design for a wake under two minutes. A first wake with nothing cached
+From under a minute to a few minutes, depending on the size of the model. Each model shows an estimate, which
+is the median of its recent wakes: 40 seconds for the Light model and 60 seconds for the Medium model at the
+start of v0.1. Heavy has not been measured yet. We design for a wake under two minutes. A first wake with nothing cached
 takes longer. A model that is already awake needs no wake at all.
 
 ### My wake failed. What now?

@@ -17,9 +17,9 @@ This page does it once on the site and once from code.
 2. Press the wake button. Without a wallet you get the free try: 5 minutes on a Light model, once a day, after a
    human check. Signed in with a balance, you choose 10, 30 or 60 minutes, and the price of those minutes is held
    from your balance.
-3. Watch the wake. The page shows the real stages with their real times: a GPU is assigned, the machine starts,
-   the weights load, the engine starts. This part is not billed. You can leave the page. The address of the
-   session brings you back.
+3. Watch the wake. It takes from under a minute to a few minutes, depending on the size of the model. The page
+   shows the real stages with their real times: a GPU is assigned, the machine starts, the weights load, the
+   engine starts. This part is not billed. You can leave the page. The address of the session brings you back.
 4. When the model is ready, the clock starts. Chat with the model, or open the Session tab for the time left, the
    charge so far and the endpoint for your own code.
 5. Stop when you are done, or let the time run out. You get a receipt with the minutes, the charge, the token

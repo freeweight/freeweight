@@ -62,9 +62,9 @@ with. A session keeps its price even if the tier price changes while it runs.
 ## Waking is free
 
 A sleeping model is not on a GPU. Waking it means getting a GPU, loading the weights and starting the engine. A
-wake usually takes under a minute. It can take minutes on a cold GPU pool. Each model shows a wake estimate: 40
-seconds for the Light model and 60 seconds for the Medium model at the start of v0.1. Heavy has not been
-measured yet. We design for a wake under two minutes. A first wake with nothing cached takes longer.
+wake takes from under a minute to a few minutes, depending on the size of the model. Each model shows a wake
+estimate: 40 seconds for the Light model and 60 seconds for the Medium model at the start of v0.1. Heavy has not
+been measured yet. We design for a wake under two minutes. A first wake with nothing cached takes longer.
 
 You do not pay for the wake. The clock starts when the model is ready. A wake has 10 minutes per GPU source. The
 Light model has two, so its wake can take up to about 20 minutes before it fails. If the wake fails, the session

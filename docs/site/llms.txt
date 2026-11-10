@@ -19,7 +19,7 @@ staging address with the same paths. `/api` has no version prefix and can still 
   The price of the minutes is held from the balance, and the unused part returns when the session ends.
 - A key made with `auto_session` starts a 10-minute session by itself on the first `/v1` request. Without it, a
   `/v1` request with no live session answers `409 no_active_session`.
-- A sleeping model usually wakes in under a minute. It can take minutes on a cold GPU pool. The catalog gives
+- A sleeping model takes from under a minute to a few minutes to wake, depending on its size. The catalog gives
   an estimate per model in `wake_estimate_s`: 40 for `qwen3-8b`, 60 for `qwen3-32b`, 0 (not measured yet) for
   `llama33-70b`.
   A `/v1` request on a waking session waits up to 5 minutes, then

@@ -73,7 +73,7 @@ curl https://freeweight.xyz/v1/chat/completions \
 
 ## Waiting for a wake
 
-A sleeping model usually wakes in under a minute. It can take minutes on a cold GPU pool. The wake is not
+A sleeping model takes from under a minute to a few minutes to wake, depending on its size. The wake is not
 billed. An agent can handle it in three ways.
 
 **Wait on the request.** A `/v1` request sent to a waking session is held until the model is ready, for up to 5
