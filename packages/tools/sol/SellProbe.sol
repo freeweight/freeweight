@@ -7,6 +7,22 @@ pragma solidity 0.8.26;
 contract SellProbe {
     address private _token;
 
+    struct PoolKey {
+        address currency0;
+        address currency1;
+        uint24 fee;
+        int24 tickSpacing;
+        address hooks;
+    }
+
+    struct SwapParams {
+        bool zeroForOne;
+        int256 amountSpecified;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    receive() external payable {}
+
     function _bal(address token, address who) private view returns (uint256) {
         (bool ok, bytes memory r) = token.staticcall(abi.encodeWithSignature("balanceOf(address)", who));
         return ok && r.length >= 32 ? abi.decode(r, (uint256)) : 0;
@@ -79,5 +95,71 @@ contract SellProbe {
                 revert(add(r, 32), mload(r))
             }
         }
+    }
+
+    /// Uniswap v4: exact-input sell through PoolManager.unlock, paying with sync/transfer/settle and taking the output.
+    /// Hooks run exactly as in a real swap, so hook-level sell traps surface as a revert here.
+    function probeV4(address token, address manager, PoolKey calldata key, uint256 amount)
+        external
+        returns (uint8 stage, uint256 received, uint256 out, bytes memory reason)
+    {
+        _token = token;
+        (bool ok, bytes memory r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, amount)));
+        if (!ok) return (2, 0, 0, r);
+        bytes memory inner = abi.decode(r, (bytes));
+        (uint256 paid, uint256 got) = abi.decode(inner, (uint256, uint256));
+        return (0, paid, got, "");
+    }
+
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        (PoolKey memory key, uint256 amount) = abi.decode(data, (PoolKey, uint256));
+        bool zeroForOne = key.currency0 == _token;
+        uint160 limit = zeroForOne ? 4295128740 : 1461446703485210103287273052203988822378723970341;
+        (bool ok, bytes memory r) = msg.sender.call(
+            abi.encodeWithSignature(
+                "swap((address,address,uint24,int24,address),(bool,int256,uint160),bytes)",
+                key,
+                SwapParams(zeroForOne, -int256(amount), limit),
+                new bytes(0)
+            )
+        );
+        if (!ok) {
+            assembly {
+                revert(add(r, 32), mload(r))
+            }
+        }
+        int256 delta = abi.decode(r, (int256));
+        int128 a0 = int128(delta >> 128);
+        int128 a1 = int128(delta);
+        int128 owe = zeroForOne ? a0 : a1;
+        int128 get = zeroForOne ? a1 : a0;
+        uint256 pay = owe < 0 ? uint256(uint128(-owe)) : 0;
+        uint256 take = get > 0 ? uint256(uint128(get)) : 0;
+        if (pay > 0) {
+            (ok, r) = msg.sender.call(abi.encodeWithSignature("sync(address)", _token));
+            require(ok, "sync");
+            (ok, r) = _send(_token, msg.sender, pay);
+            if (!ok) {
+                assembly {
+                    revert(add(r, 32), mload(r))
+                }
+            }
+            (ok, r) = msg.sender.call(abi.encodeWithSignature("settle()"));
+            if (!ok) {
+                assembly {
+                    revert(add(r, 32), mload(r))
+                }
+            }
+        }
+        if (take > 0) {
+            address outC = zeroForOne ? key.currency1 : key.currency0;
+            (ok, r) = msg.sender.call(abi.encodeWithSignature("take(address,address,uint256)", outC, address(this), take));
+            if (!ok) {
+                assembly {
+                    revert(add(r, 32), mload(r))
+                }
+            }
+        }
+        return abi.encode(pay, take);
     }
 }

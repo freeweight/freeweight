@@ -29,12 +29,15 @@ export type Chain = {
   logsSpan: number;
   /** Max concurrent single RPC calls per host (public endpoints rate-limit bursts). */
   rpcConcurrency?: number;
+  /** Uniswap v4 singleton + position manager (for the v4 sell simulation). */
+  v4?: { poolManager: string; positionManager: string };
 };
 
 export const CHAINS: Chain[] = [
   {
     id: 4663,
     key: "robinhood",
+    v4: { poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951", positionManager: "0x58daec3116aae6d93017baaea7749052e8a04fa7" },
     name: "Robinhood Chain",
     aliases: ["robinhood", "rh", "robinhood-chain", "robinhoodchain", "hood"],
     nativeSymbol: "ETH",
@@ -51,6 +54,7 @@ export const CHAINS: Chain[] = [
   {
     id: 1,
     key: "ethereum",
+    v4: { poolManager: "0x000000000004444c5dc75cb358380d2e3de08a90", positionManager: "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e" },
     name: "Ethereum",
     aliases: ["ethereum", "eth", "mainnet", "ethereum-mainnet"],
     nativeSymbol: "ETH",
@@ -70,6 +74,7 @@ export const CHAINS: Chain[] = [
   {
     id: 8453,
     key: "base",
+    v4: { poolManager: "0x498581ff718922c3f8e6a244956af099b2652b2b", positionManager: "0x7c5f5a4bbd8fd63184577525326123b519429bdc" },
     name: "Base",
     aliases: ["base", "base-mainnet"],
     nativeSymbol: "ETH",
@@ -86,6 +91,7 @@ export const CHAINS: Chain[] = [
   {
     id: 56,
     key: "bsc",
+    v4: { poolManager: "0x28e2ea090877bf75740558f6bfb36a5ffee9e9df", positionManager: "0x7a4a5c919ae2541aed11041a1aeee68f1287f95b" },
     name: "BNB Chain",
     aliases: ["bsc", "bnb", "binance", "bnb-chain", "bnbchain", "binance-smart-chain"],
     nativeSymbol: "BNB",
@@ -102,6 +108,7 @@ export const CHAINS: Chain[] = [
   {
     id: 42161,
     key: "arbitrum",
+    v4: { poolManager: "0x360e68faccca8ca495c1b759fd9eee466db9fb32", positionManager: "0xd88f38f930b7952f2db2432cb002e7abbf3dd869" },
     name: "Arbitrum One",
     aliases: ["arbitrum", "arb", "arbitrum-one", "arb1"],
     nativeSymbol: "ETH",

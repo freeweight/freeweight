@@ -48,6 +48,7 @@ async function github(run: Run, link: string): Promise<Gh | null> {
   const m = /^https:\/\/github\.com\/([A-Za-z0-9-]{1,39})(?:\/([A-Za-z0-9._-]{1,100}))?/.exec(link);
   if (!m) return null;
   const [, owner, repo] = m;
+  link = repo ? `https://github.com/${owner}/${repo}` : `https://github.com/${owner}`;
   if (["orgs", "features", "about", "login", "sponsors", "topics", "marketplace"].includes(owner!.toLowerCase())) return null;
   try {
     if (repo) {
@@ -141,7 +142,7 @@ export const projectCheck = defineTool({
     if (reRegistered) parts.push(`archived since ${wb!.slice(0, 10)}, before the current registration date: an earlier owner or a re-registration (check what the old site was)`);
     else if (wb) parts.push(`first archived ${wb.slice(0, 10)}`);
     if (facts) {
-      parts.push(`site: ${facts.framework_signals.join("/") || "unknown stack"}, ${facts.text_chars} chars of text`);
+      parts.push(`site: ${facts.framework_signals.join("/") || "unknown stack"}, ${facts.text_chars >= 1_000_000 ? "1M+" : facts.text_chars} chars of text`);
       if (facts.template_signals.length) parts.push(`template signals: ${facts.template_signals.join(", ")}`);
       const soc = [facts.links.x.length && "X", facts.links.telegram.length && "Telegram", facts.links.github.length && "GitHub", facts.links.discord.length && "Discord"].filter(Boolean);
       parts.push(soc.length ? `links ${soc.join(", ")}` : "no social links on the page");

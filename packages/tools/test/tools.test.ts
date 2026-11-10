@@ -63,6 +63,16 @@ describe("tool shaping", () => {
     expect(r.summary.toLowerCase()).not.toMatch(/\bis safe\b/);
   });
 
+  it("safety_check simulates a v4 sell through the pool's hook", async () => {
+    const { r } = await replay("safety_check-rh-v4-hooked");
+    const sim = r.data.sell_simulation as { result: string; pool_kind: string; hooks: string; out_raw: string };
+    expect(sim.result).toBe("ok");
+    expect(sim.pool_kind).toBe("uniswap v4 (hooked pool)");
+    expect(sim.hooks).toMatch(/^0x[0-9a-f]{40}$/);
+    expect(BigInt(sim.out_raw)).toBeGreaterThan(0n);
+    expect(r.summary).toMatch(/simulation ran through it/);
+  });
+
   it("safety_check simulates a v2 sell and reads owner + selectors", async () => {
     const { r } = await replay("safety_check-eth-pepe");
     expect((r.data.sell_simulation as { result: string }).result).toBe("ok");

@@ -10,6 +10,7 @@ export const CASES: Case[] = [
   { name: "token_overview-eth-pepe", tool: "token_overview", args: { chain: "ethereum", token: PEPE_ETH } },
   { name: "token_overview-rh-wallet", tool: "token_overview", args: { chain: "robinhood", token: WALLET_RH } },
   { name: "safety_check-rh-wallet", tool: "safety_check", args: { token: WALLET_RH } },
+  { name: "safety_check-rh-v4-hooked", tool: "safety_check", args: { token: ZOLVA_RH } },
   { name: "safety_check-eth-pepe", tool: "safety_check", args: { chain: "eth", token: PEPE_ETH } },
   { name: "holders-eth-pepe", tool: "holders", args: { chain: "ethereum", token: PEPE_ETH } },
   { name: "holders-rh-young", tool: "holders", args: { chain: "4663", token: ZOLVA_RH } },

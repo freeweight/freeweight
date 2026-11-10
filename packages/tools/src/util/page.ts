@@ -56,7 +56,7 @@ const FRAMEWORK_MARKERS: [RegExp, string][] = [
   [/wix\.com|wixstatic/, "Wix"],
   [/squarespace/, "Squarespace"],
   [/lovable\.app|gpt-engineer/i, "Lovable"],
-  [/bolt\.new/i, "Bolt"],
+  [/https:\/\/bolt\.new/i, "Bolt"],
   [/v0\.dev/i, "v0"],
   [/carrd\.co/, "Carrd"],
   [/wp-content|wordpress/i, "WordPress"],

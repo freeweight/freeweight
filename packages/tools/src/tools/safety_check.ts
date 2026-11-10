@@ -3,7 +3,8 @@ import type { Chain } from "../chains.js";
 import { defineTool } from "../tool.js";
 import { addr, chainArg, CHAIN_PROP, short, TOKEN_PROP } from "../util/args.js";
 import { soft, type Run } from "../util/http.js";
-import { balanceOf, ethCall, ownerOf, rpc, RpcError } from "../util/rpc.js";
+import { balanceOf, blockNumber, ethCall, ownerOf, rpc, rpcBatch, RpcError } from "../util/rpc.js";
+import { scanTransfers } from "../util/logs.js";
 import { DEAD_ADDRESSES, EIP1967_ADMIN, EIP1967_BEACON, EIP1967_IMPL, minimalProxyTarget, push4Selectors, scanRisk, slotAddress } from "../util/bytecode.js";
 import { goplusToken, flag, type GoPlusToken } from "../sources/goplus.js";
 import { sourcify } from "../sources/sourcify.js";
@@ -37,10 +38,10 @@ export const safetyCheck = defineTool({
   name: "safety_check",
   title: "Safety check",
   description:
-    "Can a buyer sell, and what can the owner do? Simulates a sell where it can (eth_call of a real Uniswap v2/v3 swap using a state-override helper, " +
+    "Can a buyer sell, and what can the owner do? Simulates a sell where it can (eth_call of a real Uniswap v2/v3/v4 swap, hooks included, using a state-override helper, " +
     "else a token transfer from a real holder into the pool), reads proxy slots (EIP-1967/1167), owner, owner-power functions found in bytecode " +
     "(mint, blacklist, pause, fee setters), Sourcify verification and GoPlus flags where GoPlus covers the chain. Reports uncertainty; never says 'safe'. " +
-    "Blind spots: Uniswap v4 hook traps, time-delayed traps, off-chain front-end tricks.",
+    "Blind spots: traps that target specific wallets, sizes or later times; bonding-curve venues; off-chain front-end tricks.",
   inputSchema: { type: "object", properties: { chain: CHAIN_PROP, token: TOKEN_PROP }, required: ["token"], additionalProperties: false },
   enrich: (a) => ({ chain: chainArg(a), token: addr(a, "token")! }),
   run: async (args, run) => {
@@ -75,7 +76,8 @@ export const safetyCheck = defineTool({
     let sell: SellSim | null = null;
     const sims: TransferSim[] = [];
     const creator = gp?.creator_address?.toLowerCase();
-    const candidates = holderCandidates(gp, explorerHolders?.holders ?? [], [owner, creator, main?.pairAddress?.toLowerCase()]);
+    let candidates = holderCandidates(gp, explorerHolders?.holders ?? [], [owner, creator, main?.pairAddress?.toLowerCase()]);
+    if (candidates.length === 0 && main) candidates = await recentHolders(run, chain, token, [owner, creator, chain.v4?.poolManager]).catch(() => []);
     if (main && candidates[0]) {
       sell = await simulateSell(run, chain, token, main, candidates[0]).catch((e) => ({
         method: "swap_sim",
@@ -121,7 +123,15 @@ export const safetyCheck = defineTool({
     const ownerPowers = powers.filter((p) => !["ownable"].includes(p.key));
     if (ownerPowers.length) lines.push(`functions present: ${ownerPowers.map((p) => p.key).join(", ")}`);
     lines.push(verified ? "source verified on Sourcify" : verified === null ? "not verified on Sourcify" : "Sourcify unavailable");
-    if (hookPool) lines.push("main pool is Uniswap v4: hook-level sell traps are not covered by GoPlus");
+    if (hookPool) {
+      const ranV4 = sell && sell.result !== "not_simulated" && sell.pool_kind?.includes("v4");
+      lines.push(
+        ranV4
+          ? `main pool is Uniswap v4${sell?.hooks && !/^0x0{40}$/.test(sell.hooks) ? ` with hook ${short(sell.hooks)}` : ""}: the simulation ran through it (GoPlus does not see hook traps)`
+          : "main pool is Uniswap v4: hook-level sell traps were not simulated and GoPlus does not see them",
+      );
+      if (ranV4) run.note("A hook can treat wallets, sizes or times differently: one simulated sale by one holder now is evidence, not a guarantee.");
+    }
 
     const notes = [
       "Selector scan shows capabilities present in bytecode, not that they were used; names can be obfuscated and the scan misses custom names.",
@@ -148,6 +158,22 @@ export const safetyCheck = defineTool({
     };
   },
 });
+
+/** Recent token recipients that are wallets (EOA or EIP-7702), from one bounded getLogs call. */
+async function recentHolders(run: Run, chain: Chain, token: string, exclude: (string | null | undefined)[]): Promise<string[]> {
+  const head = await blockNumber(run, chain);
+  const span = Math.min(chain.logsSpan, Math.ceil(3600 / chain.blockTime));
+  const scan = await scanTransfers(run, chain, token, Math.max(0, head - span), head, { maxCalls: 2, maxLogs: 5000 });
+  const skip = new Set(exclude.filter(Boolean).map((x) => x!.toLowerCase()));
+  const seen: string[] = [];
+  for (const t of [...scan.transfers].reverse()) {
+    if (skip.has(t.to) || DEAD_ADDRESSES.has(t.to) || seen.includes(t.to)) continue;
+    seen.push(t.to);
+    if (seen.length >= 8) break;
+  }
+  const codes = await rpcBatch(run, chain, seen.map((a) => ({ method: "eth_getCode", params: [a, "latest"] })));
+  return seen.filter((_, i) => typeof codes[i] === "string" && (codes[i] === "0x" || String(codes[i]).startsWith("0xef0100"))).slice(0, 4);
+}
 
 function holderCandidates(gp: GoPlusToken | null | undefined, ex: { address: string; is_contract: boolean | null }[], exclude: (string | null | undefined)[]): string[] {
   const skip = new Set(exclude.filter(Boolean).map((x) => x!.toLowerCase()));
