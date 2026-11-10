@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+.env.*
+*.log
+__pycache__/
+.venv/
+contracts/out/
+contracts/cache/
+.DS_Store
