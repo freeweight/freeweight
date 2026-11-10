@@ -135,7 +135,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 502 | `hf_unavailable` | Hugging Face could not be read for a listing check. |
 | 503 | `model_waking` | The model is still waking after a 5-minute wait, or is being woken again. Carries `Retry-After`. The session is still live. |
 | 503 | `model_unavailable` | The model cannot be woken or reached right now. |
-| 503 | `misconfigured` | The service is not set up completely. Until it is, only the public reads answer: health, config, stats, receipts and the catalog. |
+| 503 | `misconfigured` | The service is not set up completely. Until it is, only the public reads answer: health, config, stats, receipts and the catalog. `/mcp` answers 503 too, as a JSON-RPC error. |
 | 503 | `model_lost` | The model stopped while the session was live and could not be woken again. The session has ended, and time after the model stopped is not charged. Start a new one. |
 | 503 | `trial_unavailable`, `turnstile_unavailable` | The human check for the free try is not set up or could not be reached right now. |
 | 503 | `topups_closed`, `rpc_unavailable`, `price_unavailable`, `price_out_of_bounds`, `ledger_unavailable` | Money paths that are closed or could not be checked. Nothing was charged or credited. |
@@ -649,9 +649,10 @@ with an HTTP status:
 | 403 | `-32000` | A browser request from another site whose origin is not on the allow list. |
 | 405 | `-32000` | `GET` or `DELETE`. The endpoint has no event stream and no MCP session. |
 | 406 | `-32000` | The `Accept` header rules out JSON. |
-| 413 | `-32600` | The body is over 256 KiB. |
+| 413 | `-32600` | The body is over 256 KiB. A body sent in chunks is read up to that limit and no further. |
 | 415 | `-32000` | `Content-Type` is not `application/json`. |
 | 429 | `-32000` | More than 30 tool calls in a minute from one network address. Carries `Retry-After: 30`. |
+| 503 | `-32000` | The service is not set up completely. `/mcp` stays closed until it is, like the rest of the API. |
 
 An unknown tool or bad `params` is answered with status 200 and a JSON-RPC error `-32602` in the body. A tool
 that ran and failed is a normal result with `isError: true`. That includes arguments that do not fit the tool's

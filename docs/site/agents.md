@@ -164,7 +164,8 @@ one. An agent can reach them in three ways.
 ### Over MCP
 
 `POST https://freeweight.xyz/mcp` is a Model Context Protocol endpoint. Point an MCP client at that address with
-the Streamable HTTP transport. It is stateless and answers in plain JSON. It needs no key and no session.
+the Streamable HTTP transport. It is stateless and answers in plain JSON. It needs no session. Nine tools need
+no key and are rate limited per network address; `web_search` needs your API key (see below).
 
 Without an MCP client, it is two JSON-RPC calls. List the tools:
 
@@ -189,7 +190,9 @@ Rules of the endpoint:
 
 - Send one JSON-RPC message per request, with at most one `tools/call`. A batch is refused for protocol version
   `2025-06-18` and later. Older versions may batch up to 8 messages, still with one `tools/call` among them.
-- The body can be at most 256 KiB, and `Content-Type` must be `application/json`.
+- The body can be at most 256 KiB, and `Content-Type` must be `application/json`. A larger body is refused with
+  HTTP 413, also when it is sent in chunks without a length.
+- While the service is not set up completely, the endpoint answers HTTP 503 with the JSON-RPC error `-32000`.
 - Arguments are checked against the tool's input schema. A missing field, an unknown field or a value out of
   range comes back as a tool result with `isError` true and the error code `invalid_input`.
 - Tool calls are limited to 30 per minute per network address. A refusal is HTTP 429 with `Retry-After: 30`.

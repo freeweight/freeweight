@@ -4,7 +4,7 @@
 > A model sleeps as stored weights and costs nothing. A session wakes it on a GPU. The wake is free.
 > You pay per minute while the session runs: $0.03 (Light), $0.06 (Medium) or $0.10 (Heavy, preview). Tokens are never counted.
 > Inference is OpenAI-compatible at `/v1`. The catalog, sessions and the account are at `/api`.
-> Ten read-only research tools for on-chain questions are served over MCP at `/mcp`, with no key and no session.
+> Ten read-only research tools for on-chain questions are served over MCP at `/mcp`, with no session. Nine need no key and are rate limited; `web_search` needs an API key.
 
 Status: v0.1, before public launch. Examples use `https://freeweight.xyz`. Until launch the service runs on a
 staging address with the same paths. `/api` has no version prefix and can still change. No token exists yet.

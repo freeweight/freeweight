@@ -11,7 +11,9 @@ chain nodes, block explorers, market data, project websites. They never sign or 
 There are three ways to use them:
 
 - **In the chat on the site.** Switch tools on and the model calls them when it needs a fact.
-- **Over MCP.** `POST /mcp` serves the same tools to any agent or MCP client. It needs no key and no session.
+- **Over MCP.** `POST /mcp` serves the same tools to any agent or MCP client, with no session. Nine tools are
+  open to anyone and rate limited per network address. `web_search` runs only for a wallet: an API key or the
+  browser sign-in.
 - **From your own loop.** Pass the tool list to a model through `/v1` and run the calls yourself.
 
 The [agents](/docs/agents) page shows the calls. This page says what the tools return and what they miss.
