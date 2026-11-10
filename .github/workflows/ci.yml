@@ -33,7 +33,7 @@ jobs:
           echo "$files"
           contracts=false; node=false; lane_baseten=false; lane_modal=false
           if [ -f contracts/foundry.toml ] && echo "$files" | grep -qE '^(contracts/|\.github/)'; then contracts=true; fi
-          if [ -f package-lock.json ] && echo "$files" | grep -qE '^(apps/|packages/|package(-lock)?\.json|\.github/)'; then node=true; fi
+          if [ -f package-lock.json ] && echo "$files" | grep -qE '^(apps/|packages/|docs/|package(-lock)?\.json|\.github/)'; then node=true; fi
           if [ -f serving/baseten/package-lock.json ] && echo "$files" | grep -qE '^(serving/baseten/|\.github/)'; then lane_baseten=true; fi
           if [ -f serving/modal/requirements-dev.txt ] && echo "$files" | grep -qE '^(serving/modal/|\.github/)'; then lane_modal=true; fi
           echo "contracts=$contracts" >> "$GITHUB_OUTPUT"
@@ -68,7 +68,10 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # The site is built from docs/site: a page that is missing fails the build here.
       - run: npm run build
+        env:
+          FW_REQUIRE_DOCS: "1"
 
   # Each serving lane is a separately deployed package with its own lockfile.
   lane-baseten:
