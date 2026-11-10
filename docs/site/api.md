@@ -99,6 +99,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | ------ | ---- | ------- |
 | 400 | `bad_request` | The body or a field is missing or malformed. |
 | 400 | `model_mismatch` | `model` in the request is not the model of the session. |
+| 400 | `invalid_request` | A `/v1` field the gateway checks has a wrong value: `stream` that is not `true` or `false`, `n` outside 1 to 4, or `max_tokens` / `max_completion_tokens` that is not a whole number of zero or more. Nothing was sent to the model. |
 | 400 | `too_long` | The extension would take the session past 240 minutes. |
 | 400 | `turnstile_required` | The free try needs a token from the human check. |
 | 400 | `invalid_message`, `nonce_expired`, `nonce_used` | Sign-in message problems. |
@@ -429,21 +430,33 @@ Set your client's timeout above 5 minutes, or start the session first and wait f
 token usage is sent only if you ask for it with `"stream_options": {"include_usage": true}`.
 
 A stream that breaks, or that is cut because the session ended, does not end with `data: [DONE]`. Its last
-block is one error:
+block is one error, and then the stream closes in order:
 
 ```
 data: {"error": {"code": "session_ended", "message": "...", "type": "session_ended"}}
 ```
 
-The code is `upstream_error` when the model stopped before it finished, and `session_ended` when the paid
-time ran out. A stream without `[DONE]` is not a complete answer.
+The code is `upstream_error` when the model's stream stopped or broke before it finished, `session_ended` when
+the paid time ran out, and `slow_client` when your client read the stream too slowly: more than 8 MB of the
+answer waited for it, so the gateway cut the stream and cancelled the request. A line that the model's stream
+cut off in the middle is not passed on: every `data:` line you get is whole JSON or `[DONE]`. A stream without
+`[DONE]` is not a complete answer.
 
 ### What the gateway changes
 
 Very little. `model` is filled in when you leave it out, and a `model` that is not the session's is refused
 with `400 model_mismatch`. On a stream the gateway always asks the model for token usage, and drops that
-chunk unless you asked for it. Every other field goes to the model untouched, including fields the gateway
-does not know. `max_tokens` is not capped by the gateway.
+chunk unless you asked for it.
+
+Three fields are checked before anything is sent, because the model would read a wrong value differently than
+the gateway does. Each answers `400 invalid_request` when it is wrong:
+
+- `stream` must be `true` or `false`. A string such as `"true"` is refused.
+- `n`, the number of answers, must be a whole number from 1 to 4. Each answer is generated in full.
+- `max_tokens` and `max_completion_tokens` must be whole numbers of zero or more.
+
+Every other field goes to the model untouched, including fields the gateway does not know. `max_tokens` is not
+capped by the gateway.
 
 ### Tool calls
 

@@ -103,6 +103,7 @@ How to read the outcomes:
 | `429 too_many_requests` | The session already has 4 requests in flight. | Wait for one to finish. Do not fan out more than 4 calls on one session. |
 | `429 wake_budget` | Too many paid sessions were stopped before the model was ready: more than 3 in an hour or 10 in a day. | Wait the `retry_after` from the body. Let a wake finish before you stop. |
 | `502 upstream_error` or `504 upstream_timeout` | The model did not answer this request. The session is still live. | Retry the request. |
+| `400 invalid_request` | `stream` is not a boolean, `n` is outside 1 to 4, or `max_tokens` is not a whole number of zero or more. Nothing was sent. | Fix the field. |
 
 ## Budgets
 

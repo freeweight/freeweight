@@ -35,7 +35,10 @@ staging address with the same paths. `/api` has no version prefix and can still 
 - A session runs at most 4 requests at the same time. One more answers `429 too_many_requests` with
   `Retry-After: 1`: wait for one to finish. A request that is still running when the session ends is cut off.
 - A stream that breaks or is cut ends with one `data: {"error": {"code": ...}}` block and no `data: [DONE]`.
-  The code is `upstream_error` (retry) or `session_ended` (start a new session).
+  The code is `upstream_error` (retry), `session_ended` (start a new session) or `slow_client` (the client
+  read too slowly and more than 8 MB waited: read faster, retry).
+- `stream` must be a boolean, `n` a whole number from 1 to 4, `max_tokens` and `max_completion_tokens` whole
+  numbers of zero or more. Anything else answers `400 invalid_request` before the model is asked.
 - A paid session stopped before the model is ready is an uncharged wake. After more than 3 in an hour or 10 in
   a day, the next start answers `429 wake_budget` with `retry_after` (seconds) in the body and a `Retry-After`
   header. When the service has given away its share of uncharged wakes for the hour, such a stop costs the one-minute
