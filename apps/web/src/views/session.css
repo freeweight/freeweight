@@ -800,6 +800,8 @@ ol .rk-t::after {
   scrollbar-color: var(--line-2) transparent;
   padding-block: var(--s5) var(--s6);
   display: grid;
+  /* One column that may shrink: left to itself the column takes the widest child and the rail cuts it off. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s6);
   align-content: start;
 }
@@ -915,6 +917,7 @@ ol .rk-t::after {
 }
 .rail-rcpt {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s5);
   justify-items: start;
 }
@@ -1117,11 +1120,13 @@ ol .rk-t::after {
 .rcpt {
   padding-block: var(--s6) var(--s9);
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s6);
   align-content: start;
 }
 .rcpt-side {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s3);
   align-content: start;
   max-width: 520px;
