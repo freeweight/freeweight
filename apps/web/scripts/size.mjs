@@ -1,5 +1,5 @@
 // Gzipped size of the build: what the landing route loads first, and every lazy chunk after it.
-// Usage: node scripts/size.mjs [dist]
+// Usage: node scripts/size.mjs [dist]. It exits 1 when the build is over the budget at the end of this file.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -10,6 +10,8 @@ const kb = (n) => `${(n / 1024).toFixed(1).padStart(7)} kB`;
 
 const html = readFileSync(join(dist, "index.html"), "utf8");
 const entryJs = [...html.matchAll(/(?:src|href)="\/(assets\/[^"]+\.js)"/g)].map((m) => m[1]);
+// The chunk the page itself starts from, without the shared chunks it preloads.
+const entry = html.match(/<script[^>]+src="\/(assets\/[^"]+\.js)"/)?.[1];
 const entryCss = [...html.matchAll(/href="\/(assets\/[^"]+\.css)"/g)].map((m) => m[1]);
 
 // The entry imports a few small shared chunks statically; follow them so the landing total is honest.
@@ -41,9 +43,22 @@ console.log(`  ${kb(js)}  JS total (gzip)`);
 console.log(`  ${kb(css)}  CSS total (gzip)`);
 console.log("Loaded on demand");
 for (const f of rest.sort((a, b) => gz(b) - gz(a))) console.log(`  ${kb(gz(f))}  ${f}`);
+const all = js + rest.filter((f) => f.endsWith(".js")).reduce((n, f) => n + gz(f), 0);
+console.log("Budget");
 
-const LIMIT = 100 * 1024;
-if (js > LIMIT) {
-  console.error(`Landing JS is over ${LIMIT / 1024} kB gzipped.`);
-  process.exit(1);
+// The budget, in gzipped bytes. The build runs this file, so a change that grows past a line fails the build.
+const KB = 1024;
+const BUDGET = [
+  ["Landing JS", js, 100 * KB],
+  ["The entry chunk", entry ? gz(entry) : 0, 20 * KB],
+  ["All JS", all, 140 * KB],
+];
+let over = false;
+for (const [what, size, limit] of BUDGET) {
+  console.log(`  ${kb(size)}  of ${limit / KB} kB  ${what}`);
+  if (size > limit) {
+    console.error(`${what} is over the budget of ${limit / KB} kB gzipped.`);
+    over = true;
+  }
 }
+if (over) process.exit(1);

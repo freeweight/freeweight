@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "VITE_MOCK=1 vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/size.mjs",
     "build:mock": "VITE_MOCK=1 vite build --outDir dist-mock",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
