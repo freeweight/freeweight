@@ -10,6 +10,8 @@ import type { ToolCtx } from "../src/index.js";
 const env: ToolCtx["env"] = {
   FACTS_URL: process.env.FACTS_URL,
   FACTS_KEY: process.env.FACTS_KEY,
+  FACTS_ACCESS_ID: process.env.FACTS_ACCESS_ID,
+  FACTS_ACCESS_SECRET: process.env.FACTS_ACCESS_SECRET,
   EXA_KEY: process.env.EXA_KEY,
   RPC_URLS: process.env.RPC_URLS_JSON ? (JSON.parse(process.env.RPC_URLS_JSON) as Record<string, string>) : undefined,
 };
@@ -34,6 +36,14 @@ async function liquidRobinhoodToken(): Promise<Target> {
   return { chain: "robinhood", token: best.addr, label: `$${best.sym} (RH, liq ~$${Math.round(best.liq)})` };
 }
 
+/** A recently profiled Robinhood Chain token (young, usually a launchpad token). */
+async function youngRobinhoodToken(): Promise<Target | null> {
+  const r = await fetch("https://api.dexscreener.com/token-profiles/latest/v1");
+  const j = (await r.json()) as { chainId: string; tokenAddress: string }[];
+  const t = j.find((x) => x.chainId === "robinhood");
+  return t ? { chain: "robinhood", token: t.tokenAddress.toLowerCase(), label: "young RH token (latest DexScreener profile)" } : null;
+}
+
 function argsFor(tool: string, t: Target): Record<string, unknown> {
   switch (tool) {
     case "web_search":
@@ -54,6 +64,8 @@ async function main() {
     { chain: "base", token: "0x4ed4e862860bed51a9570b96d89af5e1b0efefed", label: "$DEGEN (Base)" },
     await liquidRobinhoodToken(),
   ];
+  const young = await youngRobinhoodToken().catch(() => null);
+  if (young) targets.push(young);
   if (process.env.SMOKE_EXTRA) {
     for (const s of process.env.SMOKE_EXTRA.split(";")) {
       const [chain, token, label] = s.split(",");

@@ -113,7 +113,8 @@ export const safetyCheck = defineTool({
     } else lines.push("sell not simulated (no usable holder or pool)");
     if (gpFlags) {
       const hp = gpFlags.honeypot;
-      lines.push(`GoPlus: honeypot ${hp === null ? "n/a" : hp ? "YES" : "no"}, buy tax ${gpFlags.buy_tax_pct ?? "n/a"}%, sell tax ${gpFlags.sell_tax_pct ?? "n/a"}%`);
+      const tax = (v: number | null) => (v === null ? "n/a" : `${v}%`);
+      lines.push(`GoPlus: honeypot ${hp === null ? "n/a" : hp ? "YES" : "no"}, buy tax ${tax(gpFlags.buy_tax_pct)}, sell tax ${tax(gpFlags.sell_tax_pct)}`);
     } else lines.push(chain.goplus ? "GoPlus unavailable" : "GoPlus does not cover this chain");
     lines.push(impl || beacon ? `PROXY (implementation ${short(impl ?? beacon)}): logic can change` : "not a proxy");
     lines.push(owner ? (ownerRenounced ? "owner renounced" : `owner ${short(owner)}`) : "no owner() function");

@@ -2,7 +2,7 @@
 import { runTool } from "../src/index.js";
 
 const [name, json] = process.argv.slice(2);
-const ctx = { env: { FACTS_URL: process.env.FACTS_URL, FACTS_KEY: process.env.FACTS_KEY, EXA_KEY: process.env.EXA_KEY }, fetch: globalThis.fetch.bind(globalThis) };
+const ctx = { env: { FACTS_URL: process.env.FACTS_URL, FACTS_KEY: process.env.FACTS_KEY, FACTS_ACCESS_ID: process.env.FACTS_ACCESS_ID, FACTS_ACCESS_SECRET: process.env.FACTS_ACCESS_SECRET, EXA_KEY: process.env.EXA_KEY }, fetch: globalThis.fetch.bind(globalThis) };
 const t0 = Date.now();
 const r = await runTool(name ?? "", json ? JSON.parse(json) : {}, ctx);
 console.log(`${Date.now() - t0} ms`);

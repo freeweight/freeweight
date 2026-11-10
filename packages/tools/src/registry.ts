@@ -29,7 +29,7 @@ export function getTool(name: string): ToolDef | undefined {
 
 export async function runTool(name: string, args: unknown, ctx: ToolCtx): Promise<ToolResult> {
   const t = getTool(name);
-  const fail = (code: string, message: string): ToolResult => ({ tool: name, ok: false, summary: message, partial: false, data: {}, notes: [], sources: [], error: { code, message } });
+  const fail = (code: string, message: string): ToolResult => ({ tool: name, ok: false, summary: message, partial: false, data: {}, enriched: false, notes: [], sources: [], error: { code, message } });
   if (!t) return fail("unknown_tool", `Unknown tool: ${name}. Available: ${tools.map((x) => x.name).join(", ")}`);
   let a: unknown = args ?? {};
   if (typeof a === "string") {
