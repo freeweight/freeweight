@@ -100,29 +100,34 @@
 .rk-l {
   grid-area: l;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--s3);
+  gap: 0 var(--s3);
   min-width: 0;
 }
 .rk-n {
   font: 500 14px/20px var(--sans);
   white-space: nowrap;
 }
+/* The detail is the machine's own words: it folds onto a second line, it is never cut. */
 .rk-d {
-  font: 400 11px/20px var(--mono);
+  font: 400 11px/16px var(--mono);
+  padding-block: 2px;
   color: var(--ink-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
+/* Two columns of figures, each wide enough for its longest reading ("16:39.9", "999.9 s") with air between. */
 .rk-v {
   grid-area: v;
   display: grid;
-  grid-template-columns: 56px 60px;
+  grid-template-columns: 60px 60px;
+  column-gap: var(--s3);
   justify-items: end;
   font-size: 13px;
   line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .rk-t {
   grid-area: t;
@@ -307,7 +312,7 @@ ol .rk-t::after {
 
 @media (min-width: 720px) {
   .rk {
-    grid-template-columns: 200px minmax(0, 1fr) 124px;
+    grid-template-columns: 200px minmax(0, 1fr) 132px;
     grid-template-areas: "l t v";
     column-gap: var(--s5);
     padding-top: 0;
@@ -315,12 +320,13 @@ ol .rk-t::after {
   }
   .rk-l {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
     gap: 0;
     padding-block: 6px;
   }
   .rk-d {
-    line-height: 16px;
+    padding-block: 0;
   }
   .rk-d:empty {
     display: none;
