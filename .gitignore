@@ -5,7 +5,9 @@ dist/
 .env
 .env.*
 *.log
+!serving/modal/tests/fixtures/*.log
 __pycache__/
+.pytest_cache/
 .venv/
 contracts/out/
 contracts/cache/
