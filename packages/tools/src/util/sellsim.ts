@@ -78,7 +78,7 @@ const PROBE = [
       { name: "qIn", type: "uint256" },
       { name: "preTransfer", type: "bool" },
     ],
-    outputs: OUT,
+    outputs: [...OUT, { name: "sold", type: "uint256" }, { name: "credited", type: "uint256" }],
   },
 ] as const;
 
@@ -119,10 +119,35 @@ export async function v4Key(run: Run, chain: Chain, poolId: string, createdMs: n
 export type Verdict = "ok" | "costly" | "cannot_sell" | "route_dependent" | "reverted" | "not_measured" | "not_simulated";
 
 /** One simulated sale (or round trip) from one wallet. Costs are fractions 0..1 of value lost. */
+/** How one sale order ended: sold, reverted, sold for nothing, or not run (the call itself failed). */
+export type RouteOutcome = "ok" | "reverted" | "zero_output" | "unavailable";
+
+/**
+ * v4 round trips run the sale in two orders: the tokens stay in the wallet until settlement (`wallet_held`), or are
+ * moved to the pool manager and settled before the swap (`pre_transferred`). Costs are fractions 0..1 lost, null when
+ * that order did not complete.
+ */
+export type RouteCosts = {
+  wallet_held: number | null;
+  pre_transferred: number | null;
+  wallet_held_outcome: RouteOutcome;
+  pre_transferred_outcome: RouteOutcome;
+  /** Why the pre-transferred call could not run, when it could not. */
+  pre_transferred_unavailable?: string;
+  /** Token transfer tax seen when the tokens were moved first (credited / sent), when one was charged. */
+  transfer_tax?: number;
+  /** Which order's cost decided the verdict and is reported as round_trip_cost. */
+  decided_by: "wallet_held" | "pre_transferred";
+};
+
 export type WalletSim = {
   wallet: string;
   wallet_kind: "fresh address" | "real holder";
   verdict: Verdict;
+  /**
+   * Round trip: the cost of the order that decided the verdict (route_costs.decided_by; the wallet-held order when
+   * only one ran). buy_cost / sell_cost always belong to the wallet-held order.
+   */
   /** Where it failed, when it failed. */
   stage?: "buy" | "sell_transfer" | "sell_swap" | "pool" | "funding" | "zero_output";
   round_trip_cost?: number | null;
@@ -132,7 +157,7 @@ export type WalletSim = {
    * v4 round trips run twice: selling with the tokens still in the wallet at swap time, and with the tokens moved to the
    * pool manager first (the order many bots and aggregators use). Round-trip cost of each, fractions 0..1.
    */
-  route_costs?: { wallet_held: number | null; pre_transferred: number | null; pre_transferred_reverted?: boolean };
+  route_costs?: RouteCosts;
   /** v2 sell-only: share of the tokens lost on the way into the pool (token transfer tax). */
   transfer_tax?: number | null;
   amount_raw?: string;
@@ -154,9 +179,13 @@ export type SellSim = {
   /** Why the fresh-wallet path could not be used, when it was not. */
   fresh_wallet_unavailable?: string;
   /** The Freeweight index's own sell test (router route), when the index has one. */
-  index_reading?: { sell_test: string | null; round_trip_cost: number | null };
-  /** How our simulation and the index's test relate. */
-  agreement?: "agree" | "disagree" | "index_only" | "simulation_only" | "none";
+  /** The index's own sell test: sell_test is one of the known values or "unrecognised"; cost 0..1 or null. */
+  index_reading?: { sell_test: string | null; round_trip_cost: number | null; as_of: number | null };
+  /**
+   * How our simulation and the index's test relate: agree (same class), differ (different, small gap), disagree
+   * (large gap: one fails or loses more than half, the other is cheap or went through), index_only, simulation_only, none.
+   */
+  agreement?: "agree" | "differ" | "disagree" | "index_only" | "simulation_only" | "none";
   detail?: string;
 };
 
@@ -183,7 +212,9 @@ function verdictFor(cost: number | null | undefined): Verdict {
   return "ok";
 }
 
-const RANK: Record<Verdict, number> = { reverted: 6, cannot_sell: 5, route_dependent: 4, costly: 3, not_measured: 2, ok: 1, not_simulated: 0 };
+// A route-dependent result ranks just under a revert: on at least one ordinary sale order it fails or loses most of
+// the value, and it carries more information than a plain "cannot sell".
+const RANK: Record<Verdict, number> = { reverted: 6, route_dependent: 5, cannot_sell: 4, costly: 3, not_measured: 2, ok: 1, not_simulated: 0 };
 export function worst(vs: Verdict[]): Verdict {
   return vs.reduce<Verdict>((a, b) => (RANK[b] > RANK[a] ? b : a), "not_simulated");
 }
@@ -276,25 +307,30 @@ function overrideUnsupported(e: unknown): boolean {
  * Round trip from a fresh random address that nobody can have exempted: give it native coin by state override, buy a
  * small amount, sell everything bought, and compare what comes back with what went in.
  */
-type OneTrip = { stage: WalletSim["stage"] | null; bought: bigint; qOut: bigint; reason: Hex } | { unavailable: string };
+export type TripResult = { stage: WalletSim["stage"] | null; bought: bigint; qOut: bigint; reason: Hex; sold?: bigint; credited?: bigint };
+type OneTrip = TripResult | { unavailable: string };
 
-export async function oneTrip(run: Run, chain: Chain, token: string, p: PoolInfo, wallet: string, qIn: bigint, preTransfer: boolean): Promise<OneTrip> {
+export async function oneTrip(run: Run, chain: Chain, token: string, p: PoolInfo, wallet: string, qIn: bigint, preTransfer: boolean, block: string): Promise<OneTrip> {
   let data: Hex;
   if (p.kind === "v4") data = encodeFunctionData({ abi: PROBE, functionName: "roundTripV4", args: [token as Hex, (p.wrap ?? ZERO) as Hex, chain.v4!.poolManager as Hex, p.key!, qIn, preTransfer] });
   else data = encodeFunctionData({ abi: PROBE, functionName: p.kind === "v3" ? "roundTripV3" : "roundTripV2", args: [token as Hex, p.wrap as Hex, p.pool as Hex, qIn] });
   let raw: Hex;
   try {
     // from = to = the fresh wallet: it is tx.origin and it holds the bought tokens until it sells.
-    raw = await rpc<Hex>(run, chain, "eth_call", [{ from: wallet, to: wallet, data, gas: GAS }, "latest", { [wallet]: { code: SELL_PROBE_RUNTIME, balance: FRESH_BALANCE } }], { ttl: 0 });
+    raw = await rpc<Hex>(run, chain, "eth_call", [{ from: wallet, to: wallet, data, gas: GAS }, block, { [wallet]: { code: SELL_PROBE_RUNTIME, balance: FRESH_BALANCE } }], { ttl: 0 });
   } catch (e) {
     if (overrideUnsupported(e)) return { unavailable: "the RPC does not support eth_call state overrides (code + balance), which the fresh-wallet test needs" };
     return { unavailable: `the round-trip call failed (${e instanceof Error ? e.message.slice(0, 80) : "error"})` };
+  }
+  if (p.kind === "v4") {
+    const [stage, bought, qOut, reason, sold, credited] = decodeFunctionResult({ abi: PROBE, functionName: "roundTripV4", data: raw }) as readonly [number, bigint, bigint, Hex, bigint, bigint];
+    return { stage: stage < STAGE_RT.length ? STAGE_RT[stage]! : "pool", bought, qOut, reason, sold, credited };
   }
   const [stage, bought, qOut, reason] = decodeFunctionResult({ abi: PROBE, functionName: "roundTripV2", data: raw }) as readonly [number, bigint, bigint, Hex];
   return { stage: stage < STAGE_RT.length ? STAGE_RT[stage]! : "pool", bought, qOut, reason };
 }
 
-/** Two routes disagree when one loses more than CANNOT_SELL_ABOVE and the other less than COSTLY_ABOVE. */
+/** Two routes disagree when one loses more than CANNOT_SELL_ABOVE (or fails) and the other at most COSTLY_ABOVE. */
 export function routeVerdict(walletHeld: number | null, pre: number | null): Verdict | null {
   if (walletHeld === null || pre === null) return null;
   const hi = Math.max(walletHeld, pre);
@@ -302,50 +338,100 @@ export function routeVerdict(walletHeld: number | null, pre: number | null): Ver
   return hi > CANNOT_SELL_ABOVE && lo <= COSTLY_ABOVE ? "route_dependent" : null;
 }
 
+function outcomeOf(t: TripResult): RouteOutcome {
+  if (t.stage === null) return "ok";
+  return t.stage === "zero_output" ? "zero_output" : "reverted";
+}
+
+/** Verdict of one order on its own: a revert is "reverted", nothing back is "cannot_sell". */
+function orderVerdict(o: RouteOutcome, cost: number | null): Verdict {
+  if (o === "reverted") return "reverted";
+  if (o === "zero_output") return "cannot_sell";
+  return verdictFor(cost);
+}
+
+/**
+ * Combine the wallet-held and pre-transferred results of one fresh-wallet round trip into one WalletSim.
+ * Pure, so the combinations can be tested without a chain.
+ */
+export function combineTrips(
+  wallet: string,
+  held: TripResult,
+  pre: TripResult | { unavailable: string } | null,
+  size: number,
+  mid: number | null,
+  decimals: number | null,
+): WalletSim {
+  const costOf = (q: bigint) => round4(Math.max(0, 1 - Number(q) / 1e18 / size));
+  const heldOutcome = outcomeOf(held);
+  const heldCost = heldOutcome === "ok" ? costOf(held.qOut) : heldOutcome === "zero_output" ? 1 : null;
+  const sim: WalletSim = { wallet, wallet_kind: "fresh address", verdict: orderVerdict(heldOutcome, heldCost), amount_raw: held.bought.toString(), out_raw: held.qOut.toString() };
+  sim.round_trip_cost = heldCost;
+  if (heldOutcome !== "ok") {
+    sim.stage = held.stage ?? undefined;
+    const r = decodeReason(held.reason);
+    if (r) sim.revert_reason_untrusted = r;
+  } else if (mid !== null && decimals !== null) {
+    const value = (Number(held.bought) / 10 ** decimals) * mid;
+    if (value > 0) {
+      sim.buy_cost = round4(Math.max(0, 1 - value / size));
+      sim.sell_cost = round4(Math.max(0, 1 - Number(held.qOut) / 1e18 / value));
+    }
+  }
+  if (pre === null) return sim;
+  if ("unavailable" in pre) {
+    sim.route_costs = { wallet_held: heldCost, pre_transferred: null, wallet_held_outcome: heldOutcome, pre_transferred_outcome: "unavailable", pre_transferred_unavailable: pre.unavailable, decided_by: "wallet_held" };
+    return sim;
+  }
+  if (pre.stage === "buy" || pre.stage === "pool" || pre.stage === "funding") {
+    sim.route_costs = { wallet_held: heldCost, pre_transferred: null, wallet_held_outcome: heldOutcome, pre_transferred_outcome: "unavailable", pre_transferred_unavailable: `the second call stopped at ${pre.stage}`, decided_by: "wallet_held" };
+    return sim;
+  }
+  const preOutcome = outcomeOf(pre);
+  const preCost = preOutcome === "ok" ? costOf(pre.qOut) : preOutcome === "zero_output" ? 1 : null;
+  const rc: RouteCosts = { wallet_held: heldCost, pre_transferred: preCost, wallet_held_outcome: heldOutcome, pre_transferred_outcome: preOutcome, decided_by: "wallet_held" };
+  if (pre.sold !== undefined && pre.credited !== undefined && pre.sold > 0n && pre.credited < pre.sold) {
+    rc.transfer_tax = round4(Number(pre.sold - pre.credited) / Number(pre.sold));
+  }
+  sim.route_costs = rc;
+  const heldV = orderVerdict(heldOutcome, heldCost);
+  const preV = orderVerdict(preOutcome, preCost);
+  const fot = rc.transfer_tax !== undefined && rc.transfer_tax > 0.0005 && heldOutcome === "reverted" && preOutcome === "ok";
+  if (fot) {
+    // A plain transfer tax: settling an exact amount after the swap cannot work, moving the tokens first can.
+    sim.verdict = preV;
+    rc.decided_by = "pre_transferred";
+    sim.round_trip_cost = preCost;
+    return sim;
+  }
+  const rv = routeVerdict(heldCost ?? (heldOutcome === "reverted" ? 1 : null), preCost ?? (preOutcome === "reverted" ? 1 : null));
+  const preWorse = RANK[preV] > RANK[heldV] || (preV === heldV && (preCost ?? 1) > (heldCost ?? 1));
+  rc.decided_by = preWorse ? "pre_transferred" : "wallet_held";
+  sim.verdict = rv ?? worst([heldV, preV]);
+  sim.round_trip_cost = preWorse ? preCost : heldCost;
+  return sim;
+}
+
 /**
  * Round trip from a fresh random address that nobody can have exempted: give it native coin by state override, buy a
- * small amount, sell everything bought, and compare what comes back with what went in. On v4 the sale runs twice: with
- * the tokens still in the wallet at swap time, and with the tokens moved to the pool manager before the swap.
+ * small amount, sell everything bought, and compare what comes back with what went in. On v4 the sale runs twice, on
+ * the same block: with the tokens still in the wallet at swap time, and with the tokens moved to the pool manager first.
  */
 export async function freshRoundTrip(run: Run, chain: Chain, token: string, p: PoolInfo, decimals: number | null): Promise<{ sim: WalletSim; size: number } | { unavailable: string }> {
   // ~0.3% of the pool's quote side, between 0.0005 (about $1 of ETH) and 1 native unit.
   const size = Math.min(1, Math.max(0.0005, (p.quoteLiquidity ?? 0.3) * 0.003));
   const qIn = BigInt(Math.round(size * 1e12)) * 1_000_000n; // 18-decimal native/wrapped coins
   const wallet = freshAddress();
-  const [held, pre] = await Promise.all([oneTrip(run, chain, token, p, wallet, qIn, false), p.kind === "v4" ? oneTrip(run, chain, token, p, wallet, qIn, true) : Promise.resolve(null)]);
+  // One block for both orders, so a price move or block-dependent logic cannot read as a route difference.
+  const head = await rpc<string>(run, chain, "eth_blockNumber", [], { ttl: 0 }).catch(() => null);
+  const block = head ?? "latest";
+  const [held, pre] = await Promise.all([oneTrip(run, chain, token, p, wallet, qIn, false, block), p.kind === "v4" ? oneTrip(run, chain, token, p, wallet, qIn, true, block) : Promise.resolve(null)]);
   if ("unavailable" in held) return held;
   const st = held.stage;
   if (st === "buy" || st === "pool" || st === "funding") {
     return { unavailable: st === "buy" ? "a buy from a fresh wallet reverted (some tokens refuse wallets with code or block buys)" : st === "funding" ? "wrapping the native coin failed" : "the pool could not be read" };
   }
-  const sim: WalletSim = { wallet, wallet_kind: "fresh address", verdict: "reverted", amount_raw: held.bought.toString(), out_raw: held.qOut.toString() };
-  const costOf = (q: bigint) => round4(Math.max(0, 1 - Number(q) / 1e18 / size));
-  let heldCost: number | null = null;
-  if (st) {
-    sim.stage = st;
-    const r = decodeReason(held.reason);
-    if (r) sim.revert_reason_untrusted = r;
-  } else {
-    heldCost = costOf(held.qOut);
-    sim.round_trip_cost = heldCost;
-    if (p.mid !== null && decimals !== null) {
-      const value = (Number(held.bought) / 10 ** decimals) * p.mid;
-      if (value > 0) {
-        sim.buy_cost = round4(Math.max(0, 1 - value / size));
-        sim.sell_cost = round4(Math.max(0, 1 - Number(held.qOut) / 1e18 / value));
-      }
-    }
-    sim.verdict = verdictFor(heldCost);
-  }
-  if (pre && !("unavailable" in pre) && (pre.stage === null || pre.stage === "sell_transfer" || pre.stage === "sell_swap" || pre.stage === "zero_output")) {
-    const preReverted = pre.stage !== null;
-    const preCost = preReverted ? 1 : costOf(pre.qOut);
-    sim.route_costs = { wallet_held: heldCost, pre_transferred: preReverted ? null : preCost, ...(preReverted ? { pre_transferred_reverted: true } : {}) };
-    const rv = routeVerdict(heldCost ?? (st ? 1 : null), preCost);
-    if (rv) sim.verdict = rv;
-    else if (heldCost !== null) sim.verdict = worst([sim.verdict, preReverted ? "reverted" : verdictFor(preCost)]);
-  }
-  return { sim, size };
+  return { sim: combineTrips(wallet, held, pre, size, p.mid, decimals), size };
 }
 
 /** Sell 10% of a real holder's balance (code injected at the holder's own address). */

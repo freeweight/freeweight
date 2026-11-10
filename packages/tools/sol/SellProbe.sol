@@ -193,35 +193,40 @@ contract SellProbe {
     {
         (bool ok, bytes memory r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, token, amount, false)));
         if (!ok) return (2, 0, 0, r);
-        (uint256 paid, uint256 got) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256));
-        return (got == 0 ? 4 : 0, paid, got, "");
+        (uint256 consumed, uint256 got,) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256, uint256));
+        return (got == 0 ? 4 : 0, consumed, got, "");
     }
 
     /// Round trip from a fresh address: buy with `quote` (address(0) = native ETH, else wrapped first), sell back.
     /// preTransfer = false: the tokens stay in the selling wallet until the swap has run and are paid at settlement.
-    /// preTransfer = true: the tokens are moved to the PoolManager and settled first, then swapped against that credit
-    /// (the order many bots and aggregators use).
+    /// preTransfer = true: the tokens are moved to the PoolManager and settled first, then swapped against that credit;
+    /// any credit the swap does not consume is taken back.
+    /// Returns the stage, tokens bought, quote received, tokens sent into the sale (`sold`) and the amount the
+    /// PoolManager credited for them (`credited`; below `sold` when the token charges a transfer tax).
     function roundTripV4(address token, address quote, address manager, PoolKey calldata key, uint256 qIn, bool preTransfer)
         external
-        returns (uint8 stage, uint256 bought, uint256 qOut, bytes memory reason)
+        returns (uint8 stage, uint256 bought, uint256 qOut, bytes memory reason, uint256 sold, uint256 credited)
     {
         bool ok;
         bytes memory r;
         if (quote != address(0)) {
             (ok, r) = _wrap(quote, qIn);
-            if (!ok) return (6, 0, 0, r);
+            if (!ok) return (6, 0, 0, r, 0, 0);
         }
         (ok, r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, quote, qIn, false)));
-        if (!ok) return (1, 0, 0, r);
-        (, bought) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256));
-        if (bought == 0) return (1, 0, 0, "");
+        if (!ok) return (1, 0, 0, r, 0, 0);
+        (, bought,) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256, uint256));
+        if (bought == 0) return (1, 0, 0, "", 0, 0);
         // Sell what actually arrived (a transfer tax on the way out of the pool lowers it).
         uint256 have = _bal(token, address(this));
         if (have < bought) bought = have;
-        (ok, r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, token, bought, preTransfer)));
-        if (!ok) return (3, bought, 0, r);
-        (, qOut) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256));
-        return (qOut == 0 ? 5 : 0, bought, qOut, "");
+        sold = bought;
+        (ok, r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, token, sold, preTransfer)));
+        if (!ok) return (3, bought, 0, r, sold, 0);
+        uint256 prepaid;
+        (, qOut, prepaid) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256, uint256));
+        credited = preTransfer ? prepaid : sold;
+        return (qOut == 0 ? 5 : 0, bought, qOut, "", sold, credited);
     }
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
@@ -257,7 +262,19 @@ contract SellProbe {
         int128 get = zeroForOne ? a1 : a0;
         uint256 pay = owe < 0 ? uint256(uint128(-owe)) : 0;
         uint256 take = get > 0 ? uint256(uint128(get)) : 0;
-        if (prepaid > 0) pay = pay > prepaid ? pay - prepaid : 0; // already settled up front
+        uint256 consumed = pay;
+        if (prepaid > 0) {
+            // Already settled up front: pay only a shortfall, take back any unconsumed credit (partial fill).
+            if (pay > prepaid) {
+                pay = pay - prepaid;
+            } else {
+                if (pay < prepaid) {
+                    (ok, r) = msg.sender.call(abi.encodeWithSignature("take(address,address,uint256)", inC, address(this), prepaid - pay));
+                    if (!ok) _bubble(r);
+                }
+                pay = 0;
+            }
+        }
         if (pay > 0) {
             if (inC == address(0)) {
                 (ok, r) = msg.sender.call{value: pay}(abi.encodeWithSignature("settle()"));
@@ -276,6 +293,6 @@ contract SellProbe {
             (ok, r) = msg.sender.call(abi.encodeWithSignature("take(address,address,uint256)", outC, address(this), take));
             if (!ok) _bubble(r);
         }
-        return abi.encode(prepaid > 0 ? prepaid : pay, take);
+        return abi.encode(consumed, take, prepaid);
     }
 }

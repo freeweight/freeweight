@@ -308,15 +308,15 @@ describe("#4/#5 sell test: fresh wallet, cost figure, honest verdicts", () => {
     expect(fresh.to).not.toBe("0x" + "ff".repeat(20));
     expect(HOLDERS).not.toContain(fresh.to);
     expect(JSON.stringify(fresh.override)).toMatch(/"balance"/);
-    expect(r.summary).toMatch(/sell test from a fresh wallet \(round trip of 0\.3 WETH on uniswap v2\): costs 0\.7%/);
+    expect(r.summary).toMatch(/sell test \(fresh wallet, round trip of 0\.3 WETH on uniswap v2\): costs 0\.7%/);
     const sim = r.data.sell_simulation as { wallets: { wallet: string; wallet_kind: string }[] };
     expect(sim.wallets[0]!.wallet_kind).toBe("fresh address");
   });
   it("calls a round trip losing over 15% COSTLY and over 50% EFFECTIVELY CANNOT SELL", async () => {
     const costly = await safety({ rt: [0, 299n * 10n ** 18n, 21n * 10n ** 16n, "0x"] }); // 0.21 of 0.3 back: 30% lost
-    expect(costly.summary).toMatch(/COSTLY, a round trip of 0\.3 WETH loses 30%/);
+    expect(costly.summary).toMatch(/COSTLY, loses 30%/);
     const dead = await safety({ rt: [0, 299n * 10n ** 18n, 9n * 10n ** 15n, "0x"] }); // 0.009 back: 97% lost
-    expect(dead.summary).toMatch(/EFFECTIVELY CANNOT SELL, a round trip of 0\.3 WETH loses 97%/);
+    expect(dead.summary).toMatch(/EFFECTIVELY CANNOT SELL, loses 97%/);
     expect((dead.data.sell_simulation as { verdict: string }).verdict).toBe("cannot_sell");
   });
   it("a reverted sale says REVERTED and keeps the revert text out of the summary", async () => {

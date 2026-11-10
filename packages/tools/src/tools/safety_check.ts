@@ -12,7 +12,7 @@ import { pickMainPool, tokenPairs } from "../sources/dexscreener.js";
 import { tokenHolders } from "../sources/explorer.js";
 import { cleanSnippet } from "../util/page.js";
 import { describe } from "../sources/facts.js";
-import { CANNOT_SELL_ABOVE, COSTLY_ABOVE, freshRoundTrip, holderSell, poolInfo, worst, type SellSim, type Verdict, type WalletSim } from "../util/sellsim.js";
+import { CANNOT_SELL_ABOVE, COSTLY_ABOVE, freshRoundTrip, holderSell, poolInfo, worst, type RouteCosts, type RouteOutcome, type SellSim, type Verdict, type WalletSim } from "../util/sellsim.js";
 
 const ERC20 = parseAbi(["function transfer(address,uint256) returns (bool)", "function decimals() view returns (uint8)"]);
 const FRESH = "0x000000000000000000000000000000000000f4ee";
@@ -34,39 +34,66 @@ async function simTransfer(run: Run, chain: Chain, token: string, from: string, 
 
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? "n/a" : `${(x * 100).toFixed(x < 0.1 ? 1 : 0)}%`);
 
+/** One sale order's result in words: "costs 4.9%", "loses 60%", "reverts", "returns nothing", "did not run". */
+function orderPhrase(o: RouteOutcome, cost: number | null): string {
+  if (o === "reverted") return "reverts";
+  if (o === "zero_output") return "returns nothing";
+  if (o === "unavailable" || cost === null) return "did not run";
+  return cost <= COSTLY_ABOVE ? `costs ${pct(cost)}` : `loses ${pct(cost)}`;
+}
+
+/** Short label for one order in the "wallet-held X / moved-first Y" form. */
+function orderFigure(o: RouteOutcome, cost: number | null): string {
+  if (o === "reverted") return "reverts";
+  if (o === "zero_output") return "nothing back";
+  if (o === "unavailable" || cost === null) return "not run";
+  return pct(cost);
+}
+
+/** True when the two v4 sale orders gave visibly different results. */
+function routesDiffer(rc: RouteCosts | undefined): boolean {
+  if (!rc || rc.pre_transferred_outcome === "unavailable") return false;
+  if (rc.wallet_held_outcome !== rc.pre_transferred_outcome) return true;
+  return rc.wallet_held !== null && rc.pre_transferred !== null && Math.abs(rc.wallet_held - rc.pre_transferred) >= 0.01;
+}
+
+/** The round-trip figures for a fresh wallet, routes labelled when they differ; legs sit next to the wallet-held order. */
+function routeFigures(w: WalletSim): string {
+  const legs = w.buy_cost !== undefined && w.buy_cost !== null ? ` (buy ${pct(w.buy_cost)}, sell ${pct(w.sell_cost)})` : "";
+  const rc = w.route_costs;
+  if (rc && rc.transfer_tax !== undefined && rc.wallet_held_outcome === "reverted" && rc.pre_transferred_outcome === "ok") {
+    return `transfer tax ${pct(rc.transfer_tax)}; routes that settle an exact amount after the swap revert; moving the tokens first, the round trip ${orderPhrase("ok", rc.pre_transferred)}`;
+  }
+  if (rc && routesDiffer(rc)) return `wallet-held ${orderFigure(rc.wallet_held_outcome, rc.wallet_held)}${rc.wallet_held_outcome === "ok" ? legs : ""} / moved-first ${orderFigure(rc.pre_transferred_outcome, rc.pre_transferred)}`;
+  const cost = `${orderPhrase(w.stage === "zero_output" ? "zero_output" : "ok", w.round_trip_cost ?? null)}${legs}`;
+  return rc?.pre_transferred_outcome === "unavailable" ? `${cost} (the moved-first order did not run)` : cost;
+}
+
 /** One sentence about the sell test; always names the wallet and never says OK without a cost. */
 export function describeSell(s: SellSim): string {
   if (s.method === "none") return `sell not simulated (${s.detail ?? "no pool or holder to test with"})`;
   if (s.method === "fresh_wallet_round_trip") {
     const w = s.wallets[0]!;
     const size = s.trade_size_quote !== null && s.trade_size_quote !== undefined ? `${Number(s.trade_size_quote.toPrecision(2))} ${s.quote_symbol ?? ""}`.trim() : "a small amount";
-    const legs = w.buy_cost !== undefined && w.buy_cost !== null ? ` (buy ${pct(w.buy_cost)}, sell ${pct(w.sell_cost)})` : "";
     const rc = w.route_costs;
+    const where = `fresh wallet, round trip of ${size} on ${s.pool_kind}`;
     if (w.verdict === "route_dependent" && rc) {
-      const held = rc.wallet_held === null ? "reverts" : `costs ${pct(rc.wallet_held)}`;
-      const preTxt = rc.pre_transferred_reverted ? "revert" : `lose ${pct(rc.pre_transferred)}`;
-      const cheapIsWallet = rc.wallet_held !== null && (rc.pre_transferred_reverted || (rc.pre_transferred ?? 0) > rc.wallet_held);
-      return cheapIsWallet
-        ? `SELL DEPENDS ON THE ROUTE: selling straight from the wallet ${held}, routes that move the tokens first ${preTxt} (fresh wallet, ${s.pool_kind})`
-        : `SELL DEPENDS ON THE ROUTE: routes that move the tokens first cost ${pct(rc.pre_transferred)}, selling straight from the wallet ${rc.wallet_held === null ? "reverts" : `loses ${pct(rc.wallet_held)}`} (fresh wallet, ${s.pool_kind})`;
+      return `SELL DEPENDS ON THE ROUTE (${where}): selling straight from the wallet ${orderPhrase(rc.wallet_held_outcome, rc.wallet_held)}, moving the tokens to the pool manager first ${orderPhrase(rc.pre_transferred_outcome, rc.pre_transferred)}`;
     }
-    const routes =
-      rc && rc.pre_transferred !== null && rc.wallet_held !== null && Math.abs(rc.pre_transferred - rc.wallet_held) >= 0.01
-        ? `; moving the tokens first: ${pct(rc.pre_transferred)}`
-        : rc?.pre_transferred_reverted
-          ? "; moving the tokens first: the sale reverts"
-          : "";
+    const fig = routeFigures(w);
     switch (w.verdict) {
       case "ok":
-        return `sell test from a fresh wallet (round trip of ${size} on ${s.pool_kind}): costs ${pct(w.round_trip_cost)}${legs}${routes}`;
+        return `sell test (${where}): ${fig}`;
       case "costly":
-        return `sell test from a fresh wallet: COSTLY, a round trip of ${size} loses ${pct(Math.max(w.round_trip_cost ?? 0, rc?.pre_transferred ?? 0))}${legs}${routes}`;
+        return `sell test (${where}): COSTLY, ${fig}`;
       case "cannot_sell":
-        return `sell test from a fresh wallet: EFFECTIVELY CANNOT SELL, a round trip of ${size} loses ${pct(Math.max(w.round_trip_cost ?? 0, rc?.pre_transferred ?? 0))}${legs}${routes}`;
+        return `sell test (${where}): EFFECTIVELY CANNOT SELL, ${fig}`;
       case "reverted":
-        return `sell test from a fresh wallet: SELL REVERTED (bought, then the sale ${w.stage === "sell_transfer" ? "transfer" : "swap"} reverted)`;
+        return routesDiffer(rc)
+          ? `sell test (${where}): SELL REVERTED on one order, ${fig}`
+          : `sell test (${where}): SELL REVERTED (bought, then the sale ${w.stage === "sell_transfer" ? "transfer" : "swap"} reverted)`;
       default:
-        return `sell test from a fresh wallet: did not revert; cost not measured`;
+        return `sell test (${where}): did not revert; cost not measured`;
     }
   }
   const n = s.wallets.length;
@@ -81,9 +108,23 @@ export function describeSell(s: SellSim): string {
   return `sell test from ${n} real holder${n > 1 ? "s" : ""} (${who}) on ${s.pool_kind}: ${head}a sale costs up to ${pct(max)}${unmeasured}`;
 }
 
-export type IndexSellReading = { sell_test: string | null; round_trip_cost: number | null };
+/** The index's sell_test values this package understands; anything else is "unrecognised" and never quoted. */
+export const INDEX_SELL_TESTS = ["ok", "costly", "restricted", "blocked", "inconclusive", "not_tested"] as const;
+export type IndexSellTest = (typeof INDEX_SELL_TESTS)[number] | "unrecognised";
 
-/** The index's sell reading as a verdict on the same scale; null when the index has no usable reading. */
+export type IndexSellReading = { sell_test: IndexSellTest | null; round_trip_cost: number | null; as_of: number | null };
+
+export function indexReading(f: Record<string, unknown>): IndexSellReading {
+  const t = f.sell_test;
+  const sell_test = t === null || t === undefined ? null : (INDEX_SELL_TESTS as readonly unknown[]).includes(t) ? (t as IndexSellTest) : "unrecognised";
+  const c = f.round_trip_cost;
+  // A cost is a fraction 0..1; anything else (percent units, negative, NaN) is not a cost.
+  const round_trip_cost = typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= 1 ? c : null;
+  const a = f.as_of;
+  return { sell_test, round_trip_cost, as_of: typeof a === "number" && Number.isFinite(a) && a > 0 ? a : null };
+}
+
+/** The index's sell reading as a verdict on the same scale; the cost decides when present. Null = no usable reading. */
 export function indexVerdict(r: IndexSellReading): Verdict | null {
   switch (r.sell_test) {
     case "blocked":
@@ -91,12 +132,27 @@ export function indexVerdict(r: IndexSellReading): Verdict | null {
     case "restricted":
       return "cannot_sell";
     case "costly":
-      return typeof r.round_trip_cost === "number" && r.round_trip_cost > CANNOT_SELL_ABOVE ? "cannot_sell" : "costly";
+      return r.round_trip_cost !== null ? worst(["costly", verdictForCost(r.round_trip_cost)]) : "costly";
     case "ok":
-      return "ok";
+      return r.round_trip_cost !== null ? verdictForCost(r.round_trip_cost) : "ok";
     default:
-      return null; // inconclusive, not_tested, unknown
+      return null; // inconclusive, not_tested, unrecognised, missing
   }
+}
+
+function verdictForCost(c: number): Verdict {
+  return c > CANNOT_SELL_ABOVE ? "cannot_sell" : c > COSTLY_ABOVE ? "costly" : "ok";
+}
+
+function age(asOf: number | null): string {
+  if (asOf === null) return "age unknown";
+  const s = Math.max(0, Date.now() / 1000 - asOf);
+  return s < 120 ? "read just now" : s < 7200 ? `read ${Math.round(s / 60)} min ago` : s < 172800 ? `read ${Math.round(s / 3600)} h ago` : `read ${Math.round(s / 86400)} d ago`;
+}
+
+/** "the index's sell test ($1 round trip, read 3 h ago)": no claim about how the index runs it. */
+function indexWho(r: IndexSellReading): string {
+  return `the index's sell test ($1 round trip, ${age(r.as_of)})`;
 }
 
 function indexPhrase(r: IndexSellReading): string {
@@ -106,62 +162,86 @@ function indexPhrase(r: IndexSellReading): string {
     case "restricted":
       return "can fail on ordinary routes";
     case "costly":
-      return `loses ${pct(r.round_trip_cost)}`;
+      return r.round_trip_cost !== null ? `loses ${pct(r.round_trip_cost)}` : "is marked costly";
+    case "ok":
+      return r.round_trip_cost !== null ? orderPhrase("ok", r.round_trip_cost) : "passes";
     default:
-      return typeof r.round_trip_cost === "number" ? `costs ${pct(r.round_trip_cost)}` : "passes";
+      return "gave no reading";
   }
 }
 
+/** Our simulation's result in a clause, reusing the route wording. */
 function simPhrase(s: SellSim): string {
   const w = s.wallets[0];
   if (!w) return "was not run";
+  if (s.method === "fresh_wallet_round_trip") {
+    const rc = w.route_costs;
+    if (s.verdict === "route_dependent" && rc) return `${orderPhrase(rc.wallet_held_outcome, rc.wallet_held)} from the wallet but ${orderPhrase(rc.pre_transferred_outcome, rc.pre_transferred)} when the tokens are moved first`;
+    if (rc && routesDiffer(rc)) return `gives wallet-held ${orderFigure(rc.wallet_held_outcome, rc.wallet_held)} / moved-first ${orderFigure(rc.pre_transferred_outcome, rc.pre_transferred)}`;
+    if (w.stage === "zero_output") return "returns nothing";
+    if (s.verdict === "reverted") return "reverts";
+    return orderPhrase("ok", w.round_trip_cost ?? null);
+  }
   if (s.verdict === "reverted") return "reverts";
-  if (s.verdict === "route_dependent" && w.route_costs) return `costs ${pct(w.route_costs.wallet_held)} from the wallet but ${w.route_costs.pre_transferred_reverted ? "reverts" : `loses ${pct(w.route_costs.pre_transferred)}`} when the tokens are moved first`;
-  const cost = s.method === "fresh_wallet_round_trip" ? w.round_trip_cost : Math.max(...s.wallets.map((x) => x.sell_cost ?? 0));
-  if (typeof cost !== "number") return "did not revert (cost not measured)";
-  return s.verdict === "ok" ? `costs ${pct(cost)}` : `loses ${pct(cost)}`;
+  const costs = s.wallets.map((x) => x.sell_cost).filter((c): c is number => typeof c === "number");
+  if (!costs.length) return "did not revert (cost not measured)";
+  return orderPhrase("ok", Math.max(...costs));
 }
 
-const BAD = new Set<Verdict>(["costly", "cannot_sell", "reverted", "route_dependent"]);
+/** Sale outcome classes: fails or loses most of the value / costly / cheap / went through at an unknown cost. */
+function klass(v: Verdict): "fail" | "costly" | "cheap" | "passed" | null {
+  if (v === "reverted" || v === "cannot_sell" || v === "route_dependent") return "fail";
+  if (v === "costly") return "costly";
+  if (v === "ok") return "cheap";
+  if (v === "not_measured") return "passed";
+  return null;
+}
 
 /**
- * Reconcile our simulation with the index's sell test. Agreement gives one statement (simulation figures first);
- * disagreement makes the worse reading the headline and says that two methods on different routes disagree.
+ * Reconcile our simulation with the index's sell test into one statement.
+ * - agree: same verdict class (simulation figures first, the index's figure beside them);
+ * - disagree: a large gap (one side fails or loses more than half, the other is cheap or went through), headline
+ *   "SELL TESTS DISAGREE", both figures, the worse reading sets the verdict;
+ * - differ: different classes without a large gap: both figures, worse first, no trap label;
+ * - index_only / simulation_only / none: only one side has a reading.
  */
 export function reconcileSell(sim: SellSim, f: Record<string, unknown>): { sim: SellSim; sentence: string } {
-  const reading: IndexSellReading = {
-    sell_test: typeof f.sell_test === "string" ? f.sell_test : null,
-    round_trip_cost: typeof f.round_trip_cost === "number" ? f.round_trip_cost : null,
-  };
+  const reading = indexReading(f);
   const iv = indexVerdict(reading);
-  const simHas = sim.verdict !== "not_simulated" && sim.verdict !== "not_measured";
+  const sk = klass(sim.verdict);
+  const ik = iv === null ? null : klass(iv);
   const out: SellSim = { ...sim, index_reading: reading };
   const own = describeSell(sim);
-  if (iv === null) {
-    out.agreement = simHas ? "simulation_only" : "none";
+  const route = sim.method === "fresh_wallet_round_trip" ? "direct pool round trip" : "direct pool sale from real holders";
+  if (ik === null) {
+    out.agreement = sk === null ? "none" : "simulation_only";
     return { sim: out, sentence: own };
   }
-  if (!simHas) {
+  // A sale that went through at an unknown cost only compares with a failing index reading.
+  if (sk === null || (sk === "passed" && ik !== "fail")) {
     out.agreement = "index_only";
-    out.verdict = worst([sim.verdict, iv]);
-    const head = BAD.has(iv) ? (iv === "costly" ? "COSTLY" : iv === "reverted" ? "SELL BLOCKED" : "EFFECTIVELY CANNOT SELL") + ": " : "";
-    return { sim: out, sentence: `${head}the index's router-route sell test ${indexPhrase(reading)}; our own test: ${own}` };
+    out.verdict = worst([sim.verdict, iv!]);
+    const head = ik === "fail" ? (iv === "reverted" ? "SELL BLOCKED" : "EFFECTIVELY CANNOT SELL") + ": " : ik === "costly" ? "COSTLY: " : "";
+    return { sim: out, sentence: `${head}${indexWho(reading)} ${indexPhrase(reading)}; our own test: ${own}` };
   }
-  const simBad = BAD.has(sim.verdict);
-  const idxBad = BAD.has(iv);
-  out.verdict = worst([sim.verdict, iv]);
-  const route = sim.method === "fresh_wallet_round_trip" ? "direct pool round trip" : "direct pool sale from real holders";
-  if (simBad === idxBad) {
+  out.verdict = worst([sim.verdict, iv!]);
+  if (sk === ik) {
     out.agreement = "agree";
-    return { sim: out, sentence: `${own} (the index's router-route test agrees: it ${indexPhrase(reading)})` };
+    return { sim: out, sentence: `${own} (${indexWho(reading)} agrees: it ${indexPhrase(reading)})` };
   }
-  out.agreement = "disagree";
-  const trap = idxBad ? "a route-dependent sell trap" : "a sell trap";
-  return {
-    sim: out,
-    sentence: `SELL TESTS DISAGREE: the ${route} ${simPhrase(sim)}, the index's router-route test ${indexPhrase(reading)}: treat as ${trap} until shown otherwise`,
-  };
+  const large = (sk === "fail" && (ik === "cheap")) || (ik === "fail" && (sk === "cheap" || sk === "passed"));
+  const simWorse = RANK_ORDER.indexOf(sim.verdict) >= RANK_ORDER.indexOf(iv!);
+  const ours = `our ${route} ${simPhrase(sim)}`;
+  const theirs = `${indexWho(reading)} ${indexPhrase(reading)}`;
+  if (large) {
+    out.agreement = "disagree";
+    return { sim: out, sentence: `SELL TESTS DISAGREE: ${simWorse ? `${ours}, ${theirs}` : `${theirs}, ${ours}`}: the readings differ (route, size or time); treat the worse one as possible until shown otherwise` };
+  }
+  out.agreement = "differ";
+  return { sim: out, sentence: `${simWorse ? `${ours}; ${theirs}` : `${theirs}; ${ours}`} (the readings differ: route, size or time)` };
 }
+
+const RANK_ORDER: Verdict[] = ["not_simulated", "ok", "not_measured", "costly", "cannot_sell", "route_dependent", "reverted"];
 
 export const safetyCheck = defineTool({
   name: "safety_check",
@@ -169,19 +249,21 @@ export const safetyCheck = defineTool({
   description:
     "Can a buyer sell, and what can the owner do? Simulates, with eth_call and a state-override helper, a small buy-then-sell round trip from a fresh random wallet " +
     "on the main Uniswap v2/v3/v4 pool (hooks included) and reports the round-trip cost; when that cannot run, it simulates sales from up to three real holders. " +
-    `Above ${COSTLY_ABOVE * 100}% loss a round trip is COSTLY, above ${CANNOT_SELL_ABOVE * 100}% EFFECTIVELY CANNOT SELL. ` +
+    `A round trip losing more than ${COSTLY_ABOVE * 100}% is COSTLY, more than ${CANNOT_SELL_ABOVE * 100}% EFFECTIVELY CANNOT SELL. ` +
     "Also reads proxy slots (EIP-1967/1167), owner, owner-power functions found in bytecode (mint, blacklist, pause, fee setters), Sourcify verification and " +
     "GoPlus flags where GoPlus covers the chain. Reports uncertainty; never says 'safe'. " +
     "Blind spots: traps that target specific wallets, sizes or later times; bonding-curve venues; off-chain front-end tricks.",
   inputSchema: { type: "object", properties: { chain: CHAIN_PROP, token: TOKEN_PROP }, required: ["token"], additionalProperties: false },
   enrich: (a) => ({ chain: chainArg(a), token: addr(a, "token")! }),
   reconcile: (body, f) => {
+    // Early returns (RPC down, no code) have no simulation: keep the default index line, sell reading included.
+    if (!body.parts || !body.data.sell_simulation) return undefined;
     // One sell statement: the simulation and the index's test, reconciled; the index sell line is not repeated.
-    const sim = body.data.sell_simulation as SellSim;
-    const rec = reconcileSell(sim, f);
+    const rec = reconcileSell(body.data.sell_simulation as SellSim, f);
     body.data.sell_simulation = rec.sim;
-    body.parts!.head = `${short(String(body.data.token))} on ${String(body.data.chain_name ?? body.data.chain)}: ${rec.sentence}`;
-    return describe("safety_check", f, new Set(["sell"])) || undefined;
+    body.parts.head = `${short(String(body.data.token))} on ${String(body.data.chain_name ?? body.data.chain)}: ${rec.sentence}`;
+    // "" = no further index sentence (hook / template facts only when there are some).
+    return describe("safety_check", f, new Set(["sell"]));
   },
   run: async (args, run) => {
     const chain = chainArg(args);
