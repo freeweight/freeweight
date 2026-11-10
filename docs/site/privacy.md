@@ -114,10 +114,11 @@ If a court or an authority with jurisdiction orders us to hand over data, we can
 
 ## How long we keep it
 
-v0.1 has no automatic deletion. The records above are kept while the service runs.
+Sign-in codes are deleted once they are 20 minutes old, the next time anyone signs in. Nothing else is deleted
+automatically in v0.1. The other records above are kept while the service runs.
 
 > [!WARNING]
-> Draft point for the owner: set retention periods for sessions, free-try records and sign-in codes, and say here
+> Draft point for the owner: set retention periods for sessions, free-try records and wake records, and say here
 > what is deleted when.
 
 Ledger entries are kept by design: an account history that can be edited is worth nothing.
