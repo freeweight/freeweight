@@ -266,7 +266,7 @@ A `Session`:
 | ----- | ------- |
 | `state` | `waking`, `active`, `ended` or `failed`. |
 | `paused` | Present and `true` while the model is being woken again under a session that was already running. The state is `waking` and the clock stands still. |
-| `stages` | The wake so far. Each entry is a `StageEvent`: `stage`, `t_ms` (milliseconds since the wake began) and sometimes `detail`. |
+| `stages` | The wake so far. Each entry is a `StageEvent`: `stage`, `t_ms` (milliseconds since the session was asked for) and sometimes `detail`. |
 | `created_at` | When the session was asked for. The wake is timed from here. |
 | `degraded` | `true` while a wake is running and its stage data could not be read on the last check, so `stages` may lag. `false` otherwise. A change goes out with the next `tick` event. |
 | `started_at` | When the model was ready and the clock started. `null` during the first wake. It moves forward by the length of every pause. |
@@ -280,8 +280,9 @@ A `Session`:
 | `receipt` | Present once the session has ended or failed. |
 
 Stages are `queued`, `gpu`, `container`, `weights`, `engine`, `ready` and `failed`. Each `StageEvent` is
-`{ stage, t_ms, detail? }`. `t_ms` is the time the stage began, in milliseconds from the start of the model's
-wake. A stage can appear more than once, and a stage whose time was not recorded is left out. A session that
+`{ stage, t_ms, detail? }`. `t_ms` is the time the stage began, in milliseconds from when the session was asked
+for (`created_at`). Stages that began before the session joined show 0. A stage can appear more than once, and
+a stage whose time was not recorded is left out. A session that
 joins a model which is already awake gets one `ready` stage with `t_ms` 0. See
 [how a wake works](/docs/models#how-a-wake-works).
 
