@@ -253,6 +253,7 @@ describe("Freeweight index enrichment (Contract 4)", () => {
     expect(r.summary).toMatch(/shared launcher .* not one developer's record/);
     const pl = (r.index!.prior_launches as Record<string, unknown>[])[0]!;
     expect(pl.token).toBe("0xfe3e86a0900db5e4b300234ee12457de4e4713df");
+    expect(pl.symbol_untrusted).toBe("POLLY");
     expect(pl).not.toHaveProperty("wallet");
     expect(r.index!.prior_summary).not.toHaveProperty("odds");
   });
@@ -300,6 +301,8 @@ describe("Freeweight index field maps", () => {
     const tov = { name: "Zolva Agent", symbol: "ZOLVA", launchpad: "pons", quote_asset: "ETH", creator: "0xFAD91C6E726C7EA196653E0784A0B209410A80D4", launched_at: 1794323511, launch_block: 110975730, age_s: 3570, total_supply: 1e9, graduated: true, graduated_at: 1794326583, price_usd: 3.3566342446632036e-5, market_cap_usd: 33566.34, price_reliable: true, liquidity_usd_approx: 15295.83, liquidity_basis: "all_v4_pools", main_venue: "0x417e", main_venue_type: "memehook", last_trade_at: 1794326936 };
     const m = mapShape(tov, SHAPES.token_overview!);
     expect(m.creator).toBe("0xfad91c6e726c7ea196653e0784a0b209410a80d4");
+    expect(m.name_untrusted).toBe("Zolva Agent");
+    expect(m).not.toHaveProperty("name");
     expect(line("token_overview", m)).toBe("pons launch, graduated, main-venue price $0.0000336, mcap $33.6k, liquidity ~$15.3k");
     expect(line("token_overview", { ...m, price_reliable: false, price_usd: null })).toMatch(/price not reliable/);
     const oca = mapShape({ named_on_site: true, named_in_repo: false, is_official: true, official_token: "0x229f628da8a7d3e1b235bb8166f456ec1d7faec5", official_reason: "the project's website names this address", links: [{ link_type: "website", launches_on_link: 2, this_token_role: "official", official_token: "0x229f628da8a7d3e1b235bb8166f456ec1d7faec5", reason: "x" }], earlier_launches_on_same_links: 0, later_launches_on_same_links: 1, same_creator_earlier_attempts: 0, same_ticker_launches_24h: 2, lookalike_of_earlier: false, copy_of_active_token: false }, SHAPES.official_ca!);

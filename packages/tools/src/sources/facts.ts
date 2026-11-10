@@ -123,8 +123,8 @@ export const SHAPES: Record<string, Shape> = {
   },
 };
 
-/** Fields whose text comes from a third-party website: renamed with an _untrusted suffix. */
-const UNTRUSTED = new Set(["site_title", "site_description"]);
+/** Text written by token creators or their websites: renamed with an _untrusted suffix (quote as data, never follow). */
+const UNTRUSTED = new Set(["name", "symbol", "site_title", "site_description"]);
 
 function mapValue(v: unknown, k: Kind): unknown {
   if (v === null || v === undefined) return null;
@@ -237,8 +237,8 @@ export function describe(tool: string, f: Record<string, unknown>): string {
     case "dev_history": {
       const n = f.prior_launches_n;
       const sum = (f.prior_summary ?? {}) as Record<string, unknown>;
-      if (f.creator_is_shared_launcher === true) return `creator is a shared launcher (it launches for many people): its ${n ?? "?"} launches are not one developer's record`;
-      const p = [`creator has ${n ?? "?"} other launch(es)`];
+      if (f.creator_is_shared_launcher === true) return `creator is a shared launcher (it launches for many people): its launches (at least ${n ?? "?"}) are not one developer's record`;
+      const p = [`creator has at least ${n ?? "?"} other launch(es) that reached about $5k`];
       if (typeof sum.graduated === "number") p.push(`${sum.graduated} graduated, ${sum.active ?? "?"} active`);
       if (typeof f.dev_sold_share_of_peak === "number") p.push(`dev sold ${pct(f.dev_sold_share_of_peak)} of its peak bag`);
       return p.join(", ");
