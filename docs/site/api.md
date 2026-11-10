@@ -226,8 +226,11 @@ What kind of session you get:
 - **Free try: send `free: true`** with the `turnstile` token. It starts from the browser only, on a Light
   model, and runs 5 minutes. Nothing is held and nothing is charged, whatever your balance is. An API key, or a
   model that is not Light, gets `403 trial_unavailable`. See [pricing](/docs/pricing) for its limits.
-- **Neither field** is read as a paid session of 10 minutes, with the same answers as for `minutes`. The
-  free try starts with `free: true` and in no other way.
+- **Neither field:** a wallet that can pay for at least one minute gets a paid session of 10 minutes, or of
+  what the balance covers if that is less. An API key that cannot pay gets `402 insufficient_balance`. Any
+  other caller is treated as asking for the free try. On a model that is not Light the answer is then
+  `401 sign_in_required` without a wallet and `402 insufficient_balance` with one. Send `minutes` or `free` to
+  say which one you mean.
 
 `free: true` together with `minutes` is `400 bad_request`.
 
