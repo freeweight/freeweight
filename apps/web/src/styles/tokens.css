@@ -1,0 +1,141 @@
+/* Freeweight design tokens. Dark ("iron") is the default; light ("paper") follows the system or data-theme. */
+
+@font-face {
+  font-family: "Mona Sans";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("../assets/fonts/mona-sans-latin-wght.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../assets/fonts/geist-mono-latin-wght.woff2") format("woff2");
+}
+
+:root {
+  --sans: "Mona Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* 4 px unit */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --s8: 64px;
+  --s9: 96px;
+  --s10: 128px;
+
+  --r-1: 2px;
+  --r-2: 4px;
+
+  --page: 1200px;
+  --pad: 16px;
+  --head: 56px;
+
+  --fast: 120ms;
+  --base: 200ms;
+  --slow: 400ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* tier = weight */
+  --w-light: 300;
+  --w-medium: 500;
+  --w-heavy: 800;
+
+  color-scheme: dark;
+  --bg: #0c0c0d;
+  --surface: #131314;
+  --raised: #1b1b1d;
+  --line: #262628;
+  --line-2: #3b3b3f;
+  /* the edge of a control you type into or pick from: 3:1 against every surface */
+  --field: #6e6e73;
+  --ink: #ededea;
+  --ink-2: #a6a6a1;
+  --ink-3: #8c8c87;
+  --accent: #e8b44a;
+  --accent-ink: #e8b44a;
+  --accent-wash: rgba(232, 180, 74, 0.1);
+  --on-accent: #141209;
+  --danger: #ef6a5b;
+  --danger-wash: rgba(239, 106, 91, 0.1);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  /* the inverse surface: a paper ticket on iron, an iron ticket on paper */
+  --inv-bg: #f1efe7;
+  --inv-ink: #151514;
+  --inv-ink-2: #5c5b54;
+  --inv-line: #c4c1b4;
+  --inv-accent: #7a5200;
+  --inv-plate: #e2a52a;
+}
+
+@media (min-width: 600px) {
+  :root {
+    --pad: 32px;
+  }
+}
+@media (min-width: 1100px) {
+  :root {
+    --pad: 48px;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f4f3ee;
+    --surface: #fbfaf7;
+    --raised: #ffffff;
+    --line: #dddbd2;
+    --line-2: #b9b7ad;
+    --field: #85837a;
+    --ink: #151514;
+    --ink-2: #55554f;
+    --ink-3: #63635c;
+    --accent: #e2a52a;
+    --accent-ink: #7a5200;
+    --accent-wash: rgba(226, 165, 42, 0.16);
+    --on-accent: #151514;
+    --danger: #b3261a;
+    --danger-wash: rgba(179, 38, 26, 0.08);
+    --shadow: 0 12px 32px rgba(40, 36, 20, 0.16);
+    --inv-bg: #161617;
+    --inv-ink: #ededea;
+    --inv-ink-2: #a6a6a1;
+    --inv-line: #3b3b3f;
+    --inv-accent: #e8b44a;
+    --inv-plate: #e8b44a;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f3ee;
+  --surface: #fbfaf7;
+  --raised: #ffffff;
+  --line: #dddbd2;
+  --line-2: #b9b7ad;
+  --field: #85837a;
+  --ink: #151514;
+  --ink-2: #55554f;
+  --ink-3: #63635c;
+  --accent: #e2a52a;
+  --accent-ink: #7a5200;
+  --accent-wash: rgba(226, 165, 42, 0.16);
+  --on-accent: #151514;
+  --danger: #b3261a;
+  --danger-wash: rgba(179, 38, 26, 0.08);
+  --shadow: 0 12px 32px rgba(40, 36, 20, 0.16);
+  --inv-bg: #161617;
+  --inv-ink: #ededea;
+  --inv-ink-2: #a6a6a1;
+  --inv-line: #3b3b3f;
+  --inv-accent: #e8b44a;
+  --inv-plate: #e8b44a;
+}
