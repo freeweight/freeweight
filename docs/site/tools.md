@@ -225,7 +225,8 @@ Input: `query`, `num_results` (1 to 10, default 5), and `days` to keep only resu
 A web search. It returns titles, addresses, dates and short snippets. Snippets are claims to check, not facts.
 
 This tool runs only for a caller we know. Over MCP, send your API key as the bearer token. In the site's chat it
-runs in paid sessions, not in the free try. Otherwise it answers with the error `not_configured`.
+runs when you are signed in with a wallet. Through `POST /api/sessions/{id}/chat` it runs in paid sessions, not
+in the free try. Otherwise it answers with the error `not_configured`.
 
 ### `market_data`
 
@@ -337,8 +338,8 @@ other chain `enriched` is always `false`.
 | Outside requests per tool call | 40. Sources past that are skipped, and the result is `partial` with a note. |
 | `/mcp` request | One message with one `tools/call`, body up to 256 KiB |
 | `/mcp` rate | 30 tool calls per minute per network address. A refusal is HTTP 429 with `Retry-After: 30`. |
-| Site chat | At most 4 rounds of tool calls per turn, 3 calls per round. A fourth call in a round is refused with `too_many_calls`. |
-| Result size in the site chat | The model sees the first 12,000 characters of a result |
+| Site chat | A turn has at most six model replies. The last one is asked without tools, so a turn has at most five rounds of tool calls. The calls go through `/mcp` and count against the `/mcp` rate. |
+| Server-side chat (`POST /api/sessions/{id}/chat`) | At most 4 rounds of tool calls per turn, 3 calls per round. A fourth call in a round is refused with `too_many_calls`. The model sees the first 12,000 characters of a result. |
 | `chain_read` logs | 10,000 blocks per read, first 100 logs returned |
 | `holders` rows | 5 to 50 |
 | `web_search` results | 1 to 10 |
