@@ -5,11 +5,24 @@
  */
 import type { ToolCtx } from "./types.js";
 import { tools, runTool, getTool } from "./registry.js";
+import { readCapped } from "./util/http.js";
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"] as const;
 export const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 export const SERVER_INFO = { name: "freeweight-tools", title: "Freeweight chain toolkit", version: "0.1.0" };
-const MAX_BODY = 1_000_000;
+/**
+ * Request limits, exported so a gateway can align its own limiter: count tool calls, not HTTP requests.
+ * JSON-RPC batches were removed from MCP in 2025-06-18; for older protocol versions a batch holds at most
+ * `maxBatchMessages` messages and at most `maxToolCallsPerRequest` tools/call.
+ */
+export const MCP_LIMITS = {
+  maxBodyBytes: 1_000_000,
+  maxBatchMessages: 8,
+  maxToolCallsPerRequest: 1,
+  batchingRemovedIn: "2025-06-18",
+} as const;
+/** Protocol version assumed when a request carries no MCP-Protocol-Version header (per the spec). */
+const DEFAULT_ASSUMED_VERSION = "2025-03-26";
 
 const INSTRUCTIONS =
   "Read-only EVM token research tools (Robinhood Chain by default; also Ethereum, Base, BNB Chain, Arbitrum, OP, Polygon). " +
@@ -20,27 +33,52 @@ const INSTRUCTIONS =
 type JsonRpcId = string | number | null;
 type JsonRpcMsg = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: unknown };
 
-const CORS: Record<string, string> = {
-  "access-control-allow-origin": "*",
+const CORS_BASE: Record<string, string> = {
   "access-control-allow-methods": "POST, GET, DELETE, OPTIONS",
   "access-control-allow-headers": "content-type, accept, authorization, mcp-protocol-version, mcp-session-id, last-event-id",
   "access-control-expose-headers": "mcp-protocol-version, mcp-session-id",
+  "access-control-max-age": "600",
 };
 
-function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...CORS, ...extra } });
+/**
+ * Origin check (the MCP transport spec requires servers to validate Origin against DNS rebinding / drive-by use).
+ * - No Origin header (server-side clients, CLIs, SDKs): allowed, no CORS headers.
+ * - Same origin as the request URL: allowed.
+ * - Otherwise only origins listed in env MCP_ALLOWED_ORIGINS (comma-separated exact origins) are allowed.
+ * Returns the CORS headers to send, or null when the origin is refused.
+ */
+function corsFor(req: Request, ctx: ToolCtx): Record<string, string> | null {
+  const origin = req.headers.get("origin");
+  if (!origin) return {};
+  let self = "";
+  try {
+    self = new URL(req.url).origin;
+  } catch {
+    /* ignore */
+  }
+  const allowed = (ctx.env.MCP_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (origin !== self && !allowed.includes(origin)) return null;
+  return { ...CORS_BASE, "access-control-allow-origin": origin, vary: "Origin" };
+}
+
+function json(body: unknown, status: number, cors: Record<string, string>, extra: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...cors, ...extra } });
 }
 
 function rpcError(id: JsonRpcId, code: number, message: string, data?: unknown) {
   return { jsonrpc: "2.0" as const, id, error: data === undefined ? { code, message } : { code, message, data } };
 }
 
-function httpError(status: number, code: number, message: string, extra: Record<string, string> = {}): Response {
-  return json(rpcError(null, code, message), status, extra);
-}
-
 export async function handleMcp(req: Request, ctx: ToolCtx): Promise<Response> {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const cors = corsFor(req, ctx);
+  if (cors === null) {
+    return new Response(JSON.stringify(rpcError(null, -32000, "Forbidden: Origin not allowed")), { status: 403, headers: { "content-type": "application/json", vary: "Origin" } });
+  }
+  const httpError = (status: number, code: number, message: string, extra: Record<string, string> = {}) => json(rpcError(null, code, message), status, cors, extra);
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...cors, vary: "Origin" } });
   if (req.method === "GET" || req.method === "DELETE") {
     // Stateless server: no standalone SSE stream and no sessions to terminate.
     return httpError(405, -32000, "Method not allowed: this MCP endpoint is stateless; use POST.", { allow: "POST, OPTIONS" });
@@ -56,16 +94,18 @@ export async function handleMcp(req: Request, ctx: ToolCtx): Promise<Response> {
 
   const pv = req.headers.get("mcp-protocol-version");
   if (pv && !(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(pv)) {
-    return httpError(400, -32000, `Bad Request: unsupported MCP-Protocol-Version ${pv} (supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")})`);
+    return httpError(400, -32000, `Bad Request: unsupported MCP-Protocol-Version (supported: ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")})`);
   }
 
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > MCP_LIMITS.maxBodyBytes) return httpError(413, -32000, "Payload too large");
   let raw: string;
   try {
-    raw = await req.text();
-  } catch {
+    raw = req.body ? await readCapped(new Response(req.body), MCP_LIMITS.maxBodyBytes) : "";
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("larger than")) return httpError(413, -32000, "Payload too large");
     return httpError(400, -32700, "Parse error: unreadable body");
   }
-  if (raw.length > MAX_BODY) return httpError(413, -32000, "Payload too large");
 
   let parsed: unknown;
   try {
@@ -76,7 +116,14 @@ export async function handleMcp(req: Request, ctx: ToolCtx): Promise<Response> {
 
   const batch = Array.isArray(parsed);
   const msgs = (batch ? parsed : [parsed]) as unknown[];
-  if (batch && msgs.length === 0) return httpError(400, -32600, "Invalid Request: empty batch");
+  if (batch) {
+    const version = pv ?? DEFAULT_ASSUMED_VERSION;
+    if (version >= MCP_LIMITS.batchingRemovedIn) {
+      return httpError(400, -32600, `Invalid Request: JSON-RPC batches are not supported in MCP protocol version ${version}`);
+    }
+    if (msgs.length === 0) return httpError(400, -32600, "Invalid Request: empty batch");
+    if (msgs.length > MCP_LIMITS.maxBatchMessages) return httpError(400, -32600, `Invalid Request: at most ${MCP_LIMITS.maxBatchMessages} messages per batch`);
+  }
 
   // Validate every message is JSON-RPC 2.0 before doing any work.
   for (const m of msgs) {
@@ -85,11 +132,14 @@ export async function handleMcp(req: Request, ctx: ToolCtx): Promise<Response> {
   const typed = msgs as JsonRpcMsg[];
   const hasInit = typed.some((m) => m.method === "initialize");
   if (hasInit && typed.length > 1) return httpError(400, -32600, "Invalid Request: initialize must not be batched");
+  if (typed.filter((m) => m.method === "tools/call").length > MCP_LIMITS.maxToolCallsPerRequest) {
+    return httpError(400, -32600, `Invalid Request: at most ${MCP_LIMITS.maxToolCallsPerRequest} tools/call per request`);
+  }
 
   const requests = typed.filter((m) => typeof m.method === "string" && m.id !== undefined);
   if (requests.length === 0) {
     // Only notifications or responses: acknowledge.
-    return new Response(null, { status: 202, headers: CORS });
+    return new Response(null, { status: 202, headers: cors });
   }
 
   const out = await Promise.all(requests.map((m) => dispatch(m, ctx)));
@@ -97,7 +147,7 @@ export async function handleMcp(req: Request, ctx: ToolCtx): Promise<Response> {
   const initResp = hasInit ? (out[0] as { result?: { protocolVersion?: string } }) : null;
   const negotiated = initResp?.result?.protocolVersion ?? pv;
   if (negotiated) headers["mcp-protocol-version"] = negotiated;
-  return json(batch ? out : out[0], 200, headers);
+  return json(batch ? out : out[0], 200, cors, headers);
 }
 
 function isMsg(m: unknown): boolean {
@@ -149,7 +199,7 @@ async function dispatch(m: JsonRpcMsg, ctx: ToolCtx): Promise<unknown> {
       case "tools/call": {
         const name = p.name;
         if (typeof name !== "string") return rpcError(id, -32602, "Invalid params: name is required");
-        if (!getTool(name)) return rpcError(id, -32602, `Unknown tool: ${name}`);
+        if (!getTool(name)) return rpcError(id, -32602, `Unknown tool: ${JSON.stringify(name.slice(0, 64))}`);
         const a = p.arguments;
         if (a !== undefined && (a === null || typeof a !== "object" || Array.isArray(a))) {
           return rpcError(id, -32602, "Invalid params: arguments must be an object");

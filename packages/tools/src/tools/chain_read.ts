@@ -8,6 +8,15 @@ type Op = (typeof OPS)[number];
 const MAX_LOG_BLOCKS = 10_000;
 const MAX_LOGS_OUT = 100;
 
+/** Cap every string in a nested RPC result (node responses are not ours to trust for size). */
+export function capStrings(v: unknown, max: number, depth = 0): unknown {
+  if (typeof v === "string") return v.length > max ? v.slice(0, max) + "…" : v;
+  if (depth > 6) return null;
+  if (Array.isArray(v)) return v.slice(0, 200).map((x) => capStrings(x, max, depth + 1));
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).slice(0, 60).map(([k, x]) => [k, capStrings(x, max, depth + 1)]));
+  return v;
+}
+
 /** JSON-safe: bigint -> string, nested. */
 export function jsonSafe(v: unknown): unknown {
   if (typeof v === "bigint") return v.toString();
@@ -135,13 +144,13 @@ export const chainRead = defineTool({
             const input = String(r.input ?? "0x");
             return {
               summary: `tx ${short(h)}: ${short(String(r.from))} → ${r.to ? short(String(r.to)) : "contract creation"}, value ${formatEther(BigInt(String(r.value ?? "0x0")))} ${chain.nativeSymbol}, selector ${input.slice(0, 10)}, block ${r.blockNumber ? Number(BigInt(String(r.blockNumber))) : "pending"}`,
-              data: { ...base, hash: h, result: { ...r, input: input.length > 2000 ? input.slice(0, 2000) + "…" : input } },
+              data: { ...base, hash: h, result: capStrings({ ...r, input: input.length > 2000 ? input.slice(0, 2000) + "…" : input }, 2002) },
             };
           }
           const logs = (r.logs as unknown[] | undefined) ?? [];
           return {
             summary: `receipt ${short(h)}: status ${r.status === "0x1" ? "success" : "REVERTED"}, ${logs.length} log(s), gas used ${r.gasUsed ? Number(BigInt(String(r.gasUsed))) : "?"}${r.contractAddress ? `, created ${short(String(r.contractAddress))}` : ""}`,
-            data: { ...base, hash: h, result: { ...r, logs: logs.slice(0, 50), logs_truncated: logs.length > 50 } },
+            data: { ...base, hash: h, result: capStrings({ ...r, logs: logs.slice(0, 50), logs_truncated: logs.length > 50 }, 602) },
           };
         }
         case "block": {

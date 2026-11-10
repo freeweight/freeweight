@@ -46,7 +46,7 @@ export function int(args: Record<string, unknown>, key: string, dflt: number, mi
 }
 
 export const CHAIN_PROP = {
-  type: "string",
+  type: ["string", "integer"],
   description: "Chain name or id. Default robinhood (4663). Also: ethereum, base, bsc, arbitrum, optimism, polygon.",
 };
 export const TOKEN_PROP = { type: "string", description: "Token contract address (0x…)." };

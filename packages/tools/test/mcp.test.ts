@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { handleMcp, LATEST_PROTOCOL_VERSION, openAiToolSpecs, tools, type ToolCtx } from "../src/index.js";
+import { handleMcp, LATEST_PROTOCOL_VERSION, MCP_LIMITS, openAiToolSpecs, tools, type ToolCtx } from "../src/index.js";
 
 const ctx: ToolCtx = { env: {}, fetch: (async () => new Response("offline", { status: 599 })) as typeof fetch };
 const URL_ = "https://fw.test/mcp";
@@ -75,9 +75,61 @@ describe("MCP handler: protocol", () => {
     expect(JSON.parse(j.result.content[0]!.text).summary).toMatch(/token must be/);
     expect(j.result.structuredContent.ok).toBe(false);
   });
-  it("batches return an array of responses", async () => {
-    const j = (await (await post([{ jsonrpc: "2.0", id: 1, method: "ping" }, { jsonrpc: "2.0", method: "notifications/x" }, { jsonrpc: "2.0", id: 2, method: "tools/list" }])).json()) as { id: number }[];
-    expect(j.map((x) => x.id)).toEqual([1, 2]);
+  it("batches are rejected from protocol 2025-06-18 on (#1)", async () => {
+    for (const v of ["2025-06-18", "2025-11-25"]) {
+      const res = await post([{ jsonrpc: "2.0", id: 1, method: "ping" }], { "mcp-protocol-version": v });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: { code: number } }).error.code).toBe(-32600);
+    }
+  });
+  it("older protocol versions get small batches with at most one tools/call (#1)", async () => {
+    const ok = await post([{ jsonrpc: "2.0", id: 1, method: "ping" }, { jsonrpc: "2.0", method: "notifications/x" }, { jsonrpc: "2.0", id: 2, method: "tools/list" }], { "mcp-protocol-version": "2025-03-26" });
+    expect(((await ok.json()) as { id: number }[]).map((x) => x.id)).toEqual([1, 2]);
+    const many = Array.from({ length: MCP_LIMITS.maxBatchMessages + 1 }, (_, i) => ({ jsonrpc: "2.0", id: i, method: "ping" }));
+    expect((await post(many, { "mcp-protocol-version": "2025-03-26" })).status).toBe(400);
+    const twoCalls = [0, 1].map((i) => ({ jsonrpc: "2.0", id: i, method: "tools/call", params: { name: "web_search", arguments: { query: "q" } } }));
+    expect((await post(twoCalls, { "mcp-protocol-version": "2024-11-05" })).status).toBe(400);
+  });
+  it("300 tools/call in one POST run nothing (#1)", async () => {
+    let calls = 0;
+    const counting: ToolCtx = { env: { EXA_KEY: "k" }, fetch: (async () => (calls++, new Response("{}"))) as typeof fetch };
+    const batch = Array.from({ length: 300 }, (_, i) => ({ jsonrpc: "2.0", id: i, method: "tools/call", params: { name: "web_search", arguments: { query: `q${i}` } } }));
+    for (const v of ["2025-11-25", "2025-03-26"]) {
+      const res = await handleMcp(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", "mcp-protocol-version": v }, body: JSON.stringify(batch) }), counting);
+      expect(res.status).toBe(400);
+    }
+    expect(calls).toBe(0);
+  });
+  it("refuses bodies over the cap before parsing (#14)", async () => {
+    const big = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping", params: { pad: "x".repeat(MCP_LIMITS.maxBodyBytes) } });
+    expect((await post(big)).status).toBe(413);
+    const declared = await handleMcp(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", "content-length": String(50_000_000) }, body: "{}" }), ctx);
+    expect(declared.status).toBe(413);
+  });
+  it("validates Origin (#18)", async () => {
+    const withOrigin = (origin: string, c: ToolCtx = ctx) =>
+      handleMcp(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) }), c);
+    const foreign = await withOrigin("https://evil.example.org");
+    expect(foreign.status).toBe(403);
+    expect(foreign.headers.get("access-control-allow-origin")).toBeNull();
+    const same = await withOrigin("https://fw.test");
+    expect(same.status).toBe(200);
+    expect(same.headers.get("access-control-allow-origin")).toBe("https://fw.test");
+    const listed = await withOrigin("https://app.example.org", { ...ctx, env: { MCP_ALLOWED_ORIGINS: "https://app.example.org, https://other.example.org" } });
+    expect(listed.status).toBe(200);
+    expect(listed.headers.get("access-control-allow-origin")).toBe("https://app.example.org");
+    const none = await post({ jsonrpc: "2.0", id: 1, method: "ping" });
+    expect(none.status).toBe(200);
+    expect(none.headers.get("access-control-allow-origin")).toBeNull();
+  });
+  it("validates tool arguments against the advertised schema (#22)", async () => {
+    const call = async (args: unknown) =>
+      ((await (await post({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "chain_read", arguments: args } })).json()) as { result: { structuredContent: { error?: { code: string; message: string } } } }).result.structuredContent;
+    expect((await call({ op: "logs", address: "0x" + "1".repeat(40), topics: ["0x" + "0".repeat(64), null, null, null, null] })).error?.message).toMatch(/more than 4/);
+    expect((await call({ op: "call", bogus: 1 })).error?.message).toMatch(/unknown argument/);
+    expect((await call({ op: "nope" })).error?.message).toMatch(/one of/);
+    const unknown = (await (await post({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "x".repeat(5000), arguments: {} } })).json()) as { error: { message: string } };
+    expect(unknown.error.message.length).toBeLessThan(120);
   });
   it("GET and DELETE are 405 (stateless, no SSE stream)", async () => {
     for (const method of ["GET", "DELETE"]) {
@@ -89,10 +141,11 @@ describe("MCP handler: protocol", () => {
     expect((await handleMcp(new Request(URL_, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" }), ctx)).status).toBe(415);
     expect((await handleMcp(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", accept: "text/html" }, body: "{}" }), ctx)).status).toBe(406);
   });
-  it("OPTIONS preflight", async () => {
-    const res = await handleMcp(new Request(URL_, { method: "OPTIONS" }), ctx);
+  it("OPTIONS preflight from an allowed origin", async () => {
+    const res = await handleMcp(new Request(URL_, { method: "OPTIONS", headers: { origin: "https://fw.test" } }), ctx);
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-headers")).toMatch(/mcp-protocol-version/);
+    expect((await handleMcp(new Request(URL_, { method: "OPTIONS", headers: { origin: "https://evil.example.org" } }), ctx)).status).toBe(403);
   });
 });
 

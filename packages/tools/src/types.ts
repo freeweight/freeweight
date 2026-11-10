@@ -17,6 +17,11 @@ export type ToolEnv = {
   RPC_URLS?: Record<string, string>;
   /** Exa search API key; web_search returns "not configured" without it. */
   EXA_KEY?: string;
+  /**
+   * Browser origins allowed to call handleMcp (comma-separated exact origins, e.g. "https://app.example.org").
+   * Requests without an Origin header (CLIs, SDKs, servers) and same-origin requests are always allowed.
+   */
+  MCP_ALLOWED_ORIGINS?: string;
   /** Optional GitHub token (read-only, no scopes) for project_check; keyless GitHub allows 60 requests/hour per IP. */
   GITHUB_TOKEN?: string;
 };
