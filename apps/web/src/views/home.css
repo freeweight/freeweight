@@ -324,11 +324,12 @@
 }
 .class-name .plates {
   width: 18px;
-  gap: 3px;
-  vertical-align: 0;
 }
 .class-name .plates i {
   height: 4px;
+}
+.class-name .plates i + i {
+  margin-top: 3px;
 }
 .class-card {
   grid-area: card;

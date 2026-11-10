@@ -371,21 +371,20 @@ table {
 
 /* ---------- plates: tier mark ---------- */
 
+/* A stack with no text in it, so its own baseline is its bottom edge: the lowest plate stands on the line of the word beside it. */
 .plates {
-  display: inline-grid;
-  gap: 2px;
+  display: inline-block;
   width: 14px;
-  vertical-align: -1px;
-}
-/* A tier sits on the text baseline of its name, with the plates centred on the line. */
-.tier .plates {
-  align-self: center;
+  vertical-align: baseline;
 }
 .plates i {
   display: block;
   height: 3px;
   border-radius: 1px;
   background: currentColor;
+}
+.plates i + i {
+  margin-top: 2px;
 }
 .plates i.off {
   background: none;
