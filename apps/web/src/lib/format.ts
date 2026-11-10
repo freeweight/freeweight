@@ -19,6 +19,11 @@ export function usd(micro: number): string {
   return `${sign}$${(t / 10_000).toFixed(4)}`;
 }
 
+/** A code this build has no words for, as plain text: "minimum_applied" reads "minimum applied". */
+export function plainCode(code: string): string {
+  return code.replace(/[^A-Za-z0-9.]+/g, " ").trim().slice(0, 48);
+}
+
 export function perMin(micro: number): string {
   return `${usd(micro)}/min`;
 }

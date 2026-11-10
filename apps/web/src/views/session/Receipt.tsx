@@ -3,7 +3,7 @@
 
 import type { CSSProperties } from "react";
 import type { Model, Session } from "../../api";
-import { clock, grouped, perMin, shortSha, TIER_CLASS, TIER_NAME, took, usd } from "../../lib/format";
+import { clock, grouped, perMin, plainCode, shortSha, TIER_CLASS, TIER_NAME, took, usd } from "../../lib/format";
 import { useConfig, useMe } from "../../lib/hooks";
 import { rack } from "../../lib/wake";
 import { Link } from "../../router";
@@ -11,7 +11,7 @@ import { Copy, Icon } from "../../ui/bits";
 
 type Line = [label: string, value: string, note?: string];
 
-/** How a session can end, in two words for the ticket and in a sentence beside it. A reason this build does not know says nothing. */
+/** How a session can end, in two words for the ticket and in a sentence beside it. A reason this build does not know has no sentence. */
 const ENDED: Record<string, [short: string, sentence: string]> = {
   stopped: ["stopped by you", "You stopped the session."],
   time: ["time ran out", "The session ran its full time."],
@@ -50,7 +50,8 @@ function facts(s: Session, model: Model | null) {
     ["Rate", rate != null ? perMin(rate) : "", "per GPU minute"],
     ["Tokens in", grouped(s.receipt?.tokens_in ?? s.tokens_in), "counted"],
     ["Tokens out", grouped(s.receipt?.tokens_out ?? s.tokens_out), "counted"],
-    ...(ENDED[why] ? [["Ended", ENDED[why][0]] as Line] : []),
+    // A reason newer than this build is printed as it came, in plain words, so the ticket never hides how it ended.
+    ...(ENDED[why] ? [["Ended", ENDED[why][0]] as Line] : plainCode(why) ? [["Ended", plainCode(why)] as Line] : []),
   ];
   return { never, wakeMs, minutes, total, lines, why };
 }

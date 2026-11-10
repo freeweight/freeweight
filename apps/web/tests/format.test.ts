@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, params, perMin, shortAddr, shortSha, took, usd, typicalWake, wakeBudget } from "../src/lib/format";
+import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, params, perMin, plainCode, shortAddr, shortSha, took, usd, typicalWake, wakeBudget } from "../src/lib/format";
 
 describe("money", () => {
   it("prints dollars with two decimals", () => {
@@ -41,6 +41,11 @@ describe("money", () => {
     expect(usd(-500_000)).toBe("-$0.50");
     expect(usd(-2_500)).toBe("-$0.0025");
     expect(usd(40)).toBe("<$0.0001");
+  });
+  it("prints a code it has no words for as plain text", () => {
+    expect(plainCode("minimum_applied")).toBe("minimum applied");
+    expect(plainCode("<b>x</b>")).toBe("b x b");
+    expect(plainCode("")).toBe("");
   });
   it("prints a price per minute", () => {
     expect(perMin(60_000)).toBe("$0.06/min");
