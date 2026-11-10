@@ -58,6 +58,8 @@ export type FetchOpts = {
   public?: boolean;
   /** Max response bytes. */
   maxBytes?: number;
+  /** Body check for APIs that signal errors inside a 200 (e.g. rate limits): false = not cached, retried as a 429. */
+  validate?: (body: string) => boolean;
   /** Return non-2xx bodies that are JSON-RPC error objects instead of throwing (RPC endpoints). */
   jsonRpc?: boolean;
 };
@@ -143,6 +145,7 @@ export class Run {
       const timeout = Math.min(o.timeoutMs ?? 8000, left - 100);
       try {
         const body = await this.once(url, o, timeout);
+        if (o.validate && !o.validate(body)) throw new HttpError(429, `rejected response (${body.slice(0, 60)})`);
         if (ttl > 0) {
           memPut(key, body, ttl);
           if (this.ctx.cache && body.length < 200_000) {
@@ -156,7 +159,7 @@ export class Run {
         const st = e instanceof HttpError ? e.status : 0;
         const retryable = st === 0 || st === 429 || st >= 500;
         if (!retryable || attempt === retries) break;
-        await sleep(Math.min(250 * (attempt + 1) * (st === 429 ? 3 : 1), Math.max(0, this.remaining() - 500)));
+        await sleep(Math.min(250 * (attempt + 1) * (st === 429 ? 4 : 1), Math.max(0, this.remaining() - 500)));
       }
     }
     throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

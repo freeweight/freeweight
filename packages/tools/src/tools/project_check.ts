@@ -38,6 +38,12 @@ async function firstCapture(run: Run, domain: string): Promise<string | null> {
 
 type Gh = { url: string; kind: "user" | "repo"; created_at: string | null; pushed_at?: string | null; public_repos?: number; followers?: number; stars?: number; fork?: boolean; commits_seen?: number | string; error?: string };
 
+function ghHeaders(run: Run): Record<string, string> {
+  const h: Record<string, string> = { accept: "application/vnd.github+json" };
+  if (run.ctx.env.GITHUB_TOKEN) h.authorization = `Bearer ${run.ctx.env.GITHUB_TOKEN}`;
+  return h;
+}
+
 async function github(run: Run, link: string): Promise<Gh | null> {
   const m = /^https:\/\/github\.com\/([A-Za-z0-9-]{1,39})(?:\/([A-Za-z0-9._-]{1,100}))?/.exec(link);
   if (!m) return null;
@@ -50,10 +56,10 @@ async function github(run: Run, link: string): Promise<Gh | null> {
         ttl: 3600,
         timeoutMs: 6000,
         retries: 0,
-        headers: { accept: "application/vnd.github+json" },
+        headers: ghHeaders(run),
       });
       const commits = await run
-        .json<unknown[]>(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`, { source: "github", ttl: 3600, timeoutMs: 6000, retries: 0, headers: { accept: "application/vnd.github+json" } })
+        .json<unknown[]>(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`, { source: "github", ttl: 3600, timeoutMs: 6000, retries: 0, headers: ghHeaders(run) })
         .catch(() => null);
       return {
         url: link,
@@ -70,7 +76,7 @@ async function github(run: Run, link: string): Promise<Gh | null> {
       ttl: 3600,
       timeoutMs: 6000,
       retries: 0,
-      headers: { accept: "application/vnd.github+json" },
+      headers: ghHeaders(run),
     });
     return { url: link, kind: "user", created_at: u.created_at, public_repos: u.public_repos, followers: u.followers };
   } catch (e) {

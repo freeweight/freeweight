@@ -69,7 +69,10 @@ export async function scanTransfers(
       cur = end + 1;
     } catch (e) {
       if (isRangeError(e) && span > 1000) {
-        span = Math.max(1000, Math.floor(span / 4));
+        // Use the provider's stated limit when it gives one ("only 10000000 are allowed", "over 10000 blocks").
+        const m = /(\d[\d,]{2,})\s*(?:blocks|are allowed)/i.exec((e as Error).message);
+        const stated = m ? Number(m[1]!.replace(/,/g, "")) : NaN;
+        span = Number.isFinite(stated) && stated >= 100 && stated < span ? Math.floor(stated / 2) : Math.max(1000, Math.floor(span / 4));
         continue;
       }
       run.note(`getLogs stopped early on ${chain.key} (${e instanceof Error ? e.message.slice(0, 100) : "error"})`);

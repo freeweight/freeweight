@@ -52,7 +52,8 @@ export async function goplusToken(run: Run, chain: Chain, token: string): Promis
   if (!chain.goplus) return null;
   const j = await run.json<{ code: number; message?: string; result?: Record<string, GoPlusToken> }>(
     `https://api.gopluslabs.io/api/v1/token_security/${chain.goplus}?contract_addresses=${token}`,
-    { source: "goplus", ttl: 300, timeoutMs: 9000 },
+    // GoPlus answers rate limits (shared egress IPs, e.g. Workers) with HTTP 200 + code 4029: never cache those.
+    { source: "goplus", ttl: 600, timeoutMs: 9000, retries: 2, validate: (b) => b.includes('"code":1,') || b.includes('"code":1}') },
   );
   if (j.code !== 1) throw new Error(`goplus code ${j.code} ${j.message ?? ""}`.trim());
   const r = j.result ?? {};

@@ -96,3 +96,24 @@ describe("chains", () => {
     expect(units(5n, 0)).toBe(5);
   });
 });
+
+describe("getLogs range splitting", () => {
+  it("shrinks to the provider's stated limit and finishes the scan", async () => {
+    const { Run } = await import("../src/util/http.js");
+    const { scanTransfers } = await import("../src/util/logs.js");
+    const { resolveChain } = await import("../src/chains.js");
+    const spans: number[] = [];
+    const f = (async (_u: string, init?: RequestInit) => {
+      const req = JSON.parse(String(init?.body)) as { id: number; params: [{ fromBlock: string; toBlock: string }] };
+      const span = Number(BigInt(req.params[0].toBlock)) - Number(BigInt(req.params[0].fromBlock)) + 1;
+      spans.push(span);
+      if (span > 10_000) return new Response(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: { code: 35, message: "ranges over 10000 blocks are not supported on free plan" } }), { status: 400 });
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const run = new Run({ env: { RPC_URLS: { robinhood: "https://rpc.example" } }, fetch: f });
+    const r = await scanTransfers(run, resolveChain("robinhood")!, "0x" + "1".repeat(40), 0, 19_999, { maxCalls: 10 });
+    expect(r.complete).toBe(true);
+    expect(spans[0]).toBe(20_000);
+    expect(spans.slice(1).every((s) => s <= 10_000)).toBe(true);
+  });
+});

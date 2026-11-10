@@ -14,6 +14,8 @@ export type ToolEnv = {
   RPC_URLS?: Record<string, string>;
   /** Exa search API key; web_search returns "not configured" without it. */
   EXA_KEY?: string;
+  /** Optional GitHub token (read-only, no scopes) for project_check; keyless GitHub allows 60 requests/hour per IP. */
+  GITHUB_TOKEN?: string;
 };
 
 export type ToolCtx = {
