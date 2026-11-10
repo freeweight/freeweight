@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      contracts: ${{ steps.filter.outputs.contracts }}
+      node: ${{ steps.filter.outputs.node }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if ! git cat-file -e "$base" 2>/dev/null; then base="$(git rev-list --max-parents=0 HEAD)"; fi
+          files="$(git diff --name-only "$base" HEAD)"
+          echo "$files"
+          echo "contracts=$(echo "$files" | grep -qE '^(contracts/|\.github/)' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "node=$(echo "$files" | grep -qE '^(apps/|packages/|package(-lock)?\.json|\.github/)' && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  contracts:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true' && hashFiles('contracts/foundry.toml') != ''
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge fmt --check
+      - run: forge build --sizes
+      - run: forge test -vvv
+
+  node:
+    needs: changes
+    if: needs.changes.outputs.node == 'true' && hashFiles('package-lock.json') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
