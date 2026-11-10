@@ -20,8 +20,9 @@ Status: written and tested, **not deployed**. Nothing in this directory holds or
 | `withdraw()` | After the cooldown, sends all pending tokens back. |
 | `setCooldown(seconds)` | Owner only. 0 to 30 days, affects future requests only. |
 
-A user has `staked` (counts for credits) and `pending` (cooldown, does not count). Total token
-balance of the vault equals `totalStaked + totalPending`.
+A user has `staked` (counts for credits) and `pending` (cooldown, does not count). The token
+balance of the vault is `>= totalStaked + totalPending`: equal unless someone sends tokens straight
+to the vault, and those donations stay stranded.
 
 ### Why `stakedSince` and not checkpoints
 
@@ -56,7 +57,7 @@ count) so that stake, claim, unstake cycling inside a day earns nothing. We use 
 ## Trust model
 
 - **Users:** only you can move your stake, and only by the 4 user calls above. Withdrawing
-  returns exactly what you put in (what the vault received). The owner cannot freeze, seize, slash,
+  returns exactly what the vault credited (what it received on `stake`; tokens with fees, rebasing or a blocklist are out of scope). The owner cannot freeze, seize, slash,
   pause, upgrade, redirect or charge anything.
 - **Owner:** one power, `setCooldown` (0 to 30 days, hard bound in code), emitting `CooldownUpdated`.
   It cannot shorten or re-lock a request already made: a later request can only keep or extend the unlock of what is still locked, and matured funds must be withdrawn first. Ownership is
@@ -69,20 +70,28 @@ count) so that stake, claim, unstake cycling inside a day earns nothing. We use 
 
 ## How the gateway reads it
 
-All reads are plain `eth_call` (address of the vault as `to`, no signature needed). Selectors:
+Everything the vault exposes, with selectors (checked with `cast sig`):
 
-| Function | Selector | Returns |
-|---|---|---|
-| `positionOf(address)` | `0xfd2d39c5` | `(uint256 staked, uint256 since, uint256 pending, uint256 unlockTime)`, one call: **use this** |
-| `stakedOf(address)` | `0xaf500ba3` | `uint256` counted stake (token units, 18 decimals for a standard ERC-20) |
-| `totalStaked()` | `0x817b1cd2` | `uint256` |
-| `pendingUnstake(address)` | `0x56d6ea4f` | `(uint256 amount, uint256 unlockTime)` |
-| `stakedSince(address)` | `0xa15668d9` | `uint256` unix seconds, 0 if nothing staked |
-| `totalPending()` | `0x3f90916a` | `uint256` |
-| `cooldown()` | `0x787a08a6` | `uint256` seconds |
-| `token()` | `0xfc0c546a` | `address` |
+| Function | Selector | Who | Returns |
+|---|---|---|---|
+| `stake(uint256 amount)` | `0xa694fc3a` | user | |
+| `requestUnstake(uint256 amount, uint256 maxCooldown)` | `0x68d4341f` | user | |
+| `cancelUnstake()` | `0x4ab17969` | user | |
+| `withdraw()` | `0x3ccfd60b` | user | |
+| `setCooldown(uint256)` | `0x4fc3f41a` | owner | |
+| `positionOf(address)` | `0xfd2d39c5` | read | `(uint256 staked, uint256 since, uint256 pending, uint256 unlockTime)`, one call: **the gateway uses this** |
+| `stakedOf(address)` | `0xaf500ba3` | read | `uint256` counted stake (token units) |
+| `stakedSince(address)` | `0xa15668d9` | read | `uint256` unix seconds, 0 if nothing staked |
+| `pendingUnstake(address)` | `0x56d6ea4f` | read | `(uint256 amount, uint256 unlockTime)` |
+| `totalStaked()` | `0x817b1cd2` | read | `uint256` |
+| `totalPending()` | `0x3f90916a` | read | `uint256` |
+| `cooldown()` | `0x787a08a6` | read | `uint256` seconds |
+| `MAX_COOLDOWN()` / `DEFAULT_COOLDOWN()` | `0x8b41d35f` / `0x827059ff` | read | `uint256` |
+| `token()` | `0xfc0c546a` | read | `address` |
+| `owner()` / `pendingOwner()` | `0x8da5cb5b` / `0xe30c3978` | read | `address` |
 
-Call data is the selector followed by the address left-padded to 32 bytes. Example, `positionOf`
+All reads are plain `eth_call` (address of the vault as `to`, no signature needed). Call data is the
+selector followed by the address left-padded to 32 bytes. Example, `positionOf`
 for `0x1111111111111111111111111111111111111111`:
 
 ```json
@@ -94,7 +103,7 @@ for `0x1111111111111111111111111111111111111111`:
 
 The result is 4 words of 32 bytes (staked, since, pending, unlockTime), each a uint256. The single-value views return one word, `pendingUnstake` two. With viem: `readContract({abi, functionName: "positionOf", args: [addr], blockNumber})`.
 
-Events for indexers: `Staked(user, amount, newStaked)`, `UnstakeRequested(user, amount, unlockTime)`,
+Events for indexers: `Staked(user, amount, newStaked)`, `UnstakeRequested(user, amount, unlockTime)` (`unlockTime` applies to all of the user's pending tokens, not only `amount`: model one pending balance per user, not a queue),
 `UnstakeCancelled(user, amount)`, `Withdrawn(user, amount)`, `CooldownUpdated(old, new)`.
 Reading at a past block (`eth_call` with a block tag) works on archive nodes if the gateway wants a
 snapshot at a specific hour.

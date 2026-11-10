@@ -2,6 +2,9 @@
 pragma solidity 0.8.28;
 
 /// @title IWeightVault
+/// @dev Covers user actions, the one owner action and the gateway views. Ownership management
+///      (`owner`, `transferOwnership`, `acceptOwnership`, `renounceOwnership`) is OpenZeppelin
+///      Ownable2Step and is not repeated here.
 /// @notice Interface of the Freeweight staking vault. Stake the token, earn off-chain daily rent
 ///         credits. The vault itself pays nothing: the gateway reads these views and computes credits.
 interface IWeightVault {
@@ -32,6 +35,12 @@ interface IWeightVault {
     function requestUnstake(uint256 amount, uint256 maxCooldown) external;
     function cancelUnstake() external;
     function withdraw() external;
+
+    // ---------------------------------------------------------------- owner
+    /// @notice Owner only: set the cooldown for FUTURE requests, 0 to MAX_COOLDOWN (30 days).
+    function setCooldown(uint256 newCooldown) external;
+    /// @notice Hard upper bound of the cooldown.
+    function MAX_COOLDOWN() external view returns (uint256);
 
     // ---------------------------------------------------------------- gateway views
     /// @notice Amount that counts as staked: excludes anything in cooldown.
