@@ -100,7 +100,9 @@ export type Deployed = { address: string; tx: string | null; timestamp: string |
 
 /** Contracts the address deployed directly (top-level creation txs only; factory-made contracts are missed). */
 export async function deployedBy(run: Run, chain: Chain, deployer: string): Promise<{ contracts: Deployed[]; scanned_txs: number; more: boolean } | null> {
-  return firstOf(run, chain, "deployer history", async (e) => {
+  // Routescan's txlist marks creations reliably (contractAddress); prefer it where present.
+  const ordered = { ...chain, explorers: [...chain.explorers].sort((a, b) => (a.type === "routescan" ? -1 : 0) - (b.type === "routescan" ? -1 : 0)) };
+  return firstOf(run, ordered, "deployer history", async (e) => {
     if (e.type === "blockscout") {
       const out: Deployed[] = [];
       let url = `${e.base}/api/v2/addresses/${deployer}/transactions?filter=from`;
@@ -131,7 +133,7 @@ export async function deployedBy(run: Run, chain: Chain, deployer: string): Prom
     );
     if (!Array.isArray(j.result)) return null;
     const contracts = j.result
-      .filter((t) => (!t.to || t.to === "") && t.contractAddress && t.from.toLowerCase() === deployer)
+      .filter((t) => t.contractAddress && t.from.toLowerCase() === deployer)
       .map((t) => ({ address: t.contractAddress.toLowerCase(), tx: t.hash.toLowerCase(), timestamp: new Date(Number(t.timeStamp) * 1000).toISOString() }));
     return { contracts, scanned_txs: j.result.length, more: j.result.length >= 1000 };
   });

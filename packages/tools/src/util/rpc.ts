@@ -74,6 +74,7 @@ export async function rpc<T = unknown>(run: Run, chain: Chain, method: string, p
           timeoutMs: o.timeoutMs ?? 7000,
           retries: 1,
           public: false,
+          jsonRpc: true,
         }),
       );
       const j = JSON.parse(txt) as { result?: T; error?: { code: number; message: string; data?: unknown } };

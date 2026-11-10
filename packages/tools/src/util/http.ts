@@ -57,6 +57,8 @@ export type FetchOpts = {
   public?: boolean;
   /** Max response bytes. */
   maxBytes?: number;
+  /** Return non-2xx bodies that are JSON-RPC error objects instead of throwing (RPC endpoints). */
+  jsonRpc?: boolean;
 };
 
 /**
@@ -171,6 +173,7 @@ export class Run {
       if (o.body && !headers["content-type"]) headers["content-type"] = "application/json";
       const res = await this.ctx.fetch(url, { method: o.method ?? "GET", body: o.body, headers, signal: ac.signal, redirect: "follow" });
       const body = await readCapped(res, o.maxBytes ?? 4_000_000);
+      if (!res.ok && o.jsonRpc && res.status !== 429 && body.trimStart().startsWith("{") && body.includes('"jsonrpc"')) return body;
       if (!res.ok) {
         const challenged = body.includes("Just a moment") || body.includes("cf-chl") || body.includes("challenge-platform");
         throw new HttpError(res.status, challenged ? `HTTP ${res.status} (bot challenge)` : `HTTP ${res.status}`);
