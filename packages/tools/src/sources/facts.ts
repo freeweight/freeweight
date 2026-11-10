@@ -213,6 +213,9 @@ export function describe(tool: string, f: Record<string, unknown>, omit: Set<str
     }
     case "safety_check": {
       const t = f.sell_test;
+      const extra = f.custom_pool_hook ? "custom pool hook" : "";
+      const tpl = f.contract_checks === "launchpad_template" ? "standard launchpad token template" : "";
+      if (omit.has("sell")) return [extra, tpl].filter(Boolean).join(", ");
       const s =
         t === "blocked"
           ? "SELL TEST: BLOCKED (a sale fails)"
@@ -225,9 +228,7 @@ export function describe(tool: string, f: Record<string, unknown>, omit: Set<str
                 : t === "not_tested"
                   ? "sell not tested (bonding curve or plain pool)"
                   : `sell test ${t ?? "unknown"}`;
-      const extra = f.custom_pool_hook ? ", custom pool hook" : "";
-      const tpl = f.contract_checks === "launchpad_template" ? ", standard launchpad token template" : "";
-      return s + extra + tpl;
+      return [s, extra, tpl].filter(Boolean).join(", ");
     }
     case "holders": {
       const p: string[] = [];

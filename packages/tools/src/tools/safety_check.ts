@@ -11,7 +11,8 @@ import { sourcify } from "../sources/sourcify.js";
 import { pickMainPool, tokenPairs } from "../sources/dexscreener.js";
 import { tokenHolders } from "../sources/explorer.js";
 import { cleanSnippet } from "../util/page.js";
-import { CANNOT_SELL_ABOVE, COSTLY_ABOVE, freshRoundTrip, holderSell, poolInfo, worst, type SellSim, type WalletSim } from "../util/sellsim.js";
+import { describe } from "../sources/facts.js";
+import { CANNOT_SELL_ABOVE, COSTLY_ABOVE, freshRoundTrip, holderSell, poolInfo, worst, type SellSim, type Verdict, type WalletSim } from "../util/sellsim.js";
 
 const ERC20 = parseAbi(["function transfer(address,uint256) returns (bool)", "function decimals() view returns (uint8)"]);
 const FRESH = "0x000000000000000000000000000000000000f4ee";
@@ -65,6 +66,87 @@ export function describeSell(s: SellSim): string {
   return `sell test from ${n} real holder${n > 1 ? "s" : ""} (${who}) on ${s.pool_kind}: ${head}a sale costs up to ${pct(max)}${unmeasured}`;
 }
 
+export type IndexSellReading = { sell_test: string | null; round_trip_cost: number | null };
+
+/** The index's sell reading as a verdict on the same scale; null when the index has no usable reading. */
+export function indexVerdict(r: IndexSellReading): Verdict | null {
+  switch (r.sell_test) {
+    case "blocked":
+      return "reverted";
+    case "restricted":
+      return "cannot_sell";
+    case "costly":
+      return typeof r.round_trip_cost === "number" && r.round_trip_cost > CANNOT_SELL_ABOVE ? "cannot_sell" : "costly";
+    case "ok":
+      return "ok";
+    default:
+      return null; // inconclusive, not_tested, unknown
+  }
+}
+
+function indexPhrase(r: IndexSellReading): string {
+  switch (r.sell_test) {
+    case "blocked":
+      return "fails (the sale reverts)";
+    case "restricted":
+      return "can fail on ordinary routes";
+    case "costly":
+      return `loses ${pct(r.round_trip_cost)}`;
+    default:
+      return typeof r.round_trip_cost === "number" ? `costs ${pct(r.round_trip_cost)}` : "passes";
+  }
+}
+
+function simPhrase(s: SellSim): string {
+  const w = s.wallets[0];
+  if (!w) return "was not run";
+  if (s.verdict === "reverted") return "reverts";
+  const cost = s.method === "fresh_wallet_round_trip" ? w.round_trip_cost : Math.max(...s.wallets.map((x) => x.sell_cost ?? 0));
+  if (typeof cost !== "number") return "did not revert (cost not measured)";
+  return s.verdict === "ok" ? `costs ${pct(cost)}` : `loses ${pct(cost)}`;
+}
+
+const BAD = new Set<Verdict>(["costly", "cannot_sell", "reverted", "route_dependent"]);
+
+/**
+ * Reconcile our simulation with the index's sell test. Agreement gives one statement (simulation figures first);
+ * disagreement makes the worse reading the headline and says that two methods on different routes disagree.
+ */
+export function reconcileSell(sim: SellSim, f: Record<string, unknown>): { sim: SellSim; sentence: string } {
+  const reading: IndexSellReading = {
+    sell_test: typeof f.sell_test === "string" ? f.sell_test : null,
+    round_trip_cost: typeof f.round_trip_cost === "number" ? f.round_trip_cost : null,
+  };
+  const iv = indexVerdict(reading);
+  const simHas = sim.verdict !== "not_simulated" && sim.verdict !== "not_measured";
+  const out: SellSim = { ...sim, index_reading: reading };
+  const own = describeSell(sim);
+  if (iv === null) {
+    out.agreement = simHas ? "simulation_only" : "none";
+    return { sim: out, sentence: own };
+  }
+  if (!simHas) {
+    out.agreement = "index_only";
+    out.verdict = worst([sim.verdict, iv]);
+    const head = BAD.has(iv) ? (iv === "costly" ? "COSTLY" : iv === "reverted" ? "SELL BLOCKED" : "EFFECTIVELY CANNOT SELL") + ": " : "";
+    return { sim: out, sentence: `${head}the index's router-route sell test ${indexPhrase(reading)}; our own test: ${own}` };
+  }
+  const simBad = BAD.has(sim.verdict);
+  const idxBad = BAD.has(iv);
+  out.verdict = worst([sim.verdict, iv]);
+  const route = sim.method === "fresh_wallet_round_trip" ? "direct pool round trip" : "direct pool sale from real holders";
+  if (simBad === idxBad) {
+    out.agreement = "agree";
+    return { sim: out, sentence: `${own} (the index's router-route test agrees: it ${indexPhrase(reading)})` };
+  }
+  out.agreement = "disagree";
+  const trap = idxBad ? "a route-dependent sell trap" : "a sell trap";
+  return {
+    sim: out,
+    sentence: `SELL TESTS DISAGREE: the ${route} ${simPhrase(sim)}, the index's router-route test ${indexPhrase(reading)}: treat as ${trap} until shown otherwise`,
+  };
+}
+
 export const safetyCheck = defineTool({
   name: "safety_check",
   title: "Safety check",
@@ -77,6 +159,14 @@ export const safetyCheck = defineTool({
     "Blind spots: traps that target specific wallets, sizes or later times; bonding-curve venues; off-chain front-end tricks.",
   inputSchema: { type: "object", properties: { chain: CHAIN_PROP, token: TOKEN_PROP }, required: ["token"], additionalProperties: false },
   enrich: (a) => ({ chain: chainArg(a), token: addr(a, "token")! }),
+  reconcile: (body, f) => {
+    // One sell statement: the simulation and the index's test, reconciled; the index sell line is not repeated.
+    const sim = body.data.sell_simulation as SellSim;
+    const rec = reconcileSell(sim, f);
+    body.data.sell_simulation = rec.sim;
+    body.parts!.head = `${short(String(body.data.token))} on ${String(body.data.chain_name ?? body.data.chain)}: ${rec.sentence}`;
+    return describe("safety_check", f, new Set(["sell"])) || undefined;
+  },
   run: async (args, run) => {
     const chain = chainArg(args);
     const token = addr(args, "token")!;
@@ -186,7 +276,7 @@ export const safetyCheck = defineTool({
     const hookPool = main?.labels?.includes("v4") ?? false;
 
     // --- verdict lines
-    const lines: string[] = [describeSell(sell)];
+    const lines: string[] = [];
     if (sell.method === "none" && sims.length) {
       const bad = sims.filter((s) => s.result !== "ok" && s.result !== "error");
       const err = sims.filter((s) => s.result === "error");
@@ -229,10 +319,12 @@ export const safetyCheck = defineTool({
     run.note("Selector scan shows capabilities present in bytecode, not that they were used; names can be obfuscated and the scan misses custom names.");
 
     return {
-      summary: `${short(token)} on ${chain.name}: ` + lines.join("; ") + ". Not a safety guarantee.",
+      summary: "",
+      parts: { head: `${short(token)} on ${chain.name}: ${describeSell(sell)}`, rest: lines.join("; "), tail: "Not a safety guarantee" },
       data: {
         chain: chain.key,
         chain_id: chain.id,
+        chain_name: chain.name,
         token,
         sell_simulation: sell,
         transfer_simulations: sims,

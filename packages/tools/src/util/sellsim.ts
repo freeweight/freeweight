@@ -109,7 +109,7 @@ export async function v4Key(run: Run, chain: Chain, poolId: string, createdMs: n
   return { currency0: ("0x" + l.topics[2]!.slice(26)) as Hex, currency1: ("0x" + l.topics[3]!.slice(26)) as Hex, fee, tickSpacing: ts, hooks: ("0x" + word(2).slice(24)) as Hex };
 }
 
-export type Verdict = "ok" | "costly" | "cannot_sell" | "reverted" | "not_measured" | "not_simulated";
+export type Verdict = "ok" | "costly" | "cannot_sell" | "route_dependent" | "reverted" | "not_measured" | "not_simulated";
 
 /** One simulated sale (or round trip) from one wallet. Costs are fractions 0..1 of value lost. */
 export type WalletSim = {
@@ -141,6 +141,10 @@ export type SellSim = {
   wallets: WalletSim[];
   /** Why the fresh-wallet path could not be used, when it was not. */
   fresh_wallet_unavailable?: string;
+  /** The Freeweight index's own sell test (router route), when the index has one. */
+  index_reading?: { sell_test: string | null; round_trip_cost: number | null };
+  /** How our simulation and the index's test relate. */
+  agreement?: "agree" | "disagree" | "index_only" | "simulation_only" | "none";
   detail?: string;
 };
 
@@ -167,7 +171,7 @@ function verdictFor(cost: number | null | undefined): Verdict {
   return "ok";
 }
 
-const RANK: Record<Verdict, number> = { reverted: 5, cannot_sell: 4, costly: 3, not_measured: 2, ok: 1, not_simulated: 0 };
+const RANK: Record<Verdict, number> = { reverted: 6, cannot_sell: 5, route_dependent: 4, costly: 3, not_measured: 2, ok: 1, not_simulated: 0 };
 export function worst(vs: Verdict[]): Verdict {
   return vs.reduce<Verdict>((a, b) => (RANK[b] > RANK[a] ? b : a), "not_simulated");
 }

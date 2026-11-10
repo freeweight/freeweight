@@ -243,7 +243,14 @@ describe("Freeweight index enrichment (Contract 4)", () => {
     };
     const { r } = await withFacts("safety_check-rh-wallet", () => ok(data));
     expect(r.enriched).toBe(true);
-    expect(r.summary).toMatch(/COSTLY \(a simulated \$1 round trip loses 97%\), custom pool hook/);
+    // Our direct-pool round trip passes, the index's router-route test loses 97%: one statement, worse reading first.
+    expect(r.summary).toMatch(/SELL TESTS DISAGREE: the direct pool round trip costs [0-9.]+%, the index's router-route test loses 97%: treat as a route-dependent sell trap until shown otherwise/);
+    expect(r.summary.match(/97%/g)?.length).toBe(1);
+    expect(r.summary).toMatch(/Freeweight index: custom pool hook\./);
+    const sim = r.data.sell_simulation as { agreement: string; verdict: string; index_reading: { sell_test: string; round_trip_cost: number } };
+    expect(sim.agreement).toBe("disagree");
+    expect(sim.verdict).toBe("cannot_sell");
+    expect(sim.index_reading).toEqual({ sell_test: "costly", round_trip_cost: 0.9701 });
     expect(r.index).toMatchObject({ sell_test: "costly", sell_cost: null, mint_possible: false });
   });
 
