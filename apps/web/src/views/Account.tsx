@@ -200,6 +200,19 @@ function BalanceSection({ me, config, models }: { me: Me | null; config: Config 
   const [closed, setClosed] = useState(false);
   const [confirming, setConfirming] = useState<{ have: number; need: number } | null>(null);
   const open = Boolean(config?.treasury) && !closed;
+  // Shown with its checksum, so a wallet that checks the case of an address accepts it as typed.
+  const [treasury, setTreasury] = useState("");
+  useEffect(() => {
+    const raw = config?.treasury;
+    if (!raw) return;
+    let on = true;
+    void import("../lib/viem").then(({ getAddress }) => {
+      if (on) setTreasury(getAddress(raw));
+    });
+    return () => {
+      on = false;
+    };
+  }, [config?.treasury]);
   const freeMin = config?.free_minutes ?? 5;
   const mounted = useRef(true);
   useEffect(
@@ -302,8 +315,8 @@ function BalanceSection({ me, config, models }: { me: Me | null; config: Config 
                   Send <b>ETH</b> or <b>USDG</b> on Robinhood Chain (chain id <span className="mono">{config?.chain_id}</span>) to the treasury address.
                 </p>
                 <div className="addr">
-                  <span className="mono">{config?.treasury}</span>
-                  <Copy text={config?.treasury ?? ""} label="Copy" />
+                  <span className="mono">{treasury || config?.treasury}</span>
+                  <Copy text={treasury || (config?.treasury ?? "")} label="Copy" />
                 </div>
               </li>
               <li>
@@ -374,6 +387,9 @@ function KeysSection({ me }: { me: Me | null }) {
     }
   }
 
+  /** The key whose delete was turned down last: its Delete button takes the focus back. */
+  const kept = useRef<string | null>(null);
+
   async function remove(k: ApiKey): Promise<void> {
     setRemoving(k.id);
     setError(null);
@@ -386,13 +402,15 @@ function KeysSection({ me }: { me: Me | null }) {
     } finally {
       setRemoving(null);
       setConfirm(null);
+      // The row and its buttons are gone: the focus goes to the heading of the list, not to nowhere.
+      document.getElementById("acct-keys")?.focus();
     }
   }
 
   return (
     <section className="sec" id="keys" aria-labelledby="acct-keys">
       <div className="sec-h">
-        <h2 className="h3" id="acct-keys">
+        <h2 className="h3" id="acct-keys" tabIndex={-1}>
           API keys
         </h2>
         <p>
@@ -415,7 +433,14 @@ function KeysSection({ me }: { me: Me | null }) {
                   <b>Copy this key now.</b> It is not shown again.
                 </p>
                 <Code title={fresh.name} code={fresh.key} wrap />
-                <button type="button" className="btn sm" onClick={() => setFresh(null)}>
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => {
+                    setFresh(null);
+                    document.getElementById("acct-keys")?.focus();
+                  }}
+                >
                   I have copied it
                 </button>
               </div>
@@ -439,15 +464,23 @@ function KeysSection({ me }: { me: Me | null }) {
                     <span className="key-act">
                       {confirm === k.id ? (
                         <>
-                          <button type="button" className="btn sm danger" onClick={() => void remove(k)} disabled={removing === k.id}>
+                          <button type="button" className="btn sm danger" autoFocus onClick={() => void remove(k)} disabled={removing === k.id}>
                             {removing === k.id ? "Deleting" : "Delete for good"}
                           </button>
-                          <button type="button" className="btn sm quiet" onClick={() => setConfirm(null)} disabled={removing === k.id}>
+                          <button
+                            type="button"
+                            className="btn sm quiet"
+                            onClick={() => {
+                              kept.current = k.id;
+                              setConfirm(null);
+                            }}
+                            disabled={removing === k.id}
+                          >
                             Keep
                           </button>
                         </>
                       ) : (
-                        <button type="button" className="btn sm quiet" onClick={() => setConfirm(k.id)} aria-label={`Delete key ${k.name}`}>
+                        <button type="button" className="btn sm quiet" autoFocus={kept.current === k.id} onClick={() => setConfirm(k.id)} aria-label={`Delete key ${k.name}`}>
                           Delete
                         </button>
                       )}
