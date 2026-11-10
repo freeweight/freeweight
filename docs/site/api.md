@@ -133,7 +133,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 502 | `hf_unavailable` | Hugging Face could not be read for a listing check. |
 | 503 | `model_waking` | The model is still waking after a 5-minute wait, or is being woken again. Carries `Retry-After`. The session is still live. |
 | 503 | `model_unavailable` | The model cannot be woken or reached right now. |
-| 503 | `misconfigured` | The service is not set up completely. Sign-in and the money routes are closed until it is. |
+| 503 | `misconfigured` | The service is not set up completely. Until it is, only the public reads answer: health, config, stats, receipts and the catalog. |
 | 503 | `model_lost` | The model stopped while the session was live and could not be woken again. The session has ended, and time after the model stopped is not charged. Start a new one. |
 | 503 | `trial_unavailable`, `turnstile_unavailable` | The human check for the free try is not set up or could not be reached right now. |
 | 503 | `topups_closed`, `rpc_unavailable`, `price_unavailable`, `price_out_of_bounds`, `ledger_unavailable` | Money paths that are closed or could not be checked. Nothing was charged or credited. |
