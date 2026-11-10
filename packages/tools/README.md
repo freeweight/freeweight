@@ -25,13 +25,28 @@ Connect an MCP client (Claude, Codex, the MCP Inspector) to the `/mcp` URL with 
 
 | key | effect |
 |---|---|
-| `RPC_URLS` | Per-chain RPC override, keyed by chain id or name (`"4663"`, `"base"`); a URL or a comma-separated list tried in order. **Set a keyed Robinhood Chain RPC in production**: from Workers' shared egress IPs the public RPC answers 429. |
+| `RPC_URLS` | Per-chain RPC override, keyed by chain id or name (`"4663"`, `"base"`); an https URL or a comma-separated list tried in order (`http://` entries are ignored). **Set a keyed Robinhood Chain RPC in production**: from Workers' shared egress IPs the public RPC answers 429. The RPC must support `eth_call` state overrides (code and balance) for the fresh-wallet sell test. |
 | `EXA_KEY` | Enables `web_search`. Without it the tool returns `not_configured`. |
 | `GITHUB_TOKEN` | Optional read-only token for `project_check` (keyless GitHub is 60 requests/hour per IP). |
-| `FACTS_URL`, `FACTS_KEY`, `FACTS_ACCESS_ID`, `FACTS_ACCESS_SECRET` | Optional Freeweight index for Robinhood Chain tokens (see Enrichment). |
+| `FACTS_URL`, `FACTS_KEY`, `FACTS_ACCESS_ID`, `FACTS_ACCESS_SECRET` | Optional Freeweight index for Robinhood Chain tokens (see Enrichment). `FACTS_URL` must be https. |
+| `MCP_ALLOWED_ORIGINS` | Browser origins allowed to call `handleMcp` (comma-separated exact origins). Requests without an `Origin` header (SDKs, CLIs, servers) and same-origin requests are always allowed; any other origin gets 403. |
 
-`ctx.cache` is optional; any object with KV's `get(key, "text")` / `put(key, value, { expirationTtl })` works.
-Without it the package keeps a small in-memory cache per isolate.
+`ctx.cache` is optional; any object with KV's `get(key, "text")` / `put(key, value, { expirationTtl })` works. It is
+used only for stable, shareable records (index facts, Sourcify, explorer creation records, GoPlus, RDAP, Wayback), only
+when they live at least 60 s, and at most 4 writes per tool call. Everything else stays in a per-isolate memory cache of
+at most 16 MB (256 KB per entry, LRU).
+
+### Limits
+
+| limit | value |
+|---|---|
+| wall clock per tool call | about 15 s; partial results are marked `partial` |
+| upstream requests per tool call | 40 (`MAX_SUBREQUESTS`), DNS-over-HTTPS lookups included; hitting it marks the result partial |
+| MCP request body | 1 MB (`MCP_LIMITS.maxBodyBytes`) |
+| MCP batches | refused for protocol 2025-06-18 and later; older versions: at most 8 messages and one `tools/call` (`MCP_LIMITS`) |
+| page analysis | first 256 KB of a page |
+
+A gateway in front should count tool calls, not HTTP requests.
 
 ## Chains
 
@@ -71,40 +86,56 @@ Each call has a budget of about 15 seconds and returns what it has, marked `part
 
 ## Tools
 
+Creator-written text (token names and symbols, pool symbols, contract names, page titles, revert strings) is never put
+in a summary raw: it appears cleaned, capped at 32 characters and in double quotes, and in `data` under keys ending in
+`_untrusted`. An RPC failure is never reported as a fact: the answer says "unknown" and the result is `partial`.
+
 ### `token_overview` `{ chain?, token }`
-Name, symbol, decimals and total supply from the contract; creator and creation time from an explorer (GoPlus as a
+Name, symbol (`name_untrusted`, `symbol_untrusted`), decimals and total supply from the contract; creator and creation time from an explorer (GoPlus as a
 fallback for the creator); USD price, FDV, market cap, liquidity and the main pool from DexScreener. The main pool is
 the deepest one; pools under $1k, or under 1% of the deepest and under $25k, are counted as junk and never used for
 price (tiny pools print fake wicks). Also lists websites and socials from DexScreener.
 
 ### `safety_check` `{ chain?, token }`
 Can a buyer sell, and what can the owner do?
-- **Sell simulation**: takes a real holder (GoPlus or explorer list, else a recent recipient) and runs an exact-input
-  swap of 10% of its balance into the main pool with `eth_call`, injecting a small helper contract at the holder's
-  address through a state override (`sol/SellProbe.sol`). Uniswap v2 and v3 style pools and Uniswap v4 (pool key from
-  `PositionManager.poolKeys` or the `Initialize` event) are covered; v4 hooks run as in a real sale. For v2 it measures
-  the token-level transfer tax. If a swap cannot be simulated it falls back to a holder-to-pool transfer simulation.
+- **Sell test**: a small buy-then-sell round trip from a fresh random address that nobody can have exempted, run with
+  `eth_call` and a state override that gives the address the probe's code and some native coin (`sol/SellProbe.sol`).
+  It buys about 0.3% of the pool's quote side (at least 0.0005, at most 1 native unit), sells everything it received,
+  and reports `round_trip_cost` plus approximate `buy_cost` / `sell_cost` against the DexScreener mid price (fractions of
+  value lost). More than 15% lost is **COSTLY**, more than 50% **EFFECTIVELY CANNOT SELL**, a failed sale **SELL
+  REVERTED**. Uniswap v2/v3 style pools against the wrapped native coin and Uniswap v4 pools against the native coin or
+  its wrapped form are covered, hooks included (pool key from `PositionManager.poolKeys` or the `Initialize` event).
+  When a fresh wallet cannot be used (other quote token, the buy reverts, no state-override support), sales of a small
+  amount are simulated from up to three real holders (recent small recipients first; never the largest holder, owner or
+  creator), and the reason is in `fresh_wallet_unavailable`. Every result names the wallet(s) it ran from; without a
+  cost figure it says "did not revert; cost not measured", never "OK". Last resort: a plain transfer from a holder.
 - **Static flags**: EIP-1967 / EIP-1167 proxy, `owner()` and whether it is renounced, owner-power functions found in
   the bytecode by a PUSH4 scan (mint, blacklist, pause, trading switch, fee setters, limits, exclusions, upgrade),
   Sourcify verification, and GoPlus token security where GoPlus covers the chain.
-- It never says "safe". Blind spots: traps that target certain wallets, sizes or later times; bonding-curve venues;
-  front-end tricks. GoPlus does not see Uniswap v4 hook logic.
+- It never says "safe". Blind spots: traps that target certain wallets, sizes, later times or particular routers (the
+  probe calls the pool directly); bonding-curve venues; front-end tricks. GoPlus does not see Uniswap v4 hook logic.
 
 ### `holders` `{ chain?, token, limit? }`
 Top holders with % of supply and tags (`pool`, `burn`, `creator`, `contract`), top-10 concentration excluding pools and
 burns, the share in DEX pools, burned (0xdead + 0x0) and the creator's share. Sources in order: Blockscout or Routescan
 holder list, GoPlus top 10, then a reconstruction from `Transfer` logs for young tokens (the scan is bounded; it reports
-`coverage: full` only when the mint is inside the scanned window). Top balances are re-read on-chain.
+`coverage: full` only when the mint is inside the scanned window, otherwise the result is `partial`). Up to 25 balances
+are re-read on-chain, so the top-10 figure does not depend on `limit`; its basis is in `top10_basis`. Unknown values
+(a failed balance check, unknown decimals) are null, never 0.
 
 ### `dev_history` `{ chain?, token, dev? }`
 Who launched the token: the creator, and when the creator is a factory or launchpad contract, the sender of the mint
 transaction. Then the launcher's other direct deployments (explorer) with their DexScreener state, its balance of this
 token, and how much it sent out (from logs, young tokens). Tokens launched through a launchpad by the same wallet do not
-show as its deployments.
+show as its deployments. A wallet with 20 or more direct deployments or 1,000 or more sent transactions is flagged as a
+likely shared launcher or deploy service (`launcher_looks_shared`), and its deployments are then not summarised as one
+developer's record.
 
 ### `official_ca` `{ chain?, token, url? }`
 Fetches the project site (given, or the first non-social website from DexScreener) and its same-origin JS bundles and
-checks whether the contract address appears; lists other addresses the site shows. Lists other tokens with the same
+checks whether the contract address appears as a standalone address (not inside a longer hex string). A mention next
+to warning words ("scam", "fake", "not our token" ...) is reported as such (`ca_mentioned_with_warning`) and does not
+count as the site showing the CA; one address among many is labelled. Lists other addresses the site shows. Lists other tokens with the same
 symbol on the chain with age and liquidity. Age and depth never decide which token is real.
 
 ### `project_check` `{ url? | chain? + token }`
@@ -151,13 +182,16 @@ a deployed Worker); the tools detect it, stop asking for ten minutes and use fal
 With `FACTS_URL` and `FACTS_KEY` set, the six token tools also ask the Freeweight index
 (`GET {FACTS_URL}/v1/{tool}?token=0x…`, header `X-FW-Facts-Key`, plus Cloudflare Access service-token headers when
 `FACTS_ACCESS_ID` / `FACTS_ACCESS_SECRET` are set). Only chain 4663, 60 s cache, 1.5 s timeout. Only documented fields
-are copied, into `index`; the summary gains one sentence. On any failure or an unknown token the tool answers from
-public sources and says so in `notes`. The index only knows tokens that reached about $5k market cap or drew real
+are copied, into `index`; the summary gains one sentence, and index facts replace a conflicting public sentence rather
+than sit next to it (an unreliable index price removes the public price; holders shows one top-10 figure with its
+basis). Keyed requests never follow redirects. On any failure or an unknown token the tool answers from public sources
+and says so in `notes`. The index only knows tokens that reached about $5k market cap or drew real
 buying, so `found: false` is common for brand-new launches.
 
 How the summary words index facts:
 - No price is given when the index marks the price unreliable (thin or junk markets), only "no reliable price".
-- A creator's launch count is "at least N": launches that never reached about $5k are not counted. A shared launcher
+- A creator's launch count is "at least N": launches that never reached about $5k are not counted; with none it says
+  "no other launch by this creator reached about $5k". A shared launcher
   contract (it launches for many people) is never presented as one developer's record.
 - "An earlier launch on the same site or repo is active now and this one is not the official token" comes from
   `copy_of_active_token`; `is_official: null` is said as "not resolved", never as "not official".
@@ -166,8 +200,9 @@ How the summary words index facts:
 ## Safety of fetched content
 
 - User-supplied URLs go through `safeFetch`: https only, default port, no credentials, no IP literals or internal host
-  names, DNS-over-HTTPS check that every address is public, manual redirects (at most 3, each re-checked), 1.5 MB and
-  7 s caps, text content types only.
+  names, DNS-over-HTTPS check (A and AAAA, fail closed, never cached) that every address is public, manual redirects
+  (at most 3, each re-checked; 2 for sites taken from token metadata), 1.5 MB and 7 s caps, text content types only.
+  On Workers this is defence in depth: the runtime resolves again when connecting and cannot reach private ranges.
 - Page content is untrusted. Tools return extracted facts and short snippets (keys end in `_untrusted`), never page
   bodies, and strip markup and control characters.
 
@@ -183,5 +218,5 @@ npm run smoke       # live: all tools against PEPE (Ethereum), DEGEN (Base), a l
 ```
 
 The sell probe's runtime bytecode lives in `src/util/sellprobe-code.ts`, generated from `sol/SellProbe.sol` with
-solc 0.8.26, optimizer 200 runs, `bytecode_hash = "none"`, `cbor_metadata = false` (any Foundry project with those
-settings: `forge build`, then copy `deployedBytecode.object`).
+solc 0.8.26, via-IR, optimizer 200 runs, `bytecode_hash = "none"`, `cbor_metadata = false` (any Foundry project with
+those settings: `forge build`, then copy `deployedBytecode.object`).
