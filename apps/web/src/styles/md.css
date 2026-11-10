@@ -1,0 +1,174 @@
+/* Rendered markdown: chat replies and docs. The caller wraps the output in .md */
+
+.md {
+  display: grid;
+  gap: var(--s3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.md > * {
+  min-width: 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: var(--s3);
+  scroll-margin-top: calc(var(--head) + var(--s4));
+}
+.md h1 {
+  font-size: 22px;
+  line-height: 28px;
+  letter-spacing: -0.015em;
+}
+.md h2 {
+  font-size: 18px;
+  line-height: 28px;
+}
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 15px;
+  line-height: 24px;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md strong {
+  font-weight: 650;
+}
+/* In a chat reply a single line break is meant. In a document it is only how the source was wrapped. */
+.md.md-chat p {
+  white-space: pre-line;
+}
+.md ul,
+.md ol {
+  display: grid;
+  gap: 6px;
+  padding-left: 22px;
+}
+.md li {
+  position: relative;
+  min-width: 0;
+}
+.md li > :is(ul, ol, .code, p, .md-table) {
+  margin-top: 6px;
+}
+/* bullets are small plates */
+.md ul > li::before {
+  content: "";
+  position: absolute;
+  left: -17px;
+  top: 10px;
+  width: 7px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--ink-3);
+}
+.md ol {
+  counter-reset: md;
+}
+.md ol > li {
+  counter-increment: md;
+}
+.md ol > li::before {
+  content: counter(md);
+  position: absolute;
+  left: -22px;
+  width: 14px;
+  text-align: right;
+  font: 500 12px/24px var(--mono);
+  color: var(--ink-3);
+}
+.md blockquote {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding-left: var(--s4);
+  border-left: 2px solid var(--line-2);
+  color: var(--ink-2);
+}
+.md hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin-block: var(--s2);
+}
+.md-table {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  scrollbar-width: thin;
+}
+.md-table table {
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: normal;
+}
+.md-table th {
+  font: 500 11px/16px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line-2);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.md-table td {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.md-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* heading anchors: a quiet # that shows on hover or focus */
+.md-anchor {
+  margin-left: 0.4em;
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity var(--fast);
+}
+.md :is(h1, h2, h3, h4):hover .md-anchor,
+.md-anchor:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .md-anchor {
+    display: none;
+  }
+}
+
+/* notes: [!NOTE] and friends */
+.md-note {
+  display: grid;
+  gap: var(--s1);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--ink-3);
+  border-radius: var(--r-1);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.md-note.tip,
+.md-note.important {
+  border-left-color: var(--accent);
+}
+.md-note.warning,
+.md-note.caution {
+  border-left-color: var(--danger);
+}
+.md-note.warning > .micro,
+.md-note.caution > .micro {
+  color: var(--danger);
+}
