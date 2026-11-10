@@ -1,0 +1,195 @@
+/* The wake box and its model picker. */
+
+.box {
+  display: grid;
+  gap: var(--s4);
+  padding: var(--s4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  min-width: 0;
+}
+.box-skel {
+  min-height: 292px;
+  animation: tick 1.2s ease-in-out infinite;
+}
+.box-pick {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pick {
+  position: relative;
+  min-width: 0;
+}
+.pick-btn,
+.pick-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name chev" "meta chev";
+  align-items: center;
+  column-gap: var(--s3);
+  row-gap: 2px;
+  text-align: left;
+}
+.pick-btn {
+  width: 100%;
+  min-height: 60px;
+  padding: var(--s2) var(--s3) var(--s2) var(--s4);
+  background: var(--raised);
+  border: 1px solid var(--field);
+  border-radius: var(--r-1);
+  transition: border-color var(--fast);
+}
+.pick-btn:hover,
+.pick-btn[aria-expanded="true"] {
+  border-color: var(--ink-2);
+}
+.pick-btn > svg {
+  grid-area: chev;
+  color: var(--ink-3);
+  transition: transform var(--fast);
+}
+.pick-btn[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+.pick-name {
+  grid-area: name;
+  font: 600 17px/24px var(--sans);
+  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  min-width: 0;
+}
+.pick-meta .mono {
+  font-size: 12px;
+}
+.pick-list {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: min(340px, 50dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+  padding: 4px;
+  background: var(--raised);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-1);
+  box-shadow: var(--shadow);
+}
+.pick-list li {
+  padding: var(--s2) var(--s3);
+  border-radius: 1px;
+  cursor: pointer;
+}
+.pick-list li .pick-name {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.pick-list li.on {
+  background: var(--line);
+}
+.pick-list li[aria-selected="true"] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.pick-list li[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+.pick-list li[aria-disabled="true"] .pick-name {
+  color: var(--ink-3);
+}
+
+.box-blurb {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  min-height: 40px;
+}
+.box-min {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+}
+.box-go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3) var(--s4);
+}
+.box-go .btn {
+  flex: 1 1 100%;
+}
+.box-cost {
+  font-size: 13px;
+  font-weight: 500;
+  padding-left: var(--s3);
+  margin-left: var(--s1);
+  border-left: 1px solid color-mix(in srgb, var(--on-accent) 35%, transparent);
+}
+.box-est {
+  flex: 1 1 200px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.box-ts:empty {
+  display: none;
+}
+.box-fine {
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+
+@media (min-width: 600px) {
+  .box {
+    padding: var(--s5);
+  }
+  .box-go .btn {
+    flex: 0 0 auto;
+  }
+  .pick-btn,
+  .pick-list li {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name meta chev";
+  }
+  .pick-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name meta";
+  }
+  .pick-btn {
+    min-height: 52px;
+  }
+  /* fixed columns, so the list reads as a table */
+  .pick-meta .tier {
+    width: 84px;
+  }
+  .pick-meta .mono {
+    width: 68px;
+    text-align: right;
+  }
+  .pick-meta .state {
+    width: 96px;
+  }
+}

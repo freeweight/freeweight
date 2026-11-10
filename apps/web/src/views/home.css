@@ -1,0 +1,442 @@
+/* Home. */
+
+.hero {
+  display: grid;
+  gap: var(--s7);
+  padding-block: var(--s6) var(--s7);
+}
+.hero-main {
+  min-width: 0;
+}
+.hero-kicker {
+  margin-bottom: var(--s4);
+}
+.hero-h {
+  font-size: clamp(40px, 10.6vw, 84px);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  font-weight: 300;
+  text-wrap: balance;
+}
+.hero-h b {
+  display: block;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+.hero-lead {
+  max-width: 54ch;
+  margin-block: var(--s5) var(--s6);
+}
+.hero-main .box,
+.hero-main > .notice {
+  max-width: 640px;
+}
+.hero-side {
+  display: grid;
+  gap: var(--s6);
+  align-content: start;
+  min-width: 0;
+}
+
+.board-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-2);
+}
+.board-list li {
+  border-bottom: 1px solid var(--line);
+}
+.board-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "dot name arrow" ". meta arrow";
+  align-items: center;
+  column-gap: var(--s3);
+  padding: 10px 0;
+}
+.board-dot {
+  grid-area: dot;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+.board-name {
+  grid-area: name;
+  font: 500 15px/20px var(--sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-meta {
+  grid-area: meta;
+  display: flex;
+  gap: var(--s3);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.board-meta .tier {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.board-row > svg {
+  grid-area: arrow;
+  color: var(--ink-3);
+  transition:
+    transform var(--fast),
+    color var(--fast);
+}
+.board-row:hover > svg {
+  color: var(--ink);
+  transform: translateX(2px);
+}
+.board-row:hover .board-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+/* An asleep model on the board: a hollow plate, and quieter than the ones under load. */
+.board-list .near .board-dot {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--field);
+}
+.board-list .near .board-name {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.board-list .near .board-meta .tier {
+  color: var(--ink-3);
+}
+.board-empty {
+  /* as tall as a row of the board */
+  display: flex;
+  align-items: center;
+  min-height: 61px;
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+/* The last sessions that ended: what each one cost. */
+.rcpt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--s3);
+  padding: 10px 0;
+}
+.rcpt .board-name {
+  grid-area: auto;
+  font-weight: 400;
+}
+.rcpt .board-meta {
+  grid-area: auto;
+  grid-column: 1 / -1;
+  display: block;
+  text-overflow: ellipsis;
+}
+.rcpt-total {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.board-fine {
+  margin-top: var(--s3);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+.reps-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s4) var(--s5);
+  padding-top: var(--s4);
+}
+
+.sect {
+  padding-block: var(--s6);
+}
+.sect:last-child {
+  padding-bottom: var(--s9);
+}
+
+/* how it works: cost over one session */
+.how-plot {
+  display: grid;
+  grid-template-columns: 3fr 2fr 4fr 3fr;
+  align-items: end;
+  height: 96px;
+}
+.how-seg {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 100%;
+}
+.how-seg.sleep {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.how-seg.sleep::after {
+  content: "";
+  width: 100%;
+  height: 6px;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.how-seg.sleep .micro {
+  padding-left: 2px;
+}
+.how-seg.wake,
+.how-seg.awake {
+  padding-inline: 2px 0;
+}
+.how-seg i {
+  flex: 1;
+  border-radius: 1px;
+}
+.how-seg.wake i {
+  background: var(--ink-3);
+}
+.how-seg.awake i {
+  height: 100%;
+  background: var(--accent);
+}
+.how-seg.awake {
+  padding-right: 2px;
+}
+.how .scale {
+  margin-top: 2px;
+}
+.how-legend {
+  display: grid;
+  gap: var(--s4);
+  margin-top: var(--s5);
+}
+.how-legend li {
+  display: grid;
+  gap: var(--s1);
+  align-content: start;
+}
+.how-legend .num {
+  color: var(--ink);
+  margin-right: 6px;
+}
+.how-legend li:nth-child(3) .micro {
+  color: var(--accent-ink);
+}
+.how-legend p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  max-width: 36ch;
+}
+
+/* ghost hosting: one day, two ways */
+.ghost,
+.classes {
+  display: grid;
+  gap: var(--s6);
+}
+.ghost-copy {
+  display: grid;
+  gap: var(--s4);
+  align-content: start;
+}
+.ghost-fig {
+  display: grid;
+  gap: var(--s4);
+  min-width: 0;
+}
+.day-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: 6px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.day-h .mono {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.day-h .mono.accent {
+  color: var(--accent-ink);
+}
+.day-strip {
+  position: relative;
+  height: 28px;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.day-strip.full {
+  background: repeating-linear-gradient(135deg, var(--ink-3) 0 1px, transparent 1px 5px);
+  box-shadow: inset 0 0 0 1px var(--ink-3);
+}
+.day-strip i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+.day-hours {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+/* weight classes */
+.classes-copy {
+  max-width: 44ch;
+}
+.classes-rows {
+  border-top: 1px solid var(--line-2);
+}
+.class-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name price" "card card" "note note";
+  align-items: baseline;
+  column-gap: var(--s4);
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--line);
+  transition: background var(--fast);
+}
+.class-name {
+  grid-area: name;
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+}
+.class-name .tier {
+  gap: var(--s3);
+}
+.class-name .plates {
+  width: 18px;
+  gap: 3px;
+  vertical-align: 0;
+}
+.class-name .plates i {
+  height: 4px;
+}
+.class-card {
+  grid-area: card;
+}
+.class-note {
+  grid-area: note;
+  font-size: 14px;
+  line-height: 20px;
+}
+.class-price {
+  grid-area: price;
+  font-size: 15px;
+  font-weight: 500;
+}
+.class-row:hover .class-name span:last-child {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+
+/* roadmap teaser */
+.teaser {
+  display: grid;
+}
+.teaser-row {
+  display: grid;
+  gap: var(--s1);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.teaser-row:first-child {
+  border-top: 1px solid var(--line-2);
+}
+.teaser-when.now {
+  color: var(--accent-ink);
+}
+.teaser-when.launch {
+  color: var(--ink-2);
+}
+.teaser-what {
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink-2);
+}
+.teaser-row:first-child .teaser-what {
+  color: var(--ink);
+}
+.teaser-more {
+  justify-self: start;
+  margin-top: var(--s4);
+}
+
+@media (min-width: 720px) {
+  .sect {
+    padding-block: var(--s7);
+  }
+  .how-plot {
+    height: 128px;
+  }
+  .how-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s4) var(--s6);
+  }
+  .class-row {
+    grid-template-columns: 168px 112px minmax(0, 1fr) auto;
+    grid-template-areas: "name card note price";
+  }
+  .teaser-row {
+    grid-template-columns: 168px minmax(0, 1fr);
+    gap: var(--s4);
+    align-items: baseline;
+  }
+}
+/* In one column the board is a glance, not a list: three rows, unless more than that are awake. */
+@media (max-width: 999.98px) {
+  .board-list li.near:nth-child(n + 4) {
+    display: none;
+  }
+}
+@media (min-width: 1000px) {
+  /* wide enough for each caption to sit under its own stretch of the plot */
+  .how-legend {
+    grid-template-columns: 3fr 2fr 4fr 3fr;
+    gap: 0;
+    margin-top: var(--s3);
+  }
+  .how-legend li {
+    padding-right: var(--s5);
+  }
+  .hero {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: var(--s8);
+    padding-block: var(--s8) var(--s8);
+  }
+  /* the board lines up with the headline, the counters with the foot of the wake box */
+  .hero-side {
+    padding-top: var(--s6);
+    align-content: space-between;
+  }
+  .ghost,
+  .classes {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: var(--s8);
+  }
+}
+
+/* A session already running: one quiet line above the box. */
+.hero-resume {
+  max-width: 640px;
+  margin-bottom: var(--s4);
+}
