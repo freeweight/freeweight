@@ -183,9 +183,9 @@ function Receipts({ models }: { models: Model[] | null }) {
       </div>
       <ul className="board-list">
         {rows.map((r, i) => (
-          <li key={`${r.model_id}-${r.ended_at}-${i}`} className="rcpt">
+          <li key={`${r.model_id}-${r.ended_at}-${i}`} className="rep">
             <span className="board-name">{models?.find((m) => m.id === r.model_id)?.name ?? r.model_id}</span>
-            <b className={`mono rcpt-total${r.free ? " dim" : ""}`}>{r.free ? "free" : usd(r.price_usd_micro)}</b>
+            <b className={`mono rep-total${r.free ? " dim" : ""}`}>{r.free ? "free" : usd(r.price_usd_micro)}</b>
             <span className="board-meta mono">
               {r.minutes.toFixed(2)} min
               {r.wake_s >= 1 ? ` · wake ${clock(r.wake_s * 1000)}` : ""} · {ago(Date.now() - r.ended_at)} ago

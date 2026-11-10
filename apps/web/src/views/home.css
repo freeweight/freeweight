@@ -124,24 +124,24 @@
   line-height: 20px;
   color: var(--ink-2);
 }
-/* The last sessions that ended: what each one cost. */
-.rcpt {
+/* The last sessions that ended: what each one cost. A name of its own: the receipt page lays out a different block. */
+.rep {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: var(--s3);
   padding: 10px 0;
 }
-.rcpt .board-name {
+.rep .board-name {
   grid-area: auto;
   font-weight: 400;
 }
-.rcpt .board-meta {
+.rep .board-meta {
   grid-area: auto;
   grid-column: 1 / -1;
   display: block;
   text-overflow: ellipsis;
 }
-.rcpt-total {
+.rep-total {
   font-size: 13px;
   line-height: 20px;
   font-weight: 500;
