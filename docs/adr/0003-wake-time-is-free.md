@@ -30,6 +30,9 @@ The session clock starts when the lane reports the model ready, and not before.
   charged at least one minute once the model was ready for it, and by the second above that. A paid session that
   its renter stops before `ready` is an uncharged wake: an account gets 3 of those in a rolling hour and 10 in a
   day, then the next start is refused with `429 wake_budget`. A wake that failed on the lane's side never counts.
+  An account is a wallet and free to make, so the service as a whole also caps the uncharged wakes it gives
+  away in an hour. Past that, a stop before `ready` costs the one-minute
+  minimum and the receipt says why (`note: "wake_minimum"`).
   The free try is limited per visitor, per network address and per day (see the threat model).
 
 ## Alternatives

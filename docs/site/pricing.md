@@ -73,6 +73,10 @@ Free wakes have a limit. A paid session that you stop before the model is ready 
 more than 3 of those in an hour, or 10 in a day, the next start is refused with `429 wake_budget` until the
 limit clears. A wake that failed on our side never counts.
 
+The service as a whole also gives away only a limited number of uncharged wakes in an hour, across all renters.
+Past that, a paid session that you stop before the model is ready costs the one-minute minimum and does not count
+against your own limit. Its receipt says why, with the note `wake_minimum`.
+
 The same holds when a model drops while your session is running. The session is paused, the model is woken
 again, and your clock stands still until it is ready. If it cannot be woken again, the session ends and you pay
 only for the time before the model stopped. See [models](/docs/models#if-a-model-drops-during-a-session).

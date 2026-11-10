@@ -38,7 +38,8 @@ staging address with the same paths. `/api` has no version prefix and can still 
   The code is `upstream_error` (retry) or `session_ended` (start a new session).
 - A paid session stopped before the model is ready is an uncharged wake. After more than 3 in an hour or 10 in
   a day, the next start answers `429 wake_budget` with `retry_after` (seconds) in the body and a `Retry-After`
-  header.
+  header. When the service has given away its share of uncharged wakes for the hour, such a stop costs the one-minute
+  minimum instead and the receipt carries `note: "wake_minimum"`.
 - Errors are `{"error": {"code", "message", "type"}}`. Program against `code`. Retry `429 rate_limited`,
   `502 upstream_error`, `503 model_waking` and `504 upstream_timeout`. Start a new session after
   `409 session_ended` or `503 model_lost`. `402 insufficient_balance` needs a top-up by the wallet owner.

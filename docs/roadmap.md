@@ -10,7 +10,7 @@ v0.1 runs on a staging address, not on the public domain.
 - **Three models:** `qwen3-8b` (Light), `qwen3-32b` (Medium) and `llama33-70b` (Heavy, preview). Each is pinned
   to a commit and has a context of 16384 tokens. Tool calling is on for the two Qwen3 models.
 - **Sessions by the GPU minute.** Billed by the second, with a one-minute minimum once the model is awake. The
-  wake is free, within a budget of uncharged wakes per account.
+  wake is free, within a budget of uncharged wakes per account and a ceiling for the service as a whole.
 - **The free try:** 5 minutes on a Light model, from the browser, after a human check.
 - **The API:** the catalog, sessions with a live event stream, API keys (with `auto_session`), receipts, and an
   OpenAI-compatible `/v1`.

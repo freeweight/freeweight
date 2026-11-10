@@ -30,7 +30,7 @@ changes with it.
 | Ledger | Every credit and charge on your balance, with a reference and a time. | Billing. Entries cannot be edited or deleted. |
 | Top-ups | Transaction hash, sending address, asset, amount, block number, and the ETH price used. | To credit a payment once. |
 | Free try | A random visitor id from a cookie (or your wallet address, if you are signed in), a salted and shortened hash of your network address, the day, and the cost of the session. | The daily limits on the free try. |
-| Stopped wakes | The session id, your wallet address and the time, when you stop a paid session before the model is ready. | The limit on free wakes. |
+| Stopped wakes | The session id, your wallet address and the time, when you stop a paid session before the model is ready and it is not charged. | The limit on free wakes, per account and for the service as a whole. |
 | Wake records | Model, GPU source, duration, outcome and a short error text. No account. | Wake estimates and fault finding. |
 | Sign-in | The one-time code from your sign-in message and when it was used. | To stop a signature being replayed. |
 | Model listings | Repository name, commit, the owner's wallet address, check results, and the end of the build log. | To list a model and credit its owner. |

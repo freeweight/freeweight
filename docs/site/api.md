@@ -240,6 +240,10 @@ wake. After more than 3 of those in a rolling hour, or 10 in a day, the next sta
 with `retry_after` in the body, in seconds, and a `Retry-After` header. A wake that failed on our side never
 counts.
 
+When the service has given away its share of uncharged wakes for the hour, a paid session stopped before the
+model is ready is charged the one-minute minimum instead, is not counted against the account, and its receipt
+carries `note: "wake_minimum"`.
+
 A `Session`:
 
 ```json
@@ -302,6 +306,7 @@ A `receipt`:
 | `tokens_in`, `tokens_out` | Totals. |
 | `wake_s` | Seconds from your request to a ready model, for the first wake. |
 | `reason` | `stopped`, `time`, `idle`, `model_lost`, `wake_failed`, `wake_timeout` or `funding_error`. |
+| `note` | Present only when the price needs a word the other fields do not give. `wake_minimum`: the session was stopped before the model was ready, at an hour when the service had given away its share of uncharged wakes, so it was charged the one-minute minimum. |
 
 ### Read a session
 
@@ -360,7 +365,9 @@ started it, through its sign-in or one of its API keys, or for a free try the br
 session id alone is not enough: the answer is `404 session_not_found`.
 
 A paid session is billed by the second, with a one-minute minimum once the model is awake. Stopping a session
-during its first wake costs nothing, and for a paid session it counts against the wake budget. Stopping a
+during its first wake costs nothing, and for a paid session it counts against the wake budget. When the service
+has given away its share of uncharged wakes for the hour, such a stop costs the one-minute minimum instead and is
+not counted (`note: "wake_minimum"` on the receipt). Stopping a
 paused session costs the seconds used before the pause, with the same minimum. A session that ends because
 the model was lost (`model_lost`) pays for its seconds only, with no minimum. Stopping an ended session
 returns it unchanged.
