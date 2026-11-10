@@ -539,3 +539,51 @@ describe("#9 official_ca matches standalone addresses and reads their context", 
     expect(r.summary).toMatch(/CA appears on plain\.xyz/);
   });
 });
+
+describe("#20 shared launchers are not presented as one developer", () => {
+  it("a wallet with a huge nonce is flagged and its deployments are not summarised as a record", async () => {
+    fresh();
+    const TOKEN = "0x" + "61".repeat(20);
+    const DEV = "0x" + "62".repeat(20);
+    const f = fakeFetch([
+      rpcRoute((method, params) => {
+        const p = params as [unknown];
+        if (method === "eth_getCode") return p[0] === TOKEN ? "0x6080" : "0x";
+        if (method === "eth_getTransactionCount") return "0x" + (250_000).toString(16);
+        if (method === "eth_blockNumber") return "0x10";
+        if (method === "eth_getLogs") return [];
+        if (method === "eth_call") {
+          const d = (p[0] as { data: string }).data;
+          if (d.startsWith("0x313ce567")) return word(18n);
+          if (d.startsWith("0x18160ddd")) return word(10n ** 27n);
+          return word(0n);
+        }
+        return null;
+      }),
+      (url) => (url.includes("eth.blockscout.com/api/v2/addresses/" + TOKEN) ? json({ creator_address_hash: DEV, creation_transaction_hash: null }) : null),
+      (url) => (url.includes("routescan") && url.includes("txlist") ? json({ status: "1", result: [] }) : null),
+      (url) => (url.includes("dexscreener") ? json([]) : null),
+      (url) => (url.includes("gopluslabs") ? json({ code: 1, message: "OK", result: {} }) : null),
+    ]);
+    const r = await runTool("dev_history", { chain: "ethereum", token: TOKEN }, { env: { RPC_URLS: { "1": RPC } }, fetch: f });
+    expect(r.data.launcher).toBe(DEV);
+    expect(r.data.launcher_looks_shared).toBe(true);
+    expect(r.summary).toMatch(/shared launcher or deploy service \(250000 transactions sent\)/);
+    expect(r.summary).not.toMatch(/other token\(s\) deployed directly/);
+  });
+});
+
+describe("#21 project_check sends a trimmed token to the index", () => {
+  it("strips whitespace before the index call", async () => {
+    fresh();
+    const seen: string[] = [];
+    const f = (async (input: RequestInfo | URL) => {
+      const u = String(input);
+      seen.push(u);
+      if (u.startsWith("https://facts.example.org")) return json({ found: false, data: null });
+      return json([]);
+    }) as typeof fetch;
+    await runTool("project_check", { token: "  0x" + "ab".repeat(20) + " " }, { env: { FACTS_URL: "https://facts.example.org", FACTS_KEY: "k" }, fetch: f });
+    expect(seen.find((u) => u.startsWith("https://facts.example.org"))).toBe(`https://facts.example.org/v1/project_check?token=0x${"ab".repeat(20)}`);
+  });
+});

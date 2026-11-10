@@ -105,7 +105,7 @@ export const projectCheck = defineTool({
     properties: { url: { type: "string", description: "Project website (https)." }, chain: CHAIN_PROP, token: TOKEN_PROP },
     additionalProperties: false,
   },
-  enrich: (a) => (isAddress(a.token) ? { chain: chainArg(a), token: String(a.token).toLowerCase() } : null),
+  enrich: (a) => (isAddress(a.token) ? { chain: chainArg(a), token: addr(a, "token")! } : null),
   run: async (args, run) => {
     let url = str(args, "url", 2000);
     const token = addr(args, "token", false);

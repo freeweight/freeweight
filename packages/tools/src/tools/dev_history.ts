@@ -11,6 +11,9 @@ import { pickMainPool, tokenPairs, type DsPair } from "../sources/dexscreener.js
 import type { Chain } from "../chains.js";
 import { encodeFunctionData, parseAbi, decodeFunctionResult, type Hex } from "viem";
 
+/** A wallet with this many direct deployments, or this many sent transactions, is treated as a shared launcher/relayer. */
+const SHARED_DEPLOYS = 20;
+const SHARED_NONCE = 1000;
 const ZERO_TOPIC = "0x" + "0".repeat(64);
 const pad = (a: string) => "0x" + "0".repeat(24) + a.slice(2).toLowerCase();
 const SYM = parseAbi(["function symbol() view returns (string)"]);
@@ -80,8 +83,19 @@ export const devHistory = defineTool({
       };
     }
 
-    // Other deployments (explorer only).
-    const deployed = await deployedBy(run, chain, launcher).catch(() => null);
+    // Other deployments (explorer only) and the wallet's transaction count, to spot shared launchers and relayers.
+    const [deployed, nonceHex] = await Promise.all([
+      deployedBy(run, chain, launcher).catch(() => null),
+      rpc<string>(run, chain, "eth_getTransactionCount", [launcher, "latest"], { ttl: 300 }).catch(() => null),
+    ]);
+    const nonce = nonceHex ? Number(BigInt(nonceHex)) : null;
+    const sharedWhy: string[] = [];
+    if (deployed && (deployed.contracts.length >= SHARED_DEPLOYS || deployed.more)) sharedWhy.push(`${deployed.contracts.length}${deployed.more ? "+" : ""} direct deployments`);
+    if (nonce !== null && nonce >= SHARED_NONCE) sharedWhy.push(`${nonce} transactions sent`);
+    const looksShared = sharedWhy.length > 0;
+    if (launcherVia === "sender of the mint transaction") {
+      run.note("The mint transaction's sender can be a launchpad relayer or deploy service acting for someone else, not the person behind the token.");
+    }
     const others = (deployed?.contracts ?? []).filter((c) => c.address !== token).slice(0, 25);
     let otherRows: Record<string, unknown>[] = [];
     if (others.length) {
@@ -148,13 +162,16 @@ export const devHistory = defineTool({
     const parts: string[] = [];
     parts.push(`${meta.symbol ? quoteUntrusted(meta.symbol) + " " + short(token) : short(token)} on ${chain.name} launched by ${short(launcher)} (${launcherVia})`);
     if (creator.creator && creator.creator !== launcher) parts.push(`via contract ${short(creator.creator)}`);
-    if (deployed) parts.push(`${tokens.length} other token(s) deployed directly by this wallet${deployed.more ? " (more not scanned)" : ""}: ${live.length} with ≥$10k liquidity now, ${dead.length} dead or unlisted`);
+    if (looksShared) {
+      // Never summarise a shared wallet's deployments as one developer's track record.
+      parts.push(`this wallet looks like a shared launcher or deploy service (${sharedWhy.join(", ")}): its deployments are not one developer's record`);
+    } else if (deployed) parts.push(`${tokens.length} other token(s) deployed directly by this wallet${deployed.more ? " (more not scanned)" : ""}: ${live.length} with ≥$10k liquidity now, ${dead.length} dead or unlisted`);
     else parts.push("other deployments unknown (no keyless explorer answered)");
     if (bal !== null) parts.push(`launcher holds ${fmtPct(supply > 0n ? Number((bal * 1_000_000n) / supply) / 10_000 : null)} of supply`);
     if (flow) parts.push(`sent ${fmtPct(flow.sent_pct_supply as number | null)} of supply out (${flow.out_transfers} transfers${flow.complete ? "" : ", partial"})`);
     if (gp?.honeypot_with_same_creator === "1") parts.push("GoPlus: this creator has made a honeypot before");
     const best = [...live].sort((a, b) => ((b.dex as { fdv_usd: number }).fdv_usd ?? 0) - ((a.dex as { fdv_usd: number }).fdv_usd ?? 0))[0];
-    if (best) parts.push(`best other: ${best.symbol_untrusted ? quoteUntrusted(best.symbol_untrusted as string) : short(best.address as string)} FDV ${fmtUsd((best.dex as { fdv_usd: number }).fdv_usd)}`);
+    if (best && !looksShared) parts.push(`best other: ${best.symbol_untrusted ? quoteUntrusted(best.symbol_untrusted as string) : short(best.address as string)} FDV ${fmtUsd((best.dex as { fdv_usd: number }).fdv_usd)}`);
     run.note("Direct deployments only: tokens made through a launchpad by the same wallet do not show as its deployments.");
 
     return {
@@ -167,6 +184,9 @@ export const devHistory = defineTool({
         creator_is_contract: creator.creator_is_contract ?? null,
         launcher,
         launcher_found_via: launcherVia,
+        launcher_nonce: nonce,
+        launcher_looks_shared: looksShared,
+        launcher_shared_reasons: sharedWhy,
         launch_tx: launchTx,
         launcher_balance: units(bal, dec),
         launcher_balance_pct: bal !== null && supply > 0n ? round(Number((bal * 1_000_000n) / supply) / 10_000, 4) : null,
