@@ -42,9 +42,12 @@ for (const f of entryCss) {
 console.log(`  ${kb(js)}  JS total (gzip)`);
 console.log(`  ${kb(css)}  CSS total (gzip)`);
 // A page of the docs is built as a chunk that holds one string and nothing else. That is text, not code, and it
-// grows with the docs: it is listed here and left out of the budget for code.
+// grows with the docs: it is listed here and left out of the budget for code. The pattern takes one complete string
+// literal, escapes included, so code standing between two strings, or inside ${} of a template, is never read as text.
 const isText = (file) =>
-  /^const (\w+)=(['"`])[\s\S]*\2;export\{\1 as default\};?\s*$/.test(readFileSync(join(dist, file), "utf8"));
+  /^const (\w+)=("(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|`(?:[^`\\$]|\\[\s\S]|\$(?!\{))*`);export\{\1 as default\};?\s*$/.test(
+    readFileSync(join(dist, file), "utf8"),
+  );
 const text = rest.filter((f) => f.endsWith(".js") && isText(f));
 const sum = (files) => files.reduce((n, f) => n + gz(f), 0);
 
