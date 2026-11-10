@@ -195,7 +195,7 @@ export const safetyCheck = defineTool({
           ? `a transfer from holder ${short(sims[0]!.from)} FAILED (${bad.map((b) => `${b.to_kind}: ${b.result}`).join(", ")})`
           : err.length
             ? "transfer test could not run (RPC error)"
-            : `a plain transfer from holder ${short(sims[0]!.from)} into the pool goes through (not a sale)`,
+            : `a plain transfer from holder ${short(sims[0]!.from)} ${sims.some((x) => x.to_kind === "main pool") ? "into the pool" : "to a fresh address"} goes through (not a sale)`,
       );
     }
     if (gpFlags) {

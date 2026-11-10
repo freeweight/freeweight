@@ -24,7 +24,7 @@ export const tokenOverview = defineTool({
     // One price only: the index's main-venue price when it is reliable, none when the index says it is not.
     const d = body.data;
     const parts = body.parts!;
-    const liq = `liquidity ${fmtUsd(d.liquidity_usd as number | null)} in DexScreener pools`;
+    const liq = d.main_pool ? `liquidity ${fmtUsd(d.liquidity_usd as number | null)} in DexScreener pools` : "no DEX pool on DexScreener yet";
     if (f.price_reliable === false || f.price_usd === null) {
       d.dexscreener_price_usd_unreliable = d.price_usd;
       d.price_usd = null;
