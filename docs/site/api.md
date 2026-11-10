@@ -525,7 +525,7 @@ The session clock runs while they do.
 
 ## Account
 
-These need a wallet: an API key or the browser sign-in.
+`GET /api/me` answers for anyone. The other routes here need a wallet: an API key or the browser sign-in.
 
 ### `GET /api/me`
 
@@ -546,8 +546,8 @@ These need a wallet: an API key or the browser sign-in.
 
 `balance_usd_micro` is what you can spend now. `held_usd_micro` is held by live sessions and is not part of the
 balance. `sessions` lists up to 5 live sessions. `listing_proof_line` is the line this wallet puts in a model's
-README to [list it](/docs/listing). Without a wallet the same shape comes back with `address: null` and without
-`listing_proof_line`.
+README to [list it](/docs/listing). Without a wallet it comes back with `address: null`, no
+`listing_proof_line`, and `perks` holding only `enabled`.
 
 ### API keys
 
