@@ -68,8 +68,9 @@ The site signs you in with a wallet signature. It is a signed message, not a tra
 
 1. `GET /api/auth/nonce` returns `{ "nonce": "..." }` and sets a short-lived cookie. The nonce is valid for 10
    minutes.
-2. The wallet signs a Sign-In with Ethereum (EIP-4361) message. Its domain and URI must be the site's host, it
-   must carry the nonce, and it must have been issued within the last 10 minutes.
+2. The wallet signs a Sign-In with Ethereum (EIP-4361) message. Its domain and URI must be the site's host, its
+   chain id must be 4663 (`chain.id` in `GET /api/config`), it must carry the nonce, and it must have been issued
+   within the last 10 minutes.
 3. `POST /api/auth/verify` with `{ "message": "...", "signature": "0x..." }` returns `{ "address": "0x..." }` and
    sets the `fw_session` cookie for 30 days. Contract wallets are checked with ERC-1271 on Robinhood Chain.
 4. `POST /api/auth/logout` clears the cookie.
