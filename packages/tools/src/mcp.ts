@@ -6,7 +6,7 @@
 import type { ToolCtx } from "./types.js";
 import { tools, runTool, getTool } from "./registry.js";
 
-export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] as const;
+export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"] as const;
 export const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 export const SERVER_INFO = { name: "freeweight-tools", title: "Freeweight chain toolkit", version: "0.1.0" };
 const MAX_BODY = 1_000_000;

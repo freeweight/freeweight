@@ -11,6 +11,11 @@ import type { Run } from "../util/http.js";
 const BLOCKED = new Map<string, number>();
 const BLOCK_MS = 10 * 60_000;
 
+/** Test hook. */
+export function resetExplorerCircuit(): void {
+  BLOCKED.clear();
+}
+
 export function explorerBlocked(host: string): boolean {
   const until = BLOCKED.get(host);
   return until !== undefined && until > Date.now();

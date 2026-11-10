@@ -7,6 +7,7 @@ const UA = "freeweight-tools/0.1 (+read-only token toolkit)";
 type MemEntry = { exp: number; value: string };
 const MEM = new Map<string, MemEntry>();
 const MEM_MAX = 600;
+const INFLIGHT = new Map<string, Promise<string>>();
 
 function memGet(key: string): string | undefined {
   const e = MEM.get(key);
@@ -114,6 +115,26 @@ export class Run {
         }
       }
     }
+    // Coalesce identical in-flight requests (two sources asking for the same GoPlus record at once).
+    if (ttl > 0) {
+      const pending = INFLIGHT.get(key);
+      if (pending) {
+        const body = await pending;
+        this.addSource(o, url);
+        return body;
+      }
+      const p = this.fetchWithRetry(url, o, key, ttl);
+      INFLIGHT.set(key, p);
+      try {
+        return await p;
+      } finally {
+        INFLIGHT.delete(key);
+      }
+    }
+    return this.fetchWithRetry(url, o, key, ttl);
+  }
+
+  private async fetchWithRetry(url: string, o: FetchOpts, key: string, ttl: number): Promise<string> {
     const retries = o.retries ?? 1;
     let lastErr: unknown;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -225,4 +246,34 @@ export async function soft<T>(run: Run, source: string, p: Promise<T>): Promise<
     run.miss(source, e);
     return undefined;
   }
+}
+
+/** Read at most maxBytes, cancelling the rest of the stream. */
+export async function readUpTo(res: Response, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
+  if (!res.body) return { text: "", truncated: false };
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const room = maxBytes - total;
+    if (value.byteLength > room) {
+      chunks.push(value.subarray(0, room));
+      total += room;
+      truncated = true;
+      await reader.cancel().catch(() => undefined);
+      break;
+    }
+    chunks.push(value);
+    total += value.byteLength;
+  }
+  const buf = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.byteLength;
+  }
+  return { text: new TextDecoder().decode(buf), truncated };
 }

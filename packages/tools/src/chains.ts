@@ -27,6 +27,8 @@ export type Chain = {
   blockTime: number;
   /** Max blocks per address-filtered getLogs call we are willing to try. */
   logsSpan: number;
+  /** Max concurrent single RPC calls per host (public endpoints rate-limit bursts). */
+  rpcConcurrency?: number;
 };
 
 export const CHAINS: Chain[] = [
@@ -44,6 +46,7 @@ export const CHAINS: Chain[] = [
     goplus: "4663",
     blockTime: 0.1,
     logsSpan: 10_000_000,
+    rpcConcurrency: 2,
   },
   {
     id: 1,

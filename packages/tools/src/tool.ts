@@ -4,7 +4,7 @@ import { InputError } from "./util/args.js";
 import { Run } from "./util/http.js";
 import { fetchEnrichment } from "./sources/facts.js";
 
-export type Body = { summary: string; data: Record<string, unknown>; ok?: boolean };
+export type Body = { summary: string; data: Record<string, unknown>; ok?: boolean; error?: { code: string; message: string } };
 
 export type ToolSpec = {
   name: string;
@@ -47,6 +47,8 @@ async function execute(spec: ToolSpec, args: Record<string, unknown>, ctx: ToolC
       notes: run.notes,
       sources: [...run.sources],
     };
+    if (body.error) res.error = body.error;
+    else if (res.ok === false) res.error = { code: "no_result", message: body.summary.slice(0, 200) };
     if (enriched !== undefined) {
       res.enriched = enriched;
       res.sources.push("Freeweight index");

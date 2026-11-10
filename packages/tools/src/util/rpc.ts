@@ -64,7 +64,7 @@ export async function rpc<T = unknown>(run: Run, chain: Chain, method: string, p
       /* ignore */
     }
     try {
-      const txt = await gate(host, 4, () =>
+      const txt = await gate(host, chain.rpcConcurrency ?? 4, () =>
         run.text(url, {
           source: `rpc ${chain.key}`,
           method: "POST",
@@ -173,31 +173,48 @@ export function units(raw: bigint | null | undefined, decimals: number | null | 
 export const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
 /**
- * JSON-RPC batch (one HTTP request). Returns per-call results, null for a failed item.
- * Falls back to individual calls if the endpoint rejects batches.
+ * JSON-RPC batches of up to 10 calls (one HTTP request each). Returns per-call results, null for a failed item.
+ * Items that fail inside a batch (rate limits, batch-size limits) are retried one by one through rpc().
  */
 export async function rpcBatch(run: Run, chain: Chain, calls: { method: string; params: unknown[] }[]): Promise<(unknown | null)[]> {
   if (calls.length === 0) return [];
   for (const c of calls) if (!RPC_ALLOW.has(c.method)) throw new RpcError(-32601, `method ${c.method} not allowed`);
   const urls = rpcUrls(chain, run.ctx.env.RPC_URLS);
-  const base = rpcId;
-  rpcId += calls.length;
-  const body = JSON.stringify(calls.map((c, i) => ({ jsonrpc: "2.0", id: base + i, method: c.method, params: c.params })));
-  for (const url of urls) {
-    try {
-      const txt = await run.text(url, { source: `rpc ${chain.key}`, method: "POST", body, ttl: 0, timeoutMs: 8000, retries: 1, public: false });
-      const arr = JSON.parse(txt) as { id: number; result?: unknown; error?: unknown }[];
-      if (!Array.isArray(arr)) continue;
-      const byId = new Map(arr.map((r) => [r.id, r]));
-      return calls.map((_, i) => {
-        const r = byId.get(base + i);
-        return r && r.error === undefined ? (r.result ?? null) : null;
-      });
-    } catch (e) {
-      if (e instanceof HttpError && e.message.includes("time budget")) throw e;
+  const out: (unknown | null)[] = new Array(calls.length).fill(null);
+  const failed: number[] = [];
+  for (let off = 0; off < calls.length; off += 10) {
+    const chunk = calls.slice(off, off + 10);
+    const base = rpcId;
+    rpcId += chunk.length;
+    const body = JSON.stringify(chunk.map((c, i) => ({ jsonrpc: "2.0", id: base + i, method: c.method, params: c.params })));
+    let got: { id: number; result?: unknown; error?: unknown }[] | null = null;
+    for (const url of urls) {
+      try {
+        const txt = await run.text(url, { source: `rpc ${chain.key}`, method: "POST", body, ttl: 0, timeoutMs: 8000, retries: 2, public: false });
+        const arr = JSON.parse(txt) as { id: number; result?: unknown; error?: unknown }[];
+        if (Array.isArray(arr) && arr.some((r) => r.error === undefined)) {
+          got = arr;
+          break;
+        }
+      } catch (e) {
+        if (e instanceof HttpError && e.message.includes("time budget")) throw e;
+      }
     }
+    const byId = new Map((got ?? []).map((r) => [r.id, r]));
+    chunk.forEach((_, i) => {
+      const r = byId.get(base + i);
+      if (r && r.error === undefined) out[off + i] = r.result ?? null;
+      else failed.push(off + i);
+    });
   }
-  return Promise.all(calls.map((c) => rpc(run, chain, c.method, c.params).catch(() => null)));
+  if (failed.length && failed.length <= 20) {
+    await Promise.all(
+      failed.map(async (i) => {
+        out[i] = await rpc(run, chain, calls[i]!.method, calls[i]!.params).catch(() => null);
+      }),
+    );
+  }
+  return out;
 }
 
 export function balanceOfData(holder: string): Hex {
