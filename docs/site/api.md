@@ -151,9 +151,9 @@ No authentication.
 | `GET /api/config` | Prices, session limits, the chain, top-up details, the owner share. |
 | `GET /api/models` | `{ models: [Model] }`: the catalog with live state. |
 | `GET /api/models/{id}` | One `Model`. |
-| `GET /api/awake` | `{ awake: [{ model_id, since, sessions }] }`: models on a GPU now. |
-| `GET /api/stats` | `{ gpu_seconds, sessions, tokens, wakes, median_wake_s }`: service totals. `median_wake_s` is `null` before the first wake. |
-| `GET /api/receipts` | `{ receipts: [...] }`: the last 20 ended sessions, without any account data. |
+| `GET /api/awake` | `{ awake: [{ model_id, since, sessions }] }`: listed models on a GPU now. |
+| `GET /api/stats` | `{ gpu_seconds, sessions, tokens, wakes, median_wake_s }`: service totals for listed models. `median_wake_s` is `null` before the first wake. The totals are counted again at most every 30 seconds, so they can be up to 30 seconds old. |
+| `GET /api/receipts` | `{ receipts: [...] }`: the last 20 ended sessions on listed models, without any account data. |
 
 A `Model`:
 

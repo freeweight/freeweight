@@ -69,7 +69,17 @@ The licence allowlist in v0.1: `apache-2.0`, `mit`, `bsd-3-clause`, the `llama3`
 it.
 
 The tier and the serving precision follow from the parameter count. The table is on the [models](/docs/models)
-page.
+page. The precision the check names is stored with the listing, and the model is built at that precision.
+
+What the check takes from the repository is bounded:
+
+- The README is read up to its first 200,000 bytes. The `freeweight-owner:` line has to stand in that part.
+- The model's description from Hugging Face is read up to 4 MB. For a larger one, or one that is not a JSON
+  object, the submission answers `502 hf_unavailable` and no listing is stored. The config file is read up to 1 MB; a larger one gives no context.
+- The context length from the config is kept only when it is a whole number from 1 to 10,000,000. Otherwise the
+  listing has a context of 0.
+- A licence name that is not on the allowlist, and a pipeline tag quoted in a failed check, are cut to 64
+  characters.
 
 ## What gets pinned
 
