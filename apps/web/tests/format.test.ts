@@ -82,3 +82,30 @@ describe("counts and names", () => {
     expect(shortSha("9c925d64d72725edaf899c6cb9c377fd0709d9c5")).toBe("9c925d6");
   });
 });
+
+describe("numbers at the edge of a unit", () => {
+  it("chooses the unit for the rounded number", () => {
+    expect(took(999.6)).toBe("1.0 s");
+    expect(took(59_960)).toBe("1 min 0 s");
+    expect(took(59_940)).toBe("59.9 s");
+    expect(gpuTime(59.6)).toBe("1 min");
+    expect(gpuTime(3599)).toBe("1 h");
+    expect(compact(999.6)).toBe("1k");
+    expect(compact(999_950)).toBe("1M");
+    expect(compact(999_499)).toBe("999k");
+  });
+
+  it("reads a context size in thousands, however it is counted", () => {
+    expect(context(128_000)).toBe("128k");
+    expect(context(32_000)).toBe("32k");
+    expect(context(131_072)).toBe("128k");
+    expect(context(200_000)).toBe("200k");
+  });
+
+  it("keeps the sign in front and never shows a small amount as nothing", () => {
+    expect(usd(-500_000)).toBe("-$0.50");
+    expect(usd(-1_250_000)).toBe("-$1.25");
+    expect(usd(40)).toBe("<$0.0001");
+    expect(usd(999_990)).toBe("$1.00");
+  });
+});

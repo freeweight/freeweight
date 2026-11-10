@@ -58,7 +58,7 @@ function facts(s: Session, model: Model | null) {
 function foot(s: Session, f: ReturnType<typeof facts>, idleSeconds = 0): string {
   if (f.never) return f.why && f.why !== "stopped" ? `${endedBecause(s)} Nothing was charged.` : "Stopped before the model woke. Nothing was charged.";
   const because = endedBecause(s, idleSeconds);
-  return `${because}${because ? " " : ""}${s.free ? "A free session: nothing was charged." : "Billed by the second with a one-minute minimum, never per token."}`;
+  return `${because}${because ? " " : ""}${s.free ? "A free session: nothing was charged." : "Billed by the second, one-minute minimum once the model is awake. Never per token."}`;
 }
 
 export function receiptText(s: Session, model: Model | null): string {

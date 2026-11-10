@@ -225,7 +225,7 @@ function Reps({ stats, down }: { stats: Stats | null; down: boolean }) {
 const HOW = [
   { k: "Asleep", t: "Stored weights. No GPU, no cost." },
   { k: "Wake", t: "A GPU loads the model, typically in a minute or two. Not billed." },
-  { k: "Awake", t: "Chat, call the endpoint, run tools. Billed by the second while your session runs, one-minute minimum." },
+  { k: "Awake", t: "Chat, call the endpoint, run tools. Billed by the second, one-minute minimum once the model is awake." },
   { k: "Asleep again", t: "You stop, or the time runs out. Back to storage." },
 ];
 

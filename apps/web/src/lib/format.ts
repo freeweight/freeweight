@@ -6,11 +6,12 @@ const MICRO = 1_000_000;
 
 /** USD from micro-units. Sub-dollar amounts keep up to 4 decimals, never fewer than 2. */
 export function usd(micro: number): string {
-  const v = micro / MICRO;
-  const abs = Math.abs(v);
-  if (abs >= 1 || abs === 0) return `$${v.toFixed(2)}`;
-  const s = v.toFixed(4).replace(/0{1,2}$/, "");
-  return `$${s}`;
+  const v = Math.abs(micro) / MICRO;
+  const sign = micro < 0 ? "-" : "";
+  if (v >= 1 || v === 0) return `${sign}$${v.toFixed(2)}`;
+  // An amount too small for four decimals is still not nothing.
+  if (v < 0.0001) return `${sign}<$0.0001`;
+  return `${sign}$${v.toFixed(4).replace(/0{1,2}$/, "")}`;
 }
 
 export function perMin(micro: number): string {
@@ -35,11 +36,11 @@ export function clockTenths(ms: number): string {
 
 /** A measured duration: 840 ms, 9.2 s, 1 min 42 s. */
 export function took(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
-  const m = Math.floor(ms / 60_000);
-  const s = Math.round((ms % 60_000) / 1000);
-  return s === 60 ? `${m + 1} min 0 s` : `${m} min ${s} s`;
+  // The unit is chosen for the rounded number, so nothing reads "1000 ms" or "60.0 s".
+  if (ms < 999.5) return `${Math.round(ms)} ms`;
+  if (ms < 59_950) return `${(ms / 1000).toFixed(1)} s`;
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)} min ${total % 60} s`;
 }
 
 /** An estimate, deliberately coarse: "about 40 s", "about 1.5 min". */
@@ -62,9 +63,9 @@ export function wakeBudget(retryAfter: unknown): string {
 
 export function compact(n: number): string {
   const abs = Math.abs(n);
-  if (abs < 1000) return String(Math.round(n));
-  if (abs < 1e6) return `${trim(n / 1e3)}k`;
-  if (abs < 1e9) return `${trim(n / 1e6)}M`;
+  if (abs < 999.5) return String(Math.round(n));
+  if (abs < 999_500) return `${trim(n / 1e3)}k`;
+  if (abs < 999_500_000) return `${trim(n / 1e6)}M`;
   return `${trim(n / 1e9)}B`;
 }
 function trim(v: number): string {
@@ -77,8 +78,8 @@ export function grouped(n: number): string {
 
 /** GPU time from seconds: 42 s, 12.5 min, 3.2 h. */
 export function gpuTime(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)} s`;
-  if (seconds < 3600) return `${trim(seconds / 60)} min`;
+  if (seconds < 59.5) return `${Math.round(seconds)} s`;
+  if (seconds < 3597) return `${trim(seconds / 60)} min`;
   return `${trim(seconds / 3600)} h`;
 }
 
@@ -87,7 +88,9 @@ export function params(b: number): string {
 }
 
 export function context(tokens: number): string {
-  return tokens >= 1000 ? `${Math.round(tokens / 1024)}k` : String(tokens);
+  // Context sizes are written both ways: 128000 and 131072 are each "128k".
+  if (tokens < 1000) return String(tokens);
+  return `${tokens % 1000 === 0 ? tokens / 1000 : Math.round(tokens / 1024)}k`;
 }
 
 export function shortAddr(a: string): string {
