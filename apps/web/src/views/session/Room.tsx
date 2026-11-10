@@ -536,6 +536,14 @@ function Endpoint({ session: s }: { session: Session }) {
               Your keys
             </Link>
           </>
+        ) : me?.address && !s.free ? (
+          <>
+            Calls to this session carry its session id.{" "}
+            <Link href="/account#keys" className="link">
+              Your keys
+            </Link>{" "}
+            reach only the sessions you rent.
+          </>
         ) : me?.address ? (
           <>
             A free session has no API key: calls carry the session id instead. The sessions you rent take{" "}
@@ -546,7 +554,7 @@ function Endpoint({ session: s }: { session: Session }) {
           </>
         ) : (
           <>
-            A free session has no API key: calls carry the session id instead. Keys belong to a wallet.{" "}
+            {s.free ? "A free session has no API key: calls carry the session id instead." : "Signed out, calls carry the session id instead of an API key."} Keys belong to a wallet.{" "}
             <Link href="/account" className="link">
               Sign in
             </Link>{" "}
