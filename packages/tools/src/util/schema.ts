@@ -9,6 +9,8 @@ type Prop = {
   maxLength?: number;
   minimum?: number;
   maximum?: number;
+  /** Valid sample values; the first one is quoted in error messages. */
+  examples?: unknown[];
 };
 
 function typeOk(v: unknown, t: string): boolean {
@@ -69,7 +71,7 @@ export function validateArgs(args: Record<string, unknown>, schema: JsonSchema):
     }
     if (v === undefined || v === null) continue; // optional and absent
     const e = checkValue(k, v, p);
-    if (e) return e;
+    if (e) return p.examples?.length ? `${e}, for example ${JSON.stringify(p.examples[0])}` : e;
   }
   return null;
 }

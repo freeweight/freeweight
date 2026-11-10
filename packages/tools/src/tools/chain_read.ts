@@ -45,8 +45,16 @@ function blockTag(v: unknown): string {
   throw new InputError("invalid_input", "block must be a number, hex, or latest");
 }
 
+const SIG_EXAMPLES = {
+  function: '"function symbol() view returns (string)", "balanceOf(address) returns (uint256)" or "symbol()(string)"',
+  event: '"event Transfer(address indexed from, address indexed to, uint256 value)"',
+};
+
 function parseSig<T extends "function" | "event">(sig: string, kind: T): T extends "function" ? AbiFunction : AbiEvent {
   let s = sig.trim();
+  // Also accept the compact "name(args)(returns)" form.
+  const compact = kind === "function" ? /^(?:function\s+)?([A-Za-z_$][\w$]*)\(([^()]*)\)\s*\(([^()]*)\)$/.exec(s) : null;
+  if (compact) s = `function ${compact[1]}(${compact[2]}) view returns (${compact[3]})`;
   if (!s.startsWith(kind + " ")) s = `${kind} ${s}`;
   if (kind === "function" && !/\breturns\b/.test(s) && !/\b(view|pure)\b/.test(s)) s += " view";
   try {
@@ -54,7 +62,7 @@ function parseSig<T extends "function" | "event">(sig: string, kind: T): T exten
     if (item.type !== kind) throw new Error("wrong kind");
     return item as never;
   } catch (e) {
-    throw new InputError("invalid_input", `cannot parse ${kind} signature: ${e instanceof Error ? e.message.split("\n")[0]!.slice(0, 120) : ""}`);
+    throw new InputError("invalid_input", `cannot parse ${kind} signature (${e instanceof Error ? e.message.split("\n")[0]!.slice(0, 80) : "invalid"}); use for example ${SIG_EXAMPLES[kind]}`);
   }
 }
 
@@ -72,7 +80,11 @@ export const chainRead = defineTool({
       op: { type: "string", enum: [...OPS] },
       to: { type: "string", description: "Contract address (call)." },
       address: { type: "string", description: "Address (balance, nonce, code, storage, logs)." },
-      signature: { type: "string", description: "Function (call) or event (logs) signature, human-readable." },
+      signature: {
+        type: "string",
+        description: 'Function (call) or event (logs) signature, human-readable, e.g. "function symbol() view returns (string)" or "symbol()(string)".',
+        examples: ["function symbol() view returns (string)", "balanceOf(address)(uint256)"],
+      },
       args: { type: "array", description: "Call arguments, in order. Large integers as strings." },
       from: { type: "string", description: "Optional caller for call." },
       hash: { type: "string", description: "Transaction hash (tx, receipt)." },

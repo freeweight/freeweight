@@ -156,3 +156,25 @@ describe("safety_check when no public source lists a pool", () => {
     expect(r.summary).toMatch(/sell not simulated \(no pool is listed \(DexScreener and the Freeweight index name none\)\)/);
   });
 });
+
+describe("argument errors show a valid example", () => {
+  const offline = { env: {}, fetch: (async () => new Response("offline", { status: 599 })) as typeof fetch };
+  it("market_data.majors that is not a list", async () => {
+    const r = await runTool("market_data", { majors: true }, offline);
+    expect(r.error?.code).toBe("invalid_input");
+    expect(r.error?.message).toBe('majors must be array, for example ["eth","btc"]');
+  });
+  it("chain_read accepts the compact name(args)(returns) form", async () => {
+    resetState();
+    const f = fakeFetch([rpcRoute((method) => (method === "eth_call" ? encodeAbiParameters([{ type: "string" }], ["TKN"]) : null))]);
+    const r = await runTool("chain_read", { chain: "base", op: "call", to: TOKEN, signature: "symbol()(string)" }, { env: { RPC_URLS: { base: RPC } }, fetch: f });
+    expect(r.ok).toBe(true);
+    expect(r.data.function).toBe("symbol");
+    expect(r.data.decoded).toBe("TKN");
+  });
+  it("an unparseable signature names the accepted forms", async () => {
+    const r = await runTool("chain_read", { chain: "base", op: "call", to: TOKEN, signature: "symbol(" }, offline);
+    expect(r.error?.code).toBe("invalid_input");
+    expect(r.error?.message).toMatch(/use for example "function symbol\(\) view returns \(string\)", "balanceOf\(address\) returns \(uint256\)" or "symbol\(\)\(string\)"$/);
+  });
+});
