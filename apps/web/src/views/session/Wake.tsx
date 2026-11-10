@@ -123,7 +123,7 @@ export function Wake({ live, session: s, model }: { live: Live; session: Session
   const failed = !ready && (s.state === "failed" || r.failedAt != null);
   const how = failed ? ending(s) : null;
   const cancelled = how === "cancelled";
-  const attempt = Math.max(1, s.attempt ?? 1, r.attempt);
+  const attempt = Math.max(1, r.attempt);
   const degraded = running && Boolean(s.degraded);
   const shown = r.readyAt ?? r.failedAt ?? r.elapsed;
   // A model nobody has timed yet has no typical wake: the scale still needs a width, the page shows no figure.

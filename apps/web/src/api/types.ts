@@ -64,8 +64,6 @@ export type Session = {
   paused?: boolean;
   /** When the session was asked for (epoch). The wake is timed from here, so a reloaded page shows the true elapsed time. */
   created_at?: number | null;
-  /** Optional: which try at starting the model this is. 0 until the machine has a startup record, 1 is the normal case, 2 and up is a retry. */
-  attempt?: number;
   /** Optional: stage detail is temporarily unavailable. The wake is still going; `stages` may be stale or short. */
   degraded?: boolean;
 };
