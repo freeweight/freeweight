@@ -107,6 +107,8 @@ Paid sessions draw on a prepaid balance, counted in US dollars.
 - USDG counts as one US dollar per token. ETH is converted at the market price in the minute of the transfer.
   Two public price sources are read, and the lower price counts.
 - A top-up is credited after 20 block confirmations.
+- Submit the hash of an ETH transfer within 6 hours. After that it is not credited automatically: write to us and
+  we credit it by hand. USDG has no such limit.
 - Top-ups are open when the site shows a treasury address. Before public launch they are closed, and the free try
   is the way in.
 

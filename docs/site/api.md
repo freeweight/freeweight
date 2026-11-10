@@ -590,7 +590,7 @@ the transaction hash. The gateway reads the transaction from the chain and credi
 | `tx_failed` | The transaction reverted. |
 | `no_transfer` | The transaction sends no ETH or USDG from your wallet to the treasury. |
 | `tx_already_used` | The transaction was credited to another wallet. |
-| `tx_too_old` | An ETH transfer older than a few hours. It has to be credited by hand. |
+| `tx_too_old` | An ETH transfer older than 6 hours. It has to be credited by hand. USDG has no such limit. |
 | `amount_too_small` | The amount rounds to nothing. |
 | `rpc_unavailable`, `price_unavailable`, `price_out_of_bounds` | The chain or the ETH price could not be read. Nothing was credited. Submit the same hash again later. |
 
