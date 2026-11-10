@@ -38,8 +38,20 @@ count) so that stake, claim, unstake cycling inside a day earns nothing. We use 
   full history checkpoints (`stakedAt(user, ts)`) would avoid it but cost an array and more attack
   surface, and are not needed for "minimum age before credits count".
 
-Gateway rule: credits count for `stakedOf(user)` if `stakedSince(user) != 0` and
-`now - stakedSince(user) >= minAge`.
+### Gateway read rule
+
+1. Read `positionOf(user)` with `eth_call` at **one pinned block number** (never "latest" twice, never
+   separate `stakedOf` and `stakedSince` calls: a large top-up between two reads would pair an old age
+   with a new amount). Take the timestamp from that same block (`eth_getBlockByNumber`), not from the
+   gateway's wall clock; sequencer timestamps can lag.
+2. Credit UTC day D only if `since != 0` and `since + minAge <= dayStart(D)`, where `dayStart(D)` is
+   00:00 UTC of day D. Comparing against the start of the day (not the claim time) gives at most one
+   credit per full 24 hours held; comparing at claim time lets about 24 h of stake earn two days
+   (claim at 23:59, then again at 00:00).
+3. Credit the amount of stake still present at claim (`staked`, or the smaller of the readings at the
+   day start and at claim). `pending` never counts.
+4. Credits must be linear in stake: with per-address floors or rounding up, splitting stake across
+   addresses becomes profitable.
 
 ## Trust model
 
@@ -61,6 +73,7 @@ All reads are plain `eth_call` (address of the vault as `to`, no signature neede
 
 | Function | Selector | Returns |
 |---|---|---|
+| `positionOf(address)` | `0xfd2d39c5` | `(uint256 staked, uint256 since, uint256 pending, uint256 unlockTime)`, one call: **use this** |
 | `stakedOf(address)` | `0xaf500ba3` | `uint256` counted stake (token units, 18 decimals for a standard ERC-20) |
 | `totalStaked()` | `0x817b1cd2` | `uint256` |
 | `pendingUnstake(address)` | `0x56d6ea4f` | `(uint256 amount, uint256 unlockTime)` |
@@ -69,18 +82,17 @@ All reads are plain `eth_call` (address of the vault as `to`, no signature neede
 | `cooldown()` | `0x787a08a6` | `uint256` seconds |
 | `token()` | `0xfc0c546a` | `address` |
 
-Call data is the selector followed by the address left-padded to 32 bytes. Example, `stakedOf`
+Call data is the selector followed by the address left-padded to 32 bytes. Example, `positionOf`
 for `0x1111111111111111111111111111111111111111`:
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{
   "to":"<VAULT_ADDRESS>",
-  "data":"0xaf500ba30000000000000000000000001111111111111111111111111111111111111111"
-},"latest"]}
+  "data":"0xfd2d39c50000000000000000000000001111111111111111111111111111111111111111"
+},"0x<PINNED_BLOCK_NUMBER_HEX>"]}
 ```
 
-The result is a 32-byte hex word (`0x...`), parsed as a uint256. `pendingUnstake` returns two
-words (amount, then unlock time). With viem: `readContract({abi, functionName: "stakedOf", args: [addr]})`.
+The result is 4 words of 32 bytes (staked, since, pending, unlockTime), each a uint256. The single-value views return one word, `pendingUnstake` two. With viem: `readContract({abi, functionName: "positionOf", args: [addr], blockNumber})`.
 
 Events for indexers: `Staked(user, amount, newStaked)`, `UnstakeRequested(user, amount, unlockTime)`,
 `UnstakeCancelled(user, amount)`, `Withdrawn(user, amount)`, `CooldownUpdated(old, new)`.

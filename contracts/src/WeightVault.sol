@@ -152,6 +152,15 @@ contract WeightVault is IWeightVault, Ownable2Step, ReentrancyGuard {
         return _positions[user].stakedSince;
     }
 
+    function positionOf(address user)
+        external
+        view
+        returns (uint256 staked, uint256 since, uint256 pending, uint256 unlockTime)
+    {
+        Position storage p = _positions[user];
+        return (p.staked, p.stakedSince, p.pending, p.unlockTime);
+    }
+
     function token() external view returns (address) {
         return address(_token);
     }

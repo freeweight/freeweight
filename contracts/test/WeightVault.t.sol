@@ -421,6 +421,39 @@ contract WeightVaultTest is Test {
         assertEq(vault.stakedSince(alice), block.timestamp);
     }
 
+    // ------------------------------------------------------------ positionOf
+
+    function test_positionOf_matchesIndividualViews() public {
+        (uint256 s0, uint256 a0, uint256 p0, uint256 u0) = vault.positionOf(alice);
+        assertEq(s0 + a0 + p0 + u0, 0);
+        vm.startPrank(alice);
+        vault.stake(100 ether);
+        skip(1 days);
+        vault.requestUnstake(30 ether, type(uint256).max);
+        vm.stopPrank();
+        (uint256 s, uint256 since, uint256 p, uint256 u) = vault.positionOf(alice);
+        (uint256 pa, uint256 pu) = vault.pendingUnstake(alice);
+        assertEq(s, vault.stakedOf(alice));
+        assertEq(since, vault.stakedSince(alice));
+        assertEq(p, pa);
+        assertEq(u, pu);
+        assertEq(s, 70 ether);
+        assertEq(p, 30 ether);
+    }
+
+    /// Regression: with separate reads, a top-up between them pairs an old age with a
+    /// new amount. positionOf reads one block, so amount and age always belong together.
+    function test_positionOf_topUpCannotPairOldAgeWithNewAmount() public {
+        vm.prank(alice);
+        vault.stake(1);
+        skip(2 days);
+        vm.prank(alice);
+        vault.stake(999_999 ether);
+        (uint256 amt, uint256 since,,) = vault.positionOf(alice);
+        assertEq(amt, 999_999 ether + 1);
+        assertEq(since, block.timestamp, "the large stake is fresh, not 2 days old");
+    }
+
     // ------------------------------------------------------------ owner
 
     function test_setCooldown() public {

@@ -43,6 +43,16 @@ interface IWeightVault {
     /// @notice Timestamp of the user's latest increase of counted stake (stake or cancelUnstake);
     ///         0 when nothing is staked. Credits should count only if now - stakedSince >= minAge.
     function stakedSince(address user) external view returns (uint256);
+    /// @notice One-call snapshot of a user's position; the gateway should use this (at one pinned
+    ///         block) instead of separate calls, so amount and age always belong together.
+    /// @return staked same as stakedOf
+    /// @return since same as stakedSince
+    /// @return pending same as pendingUnstake().amount
+    /// @return unlockTime same as pendingUnstake().unlockTime
+    function positionOf(address user)
+        external
+        view
+        returns (uint256 staked, uint256 since, uint256 pending, uint256 unlockTime);
     /// @notice Sum of every user's pending (cooldown) amount.
     function totalPending() external view returns (uint256);
     /// @notice Cooldown applied to future unstake requests, in seconds.
