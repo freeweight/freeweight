@@ -21,6 +21,99 @@ export type Live = {
   actionError: ApiError | null;
 };
 
+/** The gateway sends a tick every two seconds. Three missed ticks and the stream is taken for dead. */
+export const QUIET_MS = 6500;
+
+type Follow = {
+  session: (id: string, signal?: AbortSignal) => Promise<Session>;
+  events: (id: string, on: (event: string, data: unknown) => void, signal: AbortSignal) => Promise<void>;
+  /** Show a new view of the session and return it as shown. */
+  take: (s: Session, fromEvent?: boolean) => Session;
+  shown: () => Session | null;
+  onError: (e: ApiError | null) => void;
+  signal: AbortSignal;
+  hidden?: () => boolean;
+  quietMs?: number;
+  /** First wait between attempts, doubled on each failure up to `maxDelayMs`, and back to this after a good read. */
+  delayMs?: number;
+  maxDelayMs?: number;
+};
+
+/**
+ * Keep one session current until it is over: read it, follow its event stream, and start over whenever the stream
+ * closes, fails or falls silent. `again()` drops the connection and reads the session afresh right away.
+ */
+export function follow(id: string, o: Follow): { again: () => void; done: Promise<void> } {
+  const first = o.delayMs ?? 500;
+  let conn: AbortController | null = null;
+  let wake: (() => void) | null = null;
+  const over = (): boolean => {
+    const s = o.shown();
+    return s?.state === "ended" || s?.state === "failed";
+  };
+  const done = (async () => {
+    let delay = first;
+    while (!o.signal.aborted) {
+      const c = new AbortController();
+      conn = c;
+      const off = (): void => c.abort();
+      o.signal.addEventListener("abort", off, { once: true });
+      let quiet: ReturnType<typeof setTimeout> | undefined;
+      const heard = (): void => {
+        clearTimeout(quiet);
+        // A tab in the background has its timers held back, so silence there proves nothing.
+        quiet = setTimeout(() => (o.hidden?.() ? heard() : c.abort()), o.quietMs ?? QUIET_MS);
+      };
+      try {
+        o.take(await o.session(id, c.signal));
+        o.onError(null);
+        delay = first;
+        if (over()) return;
+        heard();
+        await o.events(
+          id,
+          (event, data) => {
+            heard();
+            const cur = o.shown();
+            if (!cur) return;
+            const full = Boolean(data && typeof data === "object" && "stages" in data);
+            o.take(applyEvent(cur, event, data), !full);
+          },
+          c.signal,
+        );
+      } catch (e) {
+        if (o.signal.aborted) return;
+        if (!c.signal.aborted) {
+          const err = toApiError(e);
+          // Before anything is on the page, "not found" and "not yours" are final. After that the page keeps what
+          // it has and keeps asking: a sign-in that lapsed or a gateway that lost its place may come back.
+          if (!o.shown()) {
+            o.onError(err);
+            if (err.status === 404 || err.status === 401 || err.status === 403) return;
+          }
+          delay = Math.min(delay * 2, o.maxDelayMs ?? 8000);
+        }
+      } finally {
+        clearTimeout(quiet);
+        o.signal.removeEventListener("abort", off);
+      }
+      if (over()) return;
+      await new Promise<void>((r) => {
+        wake = r;
+        setTimeout(r, delay);
+      });
+      wake = null;
+    }
+  })();
+  return {
+    again: () => {
+      conn?.abort();
+      wake?.();
+    },
+    done,
+  };
+}
+
 export function useSession(id: string): Live {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -33,6 +126,9 @@ export function useSession(id: string): Live {
   const fresh = useRef<number | null>(null);
   const watched = useRef(false);
   const over = useRef<number | null>(null);
+  /** The session as last taken, whoever took it: the stream, a re-read, or Extend and Stop. */
+  const shown = useRef<Session | null>(null);
+  const asked = useRef<number | null>(null);
 
   /** Take a new view of the session. Returns it as shown, which is what the next event builds on. */
   const take = useCallback((s: Session, fromEvent = false): Session => {
@@ -53,13 +149,14 @@ export function useSession(id: string): Live {
       // Over. If this page watched it happen the clock stops where it is, otherwise at the last thing reported.
       over.current ??= s.stages.at(-1)?.stage === "failed" || !watched.current ? (s.stages.at(-1)?.t_ms ?? 0) : read(wake.current);
     }
+    shown.current = s;
     setSession(s);
     return s;
   }, []);
 
   useEffect(() => {
     const ctl = new AbortController();
-    let cur: Session | null = null;
+    shown.current = null;
     setSession(null);
     setError(null);
     lastT.current = -1;
@@ -68,39 +165,33 @@ export function useSession(id: string): Live {
     fresh.current = null;
     watched.current = false;
     over.current = null;
-    const done = (): boolean => cur?.state === "ended" || cur?.state === "failed";
-    void (async () => {
-      let delay = 500;
-      while (!ctl.signal.aborted) {
-        try {
-          cur = take(await api.session(id, ctl.signal));
-          setError(null);
-          if (done()) return;
-          await api.events(
-            id,
-            (event, data) => {
-              if (!cur) return;
-              const full = Boolean(data && typeof data === "object" && "stages" in data);
-              cur = take(applyEvent(cur, event, data), !full);
-            },
-            ctl.signal,
-          );
-          delay = 500;
-        } catch (e) {
-          if (ctl.signal.aborted) return;
-          const err = toApiError(e);
-          if (err.status === 404 || err.status === 401 || err.status === 403) {
-            setError(err);
-            return;
-          }
-          if (!cur) setError(err);
-          delay = Math.min(delay * 2, 8000);
-        }
-        if (done()) return;
-        await new Promise((r) => setTimeout(r, delay));
-      }
-    })();
-    return () => ctl.abort();
+    const f = follow(id, {
+      session: api.session,
+      events: api.events,
+      take,
+      shown: () => shown.current,
+      onError: setError,
+      signal: ctl.signal,
+      hidden: () => document.hidden,
+    });
+    // A tab that comes back to the front may have slept through anything: read the session again.
+    const back = (): void => {
+      if (!document.hidden) f.again();
+    };
+    document.addEventListener("visibilitychange", back);
+    // When the clock on this page runs out, ask what the gateway says: the stream's last word may never have arrived.
+    const zero = setInterval(() => {
+      const s = shown.current;
+      if (s?.state !== "active" || s.ends_at == null || asked.current === s.ends_at) return;
+      if (read(now.current) < s.ends_at) return;
+      asked.current = s.ends_at;
+      f.again();
+    }, 500);
+    return () => {
+      ctl.abort();
+      clearInterval(zero);
+      document.removeEventListener("visibilitychange", back);
+    };
   }, [id, take]);
 
   const act = useCallback(

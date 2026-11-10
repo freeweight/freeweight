@@ -20,9 +20,11 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator
         if (msg) yield msg;
       }
     }
-    const tail = parseEvent(buf);
+    const tail = parseEvent(buf + dec.decode());
     if (tail) yield tail;
   } finally {
+    // Whoever stops reading early (a closing mark, an error, a reader that left) also closes the connection.
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
