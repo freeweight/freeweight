@@ -1,0 +1,119 @@
+/* Roadmap: three plates on a three-column grid, 3, 2 and 1 columns wide, like the mark.
+   Solid means live, outlined means at launch, dashed means planned. */
+
+.rm-group {
+  display: grid;
+  gap: var(--s5);
+  padding-bottom: var(--s8);
+}
+.rm-plate {
+  height: 12px;
+  border-radius: var(--r-1);
+}
+.rm-now .rm-plate {
+  background: var(--accent);
+}
+.rm-launch .rm-plate {
+  width: 66.667%;
+  border: 1px solid var(--ink-2);
+}
+.rm-after .rm-plate {
+  width: 33.333%;
+  border: 1px dashed var(--ink-3);
+}
+.rm-body {
+  display: grid;
+  gap: var(--s5);
+  min-width: 0;
+}
+.rm-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s1) var(--s3);
+}
+.rm-title {
+  font-size: 28px;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+}
+.rm-h .tag {
+  vertical-align: 0;
+  transform: translateY(-4px);
+}
+.rm-after .rm-h .tag {
+  border-style: dashed;
+}
+.rm-lead {
+  flex-basis: 100%;
+  color: var(--ink-2);
+}
+.rm-items {
+  display: grid;
+  gap: 0 var(--s6);
+}
+.rm-items li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-content: start;
+  gap: 2px 0;
+  padding: var(--s4) 0;
+  border-top: 1px solid var(--line);
+}
+.rm-n {
+  grid-row: span 2;
+  font-size: 11px;
+  line-height: 24px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.rm-items b {
+  font-weight: 600;
+}
+.rm-launch .rm-items b,
+.rm-after .rm-items b {
+  font-weight: 500;
+}
+.rm-items p {
+  grid-column: 2;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.rm-go {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  padding-top: var(--s6);
+  border-top: 1px solid var(--line-2);
+}
+
+@media (min-width: 700px) {
+  .rm-items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rm-after .rm-items {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rm-after .rm-body {
+    width: 50%;
+  }
+  .rm-title {
+    font-size: 36px;
+    line-height: 40px;
+  }
+  .rm-h .tag {
+    transform: translateY(-6px);
+  }
+}
+@media (min-width: 1100px) {
+  .rm-now .rm-items {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .rm-launch .rm-body {
+    width: 66.667%;
+  }
+  .rm-after .rm-body {
+    width: 33.333%;
+  }
+}
