@@ -84,7 +84,9 @@ export const holdersTool = defineTool({
     }
     // Transfer-log reconstruction: when nothing else worked, or to go past GoPlus' top 10 on young tokens.
     let scanInfo: Record<string, unknown> | null = null;
+    let logsTried = "not attempted (time budget)";
     const tooBusy = holderCount !== null && holderCount > 5000;
+    if (tooBusy) logsTried = "skipped (too many holders for a keyless scan)";
     if (tooBusy) run.note(`log reconstruction skipped: ${holderCount} holders is too many transfers for a keyless log scan`);
     if (rows.length < limit && run.remaining() > 6000 && !tooBusy) {
       const firstPool = (pairs ?? []).map((p) => p.pairCreatedAt ?? 0).filter((x) => x > 0).sort((a, b) => a - b)[0];
@@ -104,6 +106,7 @@ export const holdersTool = defineTool({
           const minted = scan.transfers.filter((t) => t.from === ZERO).reduce((s, t) => s + t.value, 0n);
           const mintSeen = supply > 0n && minted >= supply - supply / 1000n;
           scanInfo = { from_block: from, to_block: scan.scanned_to, transfers: scan.transfers.length, calls: scan.calls, complete: scan.complete, mint_in_window: mintSeen, age_days: round(ageDays, 3) };
+          logsTried = scan.complete ? (mintSeen ? "complete" : "the scanned window does not contain the mint") : "the scan stopped early";
           if (scan.complete && (mintSeen || rows.length === 0)) {
             const bal = balancesFrom(scan.transfers);
             const recon = [...bal.entries()].filter(([a, v]) => v > 0n && a !== ZERO).sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0));
@@ -118,12 +121,21 @@ export const holdersTool = defineTool({
           }
         } else {
           run.note(`log reconstruction skipped: token too old for keyless log scan (${Math.round(ageDays)} d)`);
+          logsTried = `skipped (token about ${Math.round(ageDays)} days old, too old for a keyless log scan)`;
         }
       }
     }
+    let gap: string | null = null;
     if (!rows.length) {
       run.partial = true;
-      run.note("no holder list available from any source");
+      // Say what was tried; never fill the gap with guesses.
+      const tried = [
+        chain.explorers.length === 0 ? "no keyless explorer API exists for this chain" : explorer ? "explorer API (no holders listed)" : "explorer API (unavailable or refusing server requests)",
+        !chain.goplus ? "GoPlus (does not cover this chain)" : gp === undefined ? "GoPlus (unavailable)" : "GoPlus (no holder list)",
+        `Transfer-log reconstruction (${logsTried})`,
+      ];
+      gap = `no holder list: tried ${tried.join("; ")}. Older tokens on chains without the Freeweight index need a keyed explorer API for their holder list`;
+      run.note(gap + ".");
     }
 
     // Verify balances on-chain and tag contracts (batched). Enough rows are verified for a real top 10 whatever `limit` is.
@@ -180,6 +192,12 @@ export const holdersTool = defineTool({
       creator: creatorRaw !== null ? `creator ${short(creator.creator)} holds ${fmtPct(pct(creatorRaw))}` : "creator unknown",
     };
     if (ex[0]) parts.largest = `largest non-pool holder ${short(ex[0].address)} ${fmtPct(pct(ex[0].raw))}${ex[0].is_contract ? " (contract)" : ""}`;
+    if (gap) {
+      // No list: keep the on-chain facts (burned, creator), drop sentences that would describe an empty table.
+      delete parts.top10;
+      delete parts.pools;
+      parts.gap = gap;
+    }
     if (topContracts.length) run.note("Contract holders can be lockers, vesting, routers or a team multisig: check before reading them as whales.");
     if (method.startsWith("goplus")) run.note("GoPlus lists only the top 10 holders.");
 

@@ -178,3 +178,35 @@ describe("argument errors show a valid example", () => {
     expect(r.error?.message).toMatch(/use for example "function symbol\(\) view returns \(string\)", "balanceOf\(address\) returns \(uint256\)" or "symbol\(\)\(string\)"$/);
   });
 });
+
+describe("holders with no list from any source", () => {
+  it("says which sources were tried and what would fill the gap", async () => {
+    resetState();
+    const OLD = "0x" + "4b".repeat(20);
+    const f = fakeFetch([
+      (url) => (url.includes("blockscout") ? new Response("<html>Just a moment...</html>", { status: 403 }) : null),
+      (url) => (url.includes("gopluslabs") ? json({ code: 4029, message: "too many requests" }) : null),
+      (url) => (url.includes("api.dexscreener.com") ? json([{ chainId: "base", dexId: "uniswap", pairAddress: "0x" + "88".repeat(20), baseToken: { address: OLD, name: "O", symbol: "O" }, quoteToken: { address: WETH, name: "W", symbol: "WETH" }, liquidity: { usd: 5000 }, pairCreatedAt: Date.parse("2023-01-01T00:00:00Z") }]) : null),
+      rpcRoute((method, params) => {
+        const p = params as [{ data?: string } | string, unknown];
+        if (method === "eth_getCode") return "0x6080";
+        if (method === "eth_blockNumber") return "0x2000000";
+        if (method === "eth_getBlockByNumber") return { number: p[0], timestamp: "0x" + Math.floor(Date.now() / 1000 - Number(BigInt(0x2000000) - BigInt(String(p[0]))) * 2).toString(16), hash: "0x" + "11".repeat(32), transactions: [] };
+        if (method === "eth_call") {
+          const d = (p[0] as { data: string }).data;
+          if (d.startsWith("0x313ce567")) return word(18n);
+          if (d.startsWith("0x18160ddd")) return word(10n ** 27n);
+          return word(0n);
+        }
+        return null;
+      }),
+    ]);
+    const r = await runTool("holders", { chain: "base", token: OLD }, { env: { RPC_URLS: { base: RPC } }, fetch: f });
+    expect(r.partial).toBe(true);
+    expect(r.summary).toMatch(
+      /no holder list: tried explorer API \(unavailable or refusing server requests\); GoPlus \(unavailable\); Transfer-log reconstruction \(skipped \(token about \d+ days old, too old for a keyless log scan\)\)\. Older tokens on chains without the Freeweight index need a keyed explorer API for their holder list\./,
+    );
+    expect(r.summary).not.toMatch(/known non-pool wallets/);
+    expect((r.data.top as unknown[]).length).toBe(0);
+  });
+});
