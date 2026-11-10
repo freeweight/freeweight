@@ -44,8 +44,9 @@ The gateway picks the session in this order:
 2. Your live session on the model in the request body.
 3. A new session, if the key has `auto_session` on.
 
-Every `/v1` answer carries the response header `x-freeweight-session` with the id of the session it ran on. That
-is how an agent learns the id of a session it did not start by hand. With the OpenAI Python SDK:
+Every successful `/v1` answer carries the response header `x-freeweight-session` with the id of the session it
+ran on. That is how an agent learns the id of a session it did not start by hand. An error answer does not carry
+the header. With the OpenAI Python SDK:
 
 ```python
 raw = client.chat.completions.with_raw_response.create(model="qwen3-8b", messages=messages)
@@ -297,6 +298,10 @@ try:
         for c in calls:
             messages.append({"role": "tool", "tool_call_id": c.id, "content": run_tool(c.function.name, c.function.arguments)})
 finally:
+    if session_id is None:
+        # An error answer carries no session header. Ask the account for the live session on this model.
+        live = http.get(f"{BASE}/api/me", headers=AUTH).json()["sessions"]
+        session_id = next((s["id"] for s in live if s["model_id"] == MODEL), None)
     if session_id:
         http.post(f"{BASE}/api/sessions/{session_id}/stop", headers=AUTH)
 ```
@@ -306,7 +311,8 @@ What the loop does to keep the cost bounded:
 - It uses `qwen3-8b`, a model whose `tools_ok` is `true`.
 - It runs at most 6 rounds, so a model that keeps asking for tools cannot run forever.
 - It stops the session in `finally`, also when a request fails. Without that the session would run until the
-  idle end, and you would pay for those minutes.
+  idle end, and you would pay for those minutes. If the very first request fails, no id came back, so the loop
+  reads `GET /api/me` for the live session on its model and stops that.
 - Each tool call is its own MCP request, because the endpoint takes one call per request.
 
 A tool result can be long. Keep the model's context length in mind: the catalog shows it as `context`, in

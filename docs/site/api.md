@@ -478,8 +478,8 @@ that is too long gets an error from the model that says so.
 
 ### Response headers
 
-`x-freeweight-session` names the session the request ran on. With `auto_session` this is how you learn the id of
-the session that was started for you.
+`x-freeweight-session` names the session the request ran on. It comes on successful answers only. With
+`auto_session` this is how you learn the id of the session that was started for you.
 
 ### `GET /v1/models`
 

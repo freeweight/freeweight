@@ -24,7 +24,8 @@ staging address with the same paths. `/api` has no version prefix and can still 
   `llama33-70b`.
   A `/v1` request on a waking session waits up to 5 minutes, then
   answers `503 model_waking` with `Retry-After`. Set the client timeout to 10 minutes and retry on that code.
-- Every `/v1` answer carries the header `x-freeweight-session` with the id of the session it ran on. A session id
+- Every successful `/v1` answer carries the header `x-freeweight-session` with the id of the session it ran on.
+  An error answer does not. A session id
   (`ses_...`) is itself a credential for that one session: send it as the bearer token or in `X-Freeweight-Session`.
   It can read the session and run inference. It cannot stop or extend the session: with the id alone those
   answer `404 session_not_found`. The id works like a key for that one session, bounded by what the session
