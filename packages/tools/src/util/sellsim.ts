@@ -118,7 +118,6 @@ export async function v4Key(run: Run, chain: Chain, poolId: string, createdMs: n
 
 export type Verdict = "ok" | "costly" | "cannot_sell" | "route_dependent" | "reverted" | "not_measured" | "not_simulated";
 
-/** One simulated sale (or round trip) from one wallet. Costs are fractions 0..1 of value lost. */
 /** How one sale order ended: sold, reverted, sold for nothing, or not run (the call itself failed). */
 export type RouteOutcome = "ok" | "reverted" | "zero_output" | "unavailable";
 
@@ -140,16 +139,17 @@ export type RouteCosts = {
   decided_by: "wallet_held" | "pre_transferred";
 };
 
+/** One simulated sale (or round trip) from one wallet. Costs are fractions 0..1 of value lost. */
 export type WalletSim = {
   wallet: string;
   wallet_kind: "fresh address" | "real holder";
   verdict: Verdict;
+  /** Where it failed, when it failed. */
+  stage?: "buy" | "sell_transfer" | "sell_swap" | "pool" | "funding" | "zero_output";
   /**
    * Round trip: the cost of the order that decided the verdict (route_costs.decided_by; the wallet-held order when
    * only one ran). buy_cost / sell_cost always belong to the wallet-held order.
    */
-  /** Where it failed, when it failed. */
-  stage?: "buy" | "sell_transfer" | "sell_swap" | "pool" | "funding" | "zero_output";
   round_trip_cost?: number | null;
   buy_cost?: number | null;
   sell_cost?: number | null;
