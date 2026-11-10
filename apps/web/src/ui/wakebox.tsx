@@ -44,9 +44,13 @@ export function ModelPicker({ models, value, onChange }: { models: Model[]; valu
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActive((a) => Math.max(0, a - 1));
-    } else if (e.key === "Home") setActive(0);
-    else if (e.key === "End") setActive(models.length - 1);
-    else if (e.key === "Enter" || e.key === " ") {
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setActive(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setActive(models.length - 1);
+    } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const m = models[active];
       if (m && m.state !== "unavailable") {
@@ -62,9 +66,11 @@ export function ModelPicker({ models, value, onChange }: { models: Model[]; valu
       <button
         type="button"
         className="pick-btn"
+        role="combobox"
+        aria-labelledby="box-model"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={listId}
+        aria-controls={open ? listId : undefined}
         aria-activedescendant={open ? `${listId}-${active}` : undefined}
         onClick={() => {
           setActive(Math.max(0, models.findIndex((m) => m.id === value)));
@@ -81,7 +87,7 @@ export function ModelPicker({ models, value, onChange }: { models: Model[]; valu
         <Icon name="chevron" />
       </button>
       {open && (
-        <ul className="pick-list" role="listbox" id={listId} aria-label="Model">
+        <ul className="pick-list" role="listbox" id={listId} aria-labelledby="box-model">
           {models.map((m, i) => (
             <li
               key={m.id}
@@ -281,11 +287,11 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
 
       <p className="box-fine">
         {free ? (
-          <>No wallet, no signup. One free session a day on a Light model. After that it is {perMin(model.price_usd_micro_per_min)}, billed by the second with a one-minute minimum.</>
+          <>No wallet, no signup. One free session a day on a Light model. After that it is {perMin(model.price_usd_micro_per_min)}, billed by the second, one-minute minimum once the model is awake.</>
         ) : needWallet && model.tier !== "light" ? (
           <>The free try runs on Light models. {model.tier === "heavy" ? "Heavy is in preview. " : ""}This one is {perMin(model.price_usd_micro_per_min)}.</>
         ) : needWallet ? (
-          <>Today's free session is used. From here it is {perMin(model.price_usd_micro_per_min)}, billed by the second with a one-minute minimum.</>
+          <>Today's free session is used. From here it is {perMin(model.price_usd_micro_per_min)}, billed by the second, one-minute minimum once the model is awake.</>
         ) : (
           <>
             {perMin(model.price_usd_micro_per_min)}, billed by the second, one-minute minimum once the model is awake. The wake is free. Stop any time.

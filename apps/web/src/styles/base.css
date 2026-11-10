@@ -913,3 +913,25 @@ code.ic {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- fingers ---------- */
+
+/* On a touch screen the small controls grow to a size a thumb can hit. */
+@media (pointer: coarse) {
+  .hdr-btn,
+  .copy {
+    min-height: 40px;
+    min-width: 40px;
+  }
+  .seg button,
+  .btn.sm {
+    min-height: 40px;
+  }
+}
+
+/* A heading that takes the focus after a page change does not need a ring: nothing can be done with it. */
+#main:focus,
+#main h1:focus,
+#main h2[tabindex="-1"]:focus {
+  outline: none;
+}

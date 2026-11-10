@@ -172,5 +172,8 @@ export function useEvery(ms: number, on = true): void {
 export function useTitle(title: string): void {
   useEffect(() => {
     document.title = title ? `${title} · Freeweight` : "Freeweight: rent any open model by the minute";
+    // The same name is said once, politely, to a screen reader: a page change here is not a page load.
+    const note = document.getElementById("page-note");
+    if (note) note.textContent = title || "Freeweight";
   }, [title]);
 }

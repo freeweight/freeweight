@@ -40,7 +40,14 @@ export function match(pattern: string, path: string): Record<string, string> | n
   for (let i = 0; i < a.length; i++) {
     const p = a[i]!;
     const v = b[i]!;
-    if (p.startsWith(":")) out[p.slice(1)] = decodeURIComponent(v);
+    if (p.startsWith(":")) {
+      // A path with a broken percent escape is no page of ours.
+      try {
+        out[p.slice(1)] = decodeURIComponent(v);
+      } catch {
+        return null;
+      }
+    }
     else if (p !== v) return null;
   }
   return out;
@@ -48,7 +55,7 @@ export function match(pattern: string, path: string): Record<string, string> | n
 
 /** Paths the gateway answers itself: files at the site root and the API. A link to one leaves the app. */
 export function isOutside(href: string): boolean {
-  return /^[a-z][a-z0-9+.-]*:/i.test(href) || /^\/(api|v1|mcp)(\/|$|[?#])/.test(href) || /\.(txt|ya?ml|json|xml|pdf)([?#]|$)/i.test(href);
+  return /^[a-z][a-z0-9+.-]*:/i.test(href) || /^\/[/\\]/.test(href) || /^\/(api|v1|mcp)(\/|$|[?#])/.test(href) || /\.(txt|ya?ml|json|xml|pdf)([?#]|$)/i.test(href);
 }
 
 type LinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & { href: string; current?: boolean };

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 import { MOCK } from "./api";
 import { shortAddr } from "./lib/format";
 import { useLive, useMe } from "./lib/hooks";
@@ -53,7 +53,42 @@ export function App() {
   const me = useMe();
   const { awake } = useLive();
   const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLButtonElement>(null);
+  const drawer = useRef<HTMLElement>(null);
   useEffect(() => setOpen(false), [path]);
+  useEffect(() => {
+    // The open menu takes the focus, and Escape closes it and hands the focus back to its button.
+    if (!open) return;
+    drawer.current?.querySelector("a")?.focus();
+    const key = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      menu.current?.focus();
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [open]);
+  const first = useRef(true);
+  useEffect(() => {
+    // A new page starts at its heading, for the keyboard and for a screen reader alike. The views load on
+    // demand, so the heading may be a moment away.
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    let tries = 0;
+    let timer = 0;
+    const go = (): void => {
+      const h = document.querySelector<HTMLElement>("#main h1");
+      if (h) {
+        h.tabIndex = -1;
+        h.focus({ preventScroll: true });
+      } else if (++tries < 40) timer = window.setTimeout(go, 50);
+      else document.getElementById("main")?.focus({ preventScroll: true });
+    };
+    go();
+    return () => clearTimeout(timer);
+  }, [path]);
   useEffect(() => {
     // Warm the session view so a wake starts without a network round trip for code.
     const t = setTimeout(() => void loadSession(), 1200);
@@ -99,23 +134,24 @@ export function App() {
             <Link href="/account" className="hdr-btn hdr-acct">
               {me?.address ? <span className="mono">{shortAddr(me.address)}</span> : "Sign in"}
             </Link>
-            <button type="button" className="hdr-btn hdr-menu" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            <button type="button" className="hdr-btn hdr-menu" ref={menu} aria-label="Menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
               <Icon name={open ? "cross" : "menu"} />
             </button>
           </div>
         </div>
       </header>
       {open && (
-        <nav className="drawer" aria-label="Menu">
+        <nav className="drawer" ref={drawer} aria-label="Site menu">
           {NAV.map((n) => (
-            <Link key={n.href} href={n.href}>
+            <Link key={n.href} href={n.href} onClick={() => setOpen(false)}>
               {n.label}
               <Icon name="arrow" />
             </Link>
           ))}
         </nav>
       )}
-      <main className="main" id="main">
+      <p className="sr" id="page-note" role="status" />
+      <main className="main" id="main" tabIndex={-1}>
         <Suspense fallback={<div className="page wrap" aria-busy="true" />}>
           <View params={params} key={path} />
         </Suspense>
