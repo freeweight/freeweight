@@ -50,3 +50,33 @@ describe("sell test reconciliation with the index", () => {
     expect(r.sentence).toMatch(/COSTLY, a round trip of 0\.0005 ETH loses 30%/);
   });
 });
+
+import { describeSell } from "../src/tools/safety_check.js";
+import { routeVerdict } from "../src/util/sellsim.js";
+
+describe("route-dependent sell traps (v4 wallet-held vs pre-transferred sale)", () => {
+  it("flags only when one route is effectively unsellable and the other is cheap", () => {
+    expect(routeVerdict(0.049, 0.9999)).toBe("route_dependent");
+    expect(routeVerdict(0.9999, 0.03)).toBe("route_dependent");
+    expect(routeVerdict(0.049, 0.049)).toBeNull();
+    expect(routeVerdict(0.3, 0.9)).toBeNull(); // both bad: the worse verdict applies instead
+    expect(routeVerdict(null, 0.9)).toBeNull();
+  });
+  it("says which route is cheap and which loses", () => {
+    const s: SellSim = {
+      ...fresh("route_dependent", 0.049),
+      wallets: [{ wallet: "0x" + "5a".repeat(20), wallet_kind: "fresh address", verdict: "route_dependent", round_trip_cost: 0.049, route_costs: { wallet_held: 0.049, pre_transferred: 0.9999 } }],
+    };
+    expect(describeSell(s)).toBe("SELL DEPENDS ON THE ROUTE: selling straight from the wallet costs 4.9%, routes that move the tokens first lose 100% (fresh wallet, uniswap v4 (hooked pool))");
+    // A route-dependent simulation and an index test that loses 97% agree (both bad): one statement.
+    const r = reconcileSell(s, { sell_test: "costly", round_trip_cost: 0.97 });
+    expect(r.sim.agreement).toBe("agree");
+    expect(r.sentence).toMatch(/^SELL DEPENDS ON THE ROUTE/);
+  });
+  it("mentions the pre-transferred cost only when it differs", () => {
+    const same: SellSim = { ...fresh("ok", 0.049), wallets: [{ wallet: "0x" + "5a".repeat(20), wallet_kind: "fresh address", verdict: "ok", round_trip_cost: 0.049, route_costs: { wallet_held: 0.049, pre_transferred: 0.049 } }] };
+    expect(describeSell(same)).not.toMatch(/moving the tokens first/);
+    const differs: SellSim = { ...fresh("ok", 0.03), wallets: [{ wallet: "0x" + "5a".repeat(20), wallet_kind: "fresh address", verdict: "ok", round_trip_cost: 0.03, route_costs: { wallet_held: 0.03, pre_transferred: 0.08 } }] };
+    expect(describeSell(differs)).toMatch(/; moving the tokens first: 8\.0%$/);
+  });
+});

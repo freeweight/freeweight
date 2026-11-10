@@ -70,7 +70,14 @@ const PROBE = [
     type: "function",
     name: "roundTripV4",
     stateMutability: "nonpayable",
-    inputs: [{ name: "token", type: "address" }, { name: "quote", type: "address" }, { name: "manager", type: "address" }, KEY, { name: "qIn", type: "uint256" }],
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "quote", type: "address" },
+      { name: "manager", type: "address" },
+      KEY,
+      { name: "qIn", type: "uint256" },
+      { name: "preTransfer", type: "bool" },
+    ],
     outputs: OUT,
   },
 ] as const;
@@ -121,6 +128,11 @@ export type WalletSim = {
   round_trip_cost?: number | null;
   buy_cost?: number | null;
   sell_cost?: number | null;
+  /**
+   * v4 round trips run twice: selling with the tokens still in the wallet at swap time, and with the tokens moved to the
+   * pool manager first (the order many bots and aggregators use). Round-trip cost of each, fractions 0..1.
+   */
+  route_costs?: { wallet_held: number | null; pre_transferred: number | null; pre_transferred_reverted?: boolean };
   /** v2 sell-only: share of the tokens lost on the way into the pool (token transfer tax). */
   transfer_tax?: number | null;
   amount_raw?: string;
@@ -264,45 +276,75 @@ function overrideUnsupported(e: unknown): boolean {
  * Round trip from a fresh random address that nobody can have exempted: give it native coin by state override, buy a
  * small amount, sell everything bought, and compare what comes back with what went in.
  */
-export async function freshRoundTrip(run: Run, chain: Chain, token: string, p: PoolInfo, decimals: number | null): Promise<{ sim: WalletSim; size: number } | { unavailable: string }> {
-  // ~0.3% of the pool's quote side, between 0.0005 (about $1 of ETH) and 1 native unit.
-  const size = Math.min(1, Math.max(0.0005, (p.quoteLiquidity ?? 0.3) * 0.003));
-  const qIn = BigInt(Math.round(size * 1e12)) * 1_000_000n; // 18-decimal native/wrapped coins
-  const wallet = freshAddress();
+type OneTrip = { stage: WalletSim["stage"] | null; bought: bigint; qOut: bigint; reason: Hex } | { unavailable: string };
+
+export async function oneTrip(run: Run, chain: Chain, token: string, p: PoolInfo, wallet: string, qIn: bigint, preTransfer: boolean, origin = wallet): Promise<OneTrip> {
   let data: Hex;
-  if (p.kind === "v4") data = encodeFunctionData({ abi: PROBE, functionName: "roundTripV4", args: [token as Hex, (p.wrap ?? ZERO) as Hex, chain.v4!.poolManager as Hex, p.key!, qIn] });
+  if (p.kind === "v4") data = encodeFunctionData({ abi: PROBE, functionName: "roundTripV4", args: [token as Hex, (p.wrap ?? ZERO) as Hex, chain.v4!.poolManager as Hex, p.key!, qIn, preTransfer] });
   else data = encodeFunctionData({ abi: PROBE, functionName: p.kind === "v3" ? "roundTripV3" : "roundTripV2", args: [token as Hex, p.wrap as Hex, p.pool as Hex, qIn] });
   let raw: Hex;
   try {
-    raw = await rpc<Hex>(run, chain, "eth_call", [{ from: wallet, to: wallet, data, gas: GAS }, "latest", { [wallet]: { code: SELL_PROBE_RUNTIME, balance: FRESH_BALANCE } }], { ttl: 0 });
+    // from = to = the fresh wallet: it is tx.origin and it holds the bought tokens until it sells.
+    raw = await rpc<Hex>(run, chain, "eth_call", [{ from: origin, to: wallet, data, gas: GAS }, "latest", { [wallet]: { code: SELL_PROBE_RUNTIME, balance: FRESH_BALANCE } }], { ttl: 0 });
   } catch (e) {
     if (overrideUnsupported(e)) return { unavailable: "the RPC does not support eth_call state overrides (code + balance), which the fresh-wallet test needs" };
     return { unavailable: `the round-trip call failed (${e instanceof Error ? e.message.slice(0, 80) : "error"})` };
   }
   const [stage, bought, qOut, reason] = decodeFunctionResult({ abi: PROBE, functionName: "roundTripV2", data: raw }) as readonly [number, bigint, bigint, Hex];
-  const st = stage < STAGE_RT.length ? STAGE_RT[stage]! : "pool";
+  return { stage: stage < STAGE_RT.length ? STAGE_RT[stage]! : "pool", bought, qOut, reason };
+}
+
+/** Two routes disagree when one loses more than CANNOT_SELL_ABOVE and the other less than COSTLY_ABOVE. */
+export function routeVerdict(walletHeld: number | null, pre: number | null): Verdict | null {
+  if (walletHeld === null || pre === null) return null;
+  const hi = Math.max(walletHeld, pre);
+  const lo = Math.min(walletHeld, pre);
+  return hi > CANNOT_SELL_ABOVE && lo <= COSTLY_ABOVE ? "route_dependent" : null;
+}
+
+/**
+ * Round trip from a fresh random address that nobody can have exempted: give it native coin by state override, buy a
+ * small amount, sell everything bought, and compare what comes back with what went in. On v4 the sale runs twice: with
+ * the tokens still in the wallet at swap time, and with the tokens moved to the pool manager before the swap.
+ */
+export async function freshRoundTrip(run: Run, chain: Chain, token: string, p: PoolInfo, decimals: number | null): Promise<{ sim: WalletSim; size: number } | { unavailable: string }> {
+  // ~0.3% of the pool's quote side, between 0.0005 (about $1 of ETH) and 1 native unit.
+  const size = Math.min(1, Math.max(0.0005, (p.quoteLiquidity ?? 0.3) * 0.003));
+  const qIn = BigInt(Math.round(size * 1e12)) * 1_000_000n; // 18-decimal native/wrapped coins
+  const wallet = freshAddress();
+  const [held, pre] = await Promise.all([oneTrip(run, chain, token, p, wallet, qIn, false), p.kind === "v4" ? oneTrip(run, chain, token, p, wallet, qIn, true) : Promise.resolve(null)]);
+  if ("unavailable" in held) return held;
+  const st = held.stage;
   if (st === "buy" || st === "pool" || st === "funding") {
     return { unavailable: st === "buy" ? "a buy from a fresh wallet reverted (some tokens refuse wallets with code or block buys)" : st === "funding" ? "wrapping the native coin failed" : "the pool could not be read" };
   }
-  const sim: WalletSim = { wallet, wallet_kind: "fresh address", verdict: "reverted", amount_raw: bought.toString(), out_raw: qOut.toString() };
+  const sim: WalletSim = { wallet, wallet_kind: "fresh address", verdict: "reverted", amount_raw: held.bought.toString(), out_raw: held.qOut.toString() };
+  const costOf = (q: bigint) => round4(Math.max(0, 1 - Number(q) / 1e18 / size));
+  let heldCost: number | null = null;
   if (st) {
     sim.stage = st;
-    sim.verdict = "reverted";
-    const r = decodeReason(reason);
+    const r = decodeReason(held.reason);
     if (r) sim.revert_reason_untrusted = r;
-    return { sim, size };
-  }
-  const qOutN = Number(qOut) / 1e18;
-  const rt = 1 - qOutN / size;
-  sim.round_trip_cost = round4(Math.max(0, rt));
-  if (p.mid !== null && decimals !== null) {
-    const value = (Number(bought) / 10 ** decimals) * p.mid;
-    if (value > 0) {
-      sim.buy_cost = round4(Math.max(0, 1 - value / size));
-      sim.sell_cost = round4(Math.max(0, 1 - qOutN / value));
+  } else {
+    heldCost = costOf(held.qOut);
+    sim.round_trip_cost = heldCost;
+    if (p.mid !== null && decimals !== null) {
+      const value = (Number(held.bought) / 10 ** decimals) * p.mid;
+      if (value > 0) {
+        sim.buy_cost = round4(Math.max(0, 1 - value / size));
+        sim.sell_cost = round4(Math.max(0, 1 - Number(held.qOut) / 1e18 / value));
+      }
     }
+    sim.verdict = verdictFor(heldCost);
   }
-  sim.verdict = verdictFor(rt);
+  if (pre && !("unavailable" in pre) && (pre.stage === null || pre.stage === "sell_transfer" || pre.stage === "sell_swap" || pre.stage === "zero_output")) {
+    const preReverted = pre.stage !== null;
+    const preCost = preReverted ? 1 : costOf(pre.qOut);
+    sim.route_costs = { wallet_held: heldCost, pre_transferred: preReverted ? null : preCost, ...(preReverted ? { pre_transferred_reverted: true } : {}) };
+    const rv = routeVerdict(heldCost ?? (st ? 1 : null), preCost);
+    if (rv) sim.verdict = rv;
+    else if (heldCost !== null) sim.verdict = worst([sim.verdict, preReverted ? "reverted" : verdictFor(preCost)]);
+  }
   return { sim, size };
 }
 

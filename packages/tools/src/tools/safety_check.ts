@@ -41,13 +41,28 @@ export function describeSell(s: SellSim): string {
     const w = s.wallets[0]!;
     const size = s.trade_size_quote !== null && s.trade_size_quote !== undefined ? `${Number(s.trade_size_quote.toPrecision(2))} ${s.quote_symbol ?? ""}`.trim() : "a small amount";
     const legs = w.buy_cost !== undefined && w.buy_cost !== null ? ` (buy ${pct(w.buy_cost)}, sell ${pct(w.sell_cost)})` : "";
+    const rc = w.route_costs;
+    if (w.verdict === "route_dependent" && rc) {
+      const held = rc.wallet_held === null ? "reverts" : `costs ${pct(rc.wallet_held)}`;
+      const preTxt = rc.pre_transferred_reverted ? "revert" : `lose ${pct(rc.pre_transferred)}`;
+      const cheapIsWallet = rc.wallet_held !== null && (rc.pre_transferred_reverted || (rc.pre_transferred ?? 0) > rc.wallet_held);
+      return cheapIsWallet
+        ? `SELL DEPENDS ON THE ROUTE: selling straight from the wallet ${held}, routes that move the tokens first ${preTxt} (fresh wallet, ${s.pool_kind})`
+        : `SELL DEPENDS ON THE ROUTE: routes that move the tokens first cost ${pct(rc.pre_transferred)}, selling straight from the wallet ${rc.wallet_held === null ? "reverts" : `loses ${pct(rc.wallet_held)}`} (fresh wallet, ${s.pool_kind})`;
+    }
+    const routes =
+      rc && rc.pre_transferred !== null && rc.wallet_held !== null && Math.abs(rc.pre_transferred - rc.wallet_held) >= 0.01
+        ? `; moving the tokens first: ${pct(rc.pre_transferred)}`
+        : rc?.pre_transferred_reverted
+          ? "; moving the tokens first: the sale reverts"
+          : "";
     switch (w.verdict) {
       case "ok":
-        return `sell test from a fresh wallet (round trip of ${size} on ${s.pool_kind}): costs ${pct(w.round_trip_cost)}${legs}`;
+        return `sell test from a fresh wallet (round trip of ${size} on ${s.pool_kind}): costs ${pct(w.round_trip_cost)}${legs}${routes}`;
       case "costly":
-        return `sell test from a fresh wallet: COSTLY, a round trip of ${size} loses ${pct(w.round_trip_cost)}${legs}`;
+        return `sell test from a fresh wallet: COSTLY, a round trip of ${size} loses ${pct(Math.max(w.round_trip_cost ?? 0, rc?.pre_transferred ?? 0))}${legs}${routes}`;
       case "cannot_sell":
-        return `sell test from a fresh wallet: EFFECTIVELY CANNOT SELL, a round trip of ${size} loses ${pct(w.round_trip_cost)}${legs}`;
+        return `sell test from a fresh wallet: EFFECTIVELY CANNOT SELL, a round trip of ${size} loses ${pct(Math.max(w.round_trip_cost ?? 0, rc?.pre_transferred ?? 0))}${legs}${routes}`;
       case "reverted":
         return `sell test from a fresh wallet: SELL REVERTED (bought, then the sale ${w.stage === "sell_transfer" ? "transfer" : "swap"} reverted)`;
       default:
@@ -101,6 +116,7 @@ function simPhrase(s: SellSim): string {
   const w = s.wallets[0];
   if (!w) return "was not run";
   if (s.verdict === "reverted") return "reverts";
+  if (s.verdict === "route_dependent" && w.route_costs) return `costs ${pct(w.route_costs.wallet_held)} from the wallet but ${w.route_costs.pre_transferred_reverted ? "reverts" : `loses ${pct(w.route_costs.pre_transferred)}`} when the tokens are moved first`;
   const cost = s.method === "fresh_wallet_round_trip" ? w.round_trip_cost : Math.max(...s.wallets.map((x) => x.sell_cost ?? 0));
   if (typeof cost !== "number") return "did not revert (cost not measured)";
   return s.verdict === "ok" ? `costs ${pct(cost)}` : `loses ${pct(cost)}`;

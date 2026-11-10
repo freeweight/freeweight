@@ -75,6 +75,11 @@ describe("tool shaping", () => {
     expect(sim.hooks).toMatch(/^0x[0-9a-f]{40}$/);
     expect(BigInt(sim.wallets[0]!.out_raw)).toBeGreaterThan(0n);
     expect(typeof sim.wallets[0]!.round_trip_cost).toBe("number");
+    // Both sale orders were simulated; a clean pool must not be flagged as route dependent.
+    const rc = (sim.wallets[0] as { route_costs?: { wallet_held: number; pre_transferred: number } }).route_costs!;
+    expect(typeof rc.wallet_held).toBe("number");
+    expect(typeof rc.pre_transferred).toBe("number");
+    expect((r.data.sell_simulation as { verdict: string }).verdict).toBe("ok");
     expect(r.summary).toMatch(/simulation ran through it/);
   });
 

@@ -191,14 +191,17 @@ contract SellProbe {
         external
         returns (uint8 stage, uint256 received, uint256 out, bytes memory reason)
     {
-        (bool ok, bytes memory r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, token, amount)));
+        (bool ok, bytes memory r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, token, amount, false)));
         if (!ok) return (2, 0, 0, r);
         (uint256 paid, uint256 got) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256));
         return (got == 0 ? 4 : 0, paid, got, "");
     }
 
     /// Round trip from a fresh address: buy with `quote` (address(0) = native ETH, else wrapped first), sell back.
-    function roundTripV4(address token, address quote, address manager, PoolKey calldata key, uint256 qIn)
+    /// preTransfer = false: the tokens stay in the selling wallet until the swap has run and are paid at settlement.
+    /// preTransfer = true: the tokens are moved to the PoolManager and settled first, then swapped against that credit
+    /// (the order many bots and aggregators use).
+    function roundTripV4(address token, address quote, address manager, PoolKey calldata key, uint256 qIn, bool preTransfer)
         external
         returns (uint8 stage, uint256 bought, uint256 qOut, bytes memory reason)
     {
@@ -208,23 +211,37 @@ contract SellProbe {
             (ok, r) = _wrap(quote, qIn);
             if (!ok) return (6, 0, 0, r);
         }
-        (ok, r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, quote, qIn)));
+        (ok, r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, quote, qIn, false)));
         if (!ok) return (1, 0, 0, r);
         (, bought) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256));
         if (bought == 0) return (1, 0, 0, "");
         // Sell what actually arrived (a transfer tax on the way out of the pool lowers it).
         uint256 have = _bal(token, address(this));
         if (have < bought) bought = have;
-        (ok, r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, token, bought)));
+        (ok, r) = manager.call(abi.encodeWithSignature("unlock(bytes)", abi.encode(key, token, bought, preTransfer)));
         if (!ok) return (3, bought, 0, r);
         (, qOut) = abi.decode(abi.decode(r, (bytes)), (uint256, uint256));
         return (qOut == 0 ? 5 : 0, bought, qOut, "");
     }
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        (PoolKey memory key, address inC, uint256 amount) = abi.decode(data, (PoolKey, address, uint256));
+        (PoolKey memory key, address inC, uint256 amount, bool pre) = abi.decode(data, (PoolKey, address, uint256, bool));
         bool zeroForOne = key.currency0 == inC;
-        (bool ok, bytes memory r) = msg.sender.call(
+        bool ok;
+        bytes memory r;
+        uint256 prepaid;
+        if (pre && inC != address(0)) {
+            // Move the tokens out of the wallet and into the PoolManager before swapping; swap what was credited.
+            (ok, r) = msg.sender.call(abi.encodeWithSignature("sync(address)", inC));
+            if (!ok) _bubble(r);
+            (ok, r) = _send(inC, msg.sender, amount);
+            if (!ok) _bubble(r);
+            (ok, r) = msg.sender.call(abi.encodeWithSignature("settle()"));
+            if (!ok) _bubble(r);
+            prepaid = abi.decode(r, (uint256));
+            amount = prepaid;
+        }
+        (ok, r) = msg.sender.call(
             abi.encodeWithSignature(
                 "swap((address,address,uint24,int24,address),(bool,int256,uint160),bytes)",
                 key,
@@ -240,6 +257,7 @@ contract SellProbe {
         int128 get = zeroForOne ? a1 : a0;
         uint256 pay = owe < 0 ? uint256(uint128(-owe)) : 0;
         uint256 take = get > 0 ? uint256(uint128(get)) : 0;
+        if (prepaid > 0) pay = pay > prepaid ? pay - prepaid : 0; // already settled up front
         if (pay > 0) {
             if (inC == address(0)) {
                 (ok, r) = msg.sender.call{value: pay}(abi.encodeWithSignature("settle()"));
@@ -258,6 +276,6 @@ contract SellProbe {
             (ok, r) = msg.sender.call(abi.encodeWithSignature("take(address,address,uint256)", outC, address(this), take));
             if (!ok) _bubble(r);
         }
-        return abi.encode(pay, take);
+        return abi.encode(prepaid > 0 ? prepaid : pay, take);
     }
 }
