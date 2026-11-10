@@ -169,14 +169,17 @@ on it, until it ends. Stopping it needs the owner: the browser that started it, 
 
 1. Start a session on the site, for example the free try.
 2. Copy the session id from the page address. It is the part that starts with `ses_`.
-3. Use it where the examples above use the API key:
+3. Use it where the examples above use the API key, and as `SESSION`:
 
 ```
 export FREEWEIGHT_KEY="ses_abcdefghijklmnopqrstuvwx"
+export SESSION="$FREEWEIGHT_KEY"
 ```
 
-Steps 3 to 5, the Python example and the TypeScript example then work as written. Step 2 is not needed, because
-the session already exists. A free session cannot be extended.
+Steps 3 and 4, the Python example and the TypeScript example then work as written. Step 2 is not needed, because
+the session already exists. Step 5 does not work with the id alone: it answers `404 session_not_found`. Stop the
+session on the site, in the browser that started it, or with an API key of its wallet. A free session cannot be
+extended.
 
 ## Next
 
