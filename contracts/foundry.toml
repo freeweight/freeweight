@@ -6,6 +6,10 @@ out = "out"
 cache_path = "cache"
 libs = ["lib"]
 solc_version = "0.8.28"
+# Pinned on purpose: the solc default moves to a newer EVM on a compiler bump. Robinhood Chain
+# (4663, an Arbitrum Orbit chain) was probed on 2026-11-10: PUSH0, TSTORE, TLOAD and MCOPY all
+# execute, so cancun is safe there. The bytecode only needs PUSH0 (shanghai); switch to "shanghai"
+# if the same build may go to an older Orbit chain. ReentrancyGuard is the storage version.
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200

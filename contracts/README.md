@@ -142,6 +142,13 @@ equality on a zero check, timestamp comparison for the cooldown) are intended.
 
 1. The token `$WEIGHT` exists on chain 4663 (launched on the third-party launchpad). Note its address
    and check on the explorer that it is a plain ERC-20 (no transfer fee, no rebase, no blocklist).
+   Then run the round trip against the real token on a fork (stake, request, wait the cooldown,
+   withdraw, exact amounts asserted); repeat it after graduation if the launchpad has such a phase,
+   because some launchpad tokens restrict transfers before it:
+   ```sh
+   WEIGHT_TOKEN=0x... forge test --match-test test_fork_roundTrip --fork-url <RH_RPC_URL> -vv
+   ```
+   (`WEIGHT_DECIMALS` if it is not 18.) A normal `forge test` skips it.
 2. Decide the owner: a multisig or a fresh wallet, not a hot key. Plan whether to renounce later.
 3. Constructor args: `WeightVault(address token, address owner)`.
 4. Deploy with a signer supplied on the command line (hardware wallet or encrypted keystore), never
@@ -149,9 +156,12 @@ equality on a zero check, timestamp comparison for the cooldown) are intended.
    ```sh
    export WEIGHT_TOKEN=0x...   # the token
    export VAULT_OWNER=0x...    # the owner
+   export VAULT_OWNER_IS_CONTRACT=true   # if the owner is a Safe: requires code at it on this chain
+   # VAULT_CHAIN_ID defaults to 4663; the script refuses to run on any other chain unless you set it
    forge script script/Deploy.s.sol --rpc-url <RH_RPC_URL> --ledger --broadcast
    ```
-   Dry-run first by leaving out `--broadcast` (simulates only).
+   Dry-run first by leaving out `--broadcast` (simulates only). The script logs the token's symbol
+   and decimals: check them against the explorer before broadcasting.
 5. Verify on the Blockscout explorer:
    ```sh
    forge verify-contract <VAULT_ADDRESS> src/WeightVault.sol:WeightVault \
