@@ -182,7 +182,7 @@ contract WeightVaultTest is Test {
         vm.stopPrank();
     }
 
-    function test_requestUnstake_secondRequestAddsAndRestartsClock() public {
+    function test_requestUnstake_secondRequestWhileLockedAddsAndExtendsUnlock() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
         vault.requestUnstake(30 ether);
@@ -193,6 +193,61 @@ contract WeightVaultTest is Test {
         assertEq(amt, 50 ether);
         assertEq(unlock, block.timestamp + CD);
         assertEq(vault.totalPending(), 50 ether);
+    }
+
+    function test_requestUnstake_afterMaturityRevertsWithdrawFirst() public {
+        vm.startPrank(alice);
+        vault.stake(100 ether);
+        vault.requestUnstake(30 ether);
+        (, uint256 unlock) = vault.pendingUnstake(alice);
+        vm.warp(unlock - 1);
+        vault.requestUnstake(1 ether); // still locked: allowed
+        (, uint256 unlock2) = vault.pendingUnstake(alice);
+        vm.warp(unlock2);
+        vm.expectRevert(abi.encodeWithSelector(IWeightVault.WithdrawFirst.selector, unlock2));
+        vault.requestUnstake(1 ether);
+        vault.withdraw();
+        vault.requestUnstake(1 ether); // fine once withdrawn
+        vm.stopPrank();
+    }
+
+    /// Regression: a re-request after the owner raised the cooldown must not re-lock
+    /// matured funds.
+    function test_requestUnstake_rerequestCannotRelockMaturedFunds() public {
+        vm.startPrank(alice);
+        vault.stake(100 ether);
+        vault.requestUnstake(99 ether);
+        vm.stopPrank();
+        skip(CD);
+        vm.prank(owner);
+        vault.setCooldown(30 days);
+        (, uint256 unlock) = vault.pendingUnstake(alice);
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IWeightVault.WithdrawFirst.selector, unlock));
+        vault.requestUnstake(1);
+        vault.withdraw();
+        vm.stopPrank();
+        assertEq(token.balanceOf(alice), 1_000_000 ether - 1 ether);
+    }
+
+    /// Regression: a re-request after the owner lowered the cooldown must not shorten
+    /// an existing request.
+    function test_requestUnstake_rerequestCannotShortenExisting() public {
+        vm.startPrank(alice);
+        vault.stake(100 ether);
+        vault.requestUnstake(99 ether);
+        (, uint256 unlock) = vault.pendingUnstake(alice);
+        vm.stopPrank();
+        vm.prank(owner);
+        vault.setCooldown(0);
+        vm.startPrank(alice);
+        vault.requestUnstake(1);
+        (uint256 amt, uint256 unlockAfter) = vault.pendingUnstake(alice);
+        assertEq(amt, 99 ether + 1);
+        assertEq(unlockAfter, unlock);
+        vm.expectRevert(abi.encodeWithSelector(IWeightVault.StillLocked.selector, unlock));
+        vault.withdraw();
+        vm.stopPrank();
     }
 
     // ------------------------------------------------------------ withdraw + cooldown boundaries

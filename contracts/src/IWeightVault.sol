@@ -11,11 +11,15 @@ interface IWeightVault {
     error InsufficientStaked(uint256 requested, uint256 available);
     error NothingPending();
     error StillLocked(uint256 unlockTime);
+    /// @dev A matured request is pending: withdraw it before requesting again.
+    error WithdrawFirst(uint256 unlockTime);
     error CooldownTooLong(uint256 requested, uint256 max);
 
     // ---------------------------------------------------------------- events
     /// @param amount the amount actually received by the vault (balance delta)
     event Staked(address indexed user, uint256 amount, uint256 newStaked);
+    /// @param amount the amount added to the user's pending balance by this request
+    /// @param unlockTime when ALL of the user's pending tokens (not only `amount`) can be withdrawn
     event UnstakeRequested(address indexed user, uint256 amount, uint256 unlockTime);
     event UnstakeCancelled(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);

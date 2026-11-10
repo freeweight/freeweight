@@ -15,7 +15,7 @@ import {IWeightVault} from "./IWeightVault.sol";
 ///      Invariant: token.balanceOf(vault) >= totalStaked + totalPending (equal unless tokens are
 ///      sent to the vault directly, which are unrecoverable by design).
 ///      Owner power is limited to `setCooldown` within [0, 30 days]; it never touches existing
-///      requests, whose unlock time is fixed when requested.
+///      requests: a later request can only keep or extend the unlock, never shorten it.
 contract WeightVault is IWeightVault, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -67,16 +67,21 @@ contract WeightVault is IWeightVault, Ownable2Step, ReentrancyGuard {
 
     /// @notice Move `amount` of counted stake into cooldown. It stops counting immediately and can
     ///         be withdrawn once the cooldown (as of now) has passed. Requesting again while
-    ///         something is pending adds to it and restarts the clock for the whole pending amount.
+    ///         something is still locked adds to the pending amount and moves the unlock of ALL
+    ///         pending tokens to `max(old unlock, now + cooldown)`: a request is never shortened.
+    ///         If the pending amount has already matured, this reverts `WithdrawFirst`, so matured
+    ///         funds are never re-locked by surprise.
     function requestUnstake(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
         Position storage p = _positions[msg.sender];
         if (amount > p.staked) revert InsufficientStaked(amount, p.staked);
+        if (p.pending != 0 && block.timestamp >= p.unlockTime) revert WithdrawFirst(p.unlockTime);
 
         p.staked -= amount;
         if (p.staked == 0) p.stakedSince = 0;
         p.pending += amount;
         uint256 unlock = block.timestamp + cooldown;
+        if (unlock < p.unlockTime) unlock = p.unlockTime; // never shortens an existing request
         // forge-lint: disable-next-line(unsafe-typecast)
         p.unlockTime = uint64(unlock);
         totalStaked -= amount;
