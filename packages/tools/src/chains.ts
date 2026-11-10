@@ -22,6 +22,8 @@ export type Chain = {
   /** Human explorer for links. */
   explorerUi?: string;
   dexscreener?: string;
+  /** GeckoTerminal network id (keyless fallback for pools and prices). */
+  geckoterminal?: string;
   goplus?: string;
   /** Approximate block time in seconds, used to size getLogs windows. */
   blockTime: number;
@@ -47,6 +49,7 @@ export const CHAINS: Chain[] = [
     explorers: [{ type: "blockscout", base: "https://robinhoodchain.blockscout.com" }],
     explorerUi: "https://robinhoodchain.blockscout.com",
     dexscreener: "robinhood",
+    geckoterminal: "robinhood",
     goplus: "4663",
     blockTime: 0.1,
     logsSpan: 10_000_000,
@@ -68,6 +71,7 @@ export const CHAINS: Chain[] = [
     ],
     explorerUi: "https://eth.blockscout.com",
     dexscreener: "ethereum",
+    geckoterminal: "eth",
     goplus: "1",
     blockTime: 12,
     logsSpan: 50_000,
@@ -85,6 +89,7 @@ export const CHAINS: Chain[] = [
     explorers: [{ type: "blockscout", base: "https://base.blockscout.com" }],
     explorerUi: "https://base.blockscout.com",
     dexscreener: "base",
+    geckoterminal: "base",
     goplus: "8453",
     blockTime: 2,
     logsSpan: 50_000,
@@ -102,6 +107,7 @@ export const CHAINS: Chain[] = [
     explorers: [],
     explorerUi: "https://bscscan.com",
     dexscreener: "bsc",
+    geckoterminal: "bsc",
     goplus: "56",
     blockTime: 0.75,
     logsSpan: 50_000,
@@ -119,6 +125,7 @@ export const CHAINS: Chain[] = [
     explorers: [{ type: "blockscout", base: "https://arbitrum.blockscout.com" }],
     explorerUi: "https://arbitrum.blockscout.com",
     dexscreener: "arbitrum",
+    geckoterminal: "arbitrum",
     goplus: "42161",
     blockTime: 0.25,
     logsSpan: 50_000,
@@ -135,6 +142,7 @@ export const CHAINS: Chain[] = [
     explorers: [{ type: "blockscout", base: "https://optimism.blockscout.com" }],
     explorerUi: "https://optimism.blockscout.com",
     dexscreener: "optimism",
+    geckoterminal: "optimism",
     goplus: "10",
     blockTime: 2,
     logsSpan: 50_000,
@@ -151,6 +159,7 @@ export const CHAINS: Chain[] = [
     explorers: [{ type: "blockscout", base: "https://polygon.blockscout.com" }],
     explorerUi: "https://polygon.blockscout.com",
     dexscreener: "polygon",
+    geckoterminal: "polygon_pos",
     goplus: "137",
     blockTime: 2,
     logsSpan: 50_000,

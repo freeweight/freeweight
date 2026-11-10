@@ -23,16 +23,100 @@ export type DsPair = {
   marketCap?: number;
   pairCreatedAt?: number;
   info?: { imageUrl?: string; websites?: { label?: string; url: string }[]; socials?: { type: string; url: string }[] };
+  /** Where this pool record came from when it is not DexScreener. */
+  source?: "geckoterminal" | "freeweight_index";
 };
 
 /** Pools under this USD liquidity, or under 1% of the deepest pool while also under $25k, are junk for pricing. */
 export const JUNK_LIQ_USD = 1000;
 
+/**
+ * Pools for a token: DexScreener, and GeckoTerminal when DexScreener fails (throttling on shared egress is common).
+ * An empty DexScreener answer is taken as "no pool listed"; only a failure falls back. When both fail the
+ * DexScreener error is thrown, with the fallback's failure noted.
+ */
 export async function tokenPairs(run: Run, chain: Chain, token: string): Promise<DsPair[]> {
-  if (!chain.dexscreener) return [];
-  const j = await run.json<DsPair[] | { pairs?: DsPair[] }>(`${BASE}/tokens/v1/${chain.dexscreener}/${token}`, { source: "dexscreener", ttl: 30 });
-  const pairs = Array.isArray(j) ? j : (j.pairs ?? []);
-  return pairs.filter((p) => p.chainId === chain.dexscreener);
+  if (!chain.dexscreener) return chain.geckoterminal ? geckoPairs(run, chain, token) : [];
+  try {
+    const j = await run.json<DsPair[] | { pairs?: DsPair[] }>(`${BASE}/tokens/v1/${chain.dexscreener}/${token}`, { source: "dexscreener", ttl: 30 });
+    const pairs = Array.isArray(j) ? j : (j.pairs ?? []);
+    return pairs.filter((p) => p.chainId === chain.dexscreener);
+  } catch (e) {
+    if (!chain.geckoterminal) throw e;
+    try {
+      const gt = await geckoPairs(run, chain, token);
+      run.note(`DexScreener unavailable (${e instanceof Error ? e.message.slice(0, 60) : "error"}); pools and prices from GeckoTerminal`);
+      return gt;
+    } catch (g) {
+      run.note(`GeckoTerminal fallback unavailable too (${g instanceof Error ? g.message.slice(0, 60) : "error"})`);
+      throw e;
+    }
+  }
+}
+
+type GtPool = {
+  id: string;
+  attributes: {
+    address: string;
+    name?: string;
+    base_token_price_usd?: string | null;
+    base_token_price_quote_token?: string | null;
+    reserve_in_usd?: string | null;
+    pool_created_at?: string | null;
+    fdv_usd?: string | null;
+    market_cap_usd?: string | null;
+    volume_usd?: Record<string, string | null>;
+    price_change_percentage?: Record<string, string | null>;
+    transactions?: Record<string, { buys?: number; sells?: number }>;
+  };
+  relationships: { base_token: { data: { id: string } }; quote_token: { data: { id: string } }; dex: { data: { id: string } } };
+};
+type GtIncluded = { id: string; type: string; attributes: { symbol?: string; name?: string } };
+
+const num = (v: string | null | undefined) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
+
+/** Map one GeckoTerminal pool to the DexScreener pair shape the tools read. */
+export function geckoToPair(p: GtPool, chain: Chain, included: GtIncluded[]): DsPair {
+  const tok = (rel: { data: { id: string } }) => {
+    const id = rel.data.id;
+    const inc = included.find((i) => i.id === id);
+    return { address: id.slice(id.indexOf("_") + 1).toLowerCase(), name: inc?.attributes.name ?? "", symbol: inc?.attributes.symbol ?? "" };
+  };
+  const a = p.attributes;
+  const dex = p.relationships.dex.data.id;
+  const addr = a.address.toLowerCase();
+  // A 32-byte pool id is a Uniswap v4 pool whatever the venue's name; otherwise read the version from the dex id.
+  const labels = addr.length === 66 ? ["v4"] : /v3/.test(dex) ? ["v3"] : /v2/.test(dex) ? ["v2"] : [];
+  const pc = a.price_change_percentage ?? {};
+  const vol = a.volume_usd ?? {};
+  return {
+    chainId: chain.dexscreener ?? chain.key,
+    dexId: dex,
+    url: `https://www.geckoterminal.com/${chain.geckoterminal}/pools/${addr}`,
+    pairAddress: addr,
+    labels,
+    baseToken: tok(p.relationships.base_token),
+    quoteToken: tok(p.relationships.quote_token),
+    priceNative: a.base_token_price_quote_token ?? undefined,
+    priceUsd: a.base_token_price_usd ?? undefined,
+    txns: a.transactions?.h24 ? { h24: { buys: a.transactions.h24.buys ?? 0, sells: a.transactions.h24.sells ?? 0 } } : undefined,
+    volume: num(vol.h24) !== undefined ? { h24: num(vol.h24)! } : undefined,
+    priceChange: Object.fromEntries(["m5", "h1", "h6", "h24"].filter((k) => num(pc[k]) !== undefined).map((k) => [k, num(pc[k])!])),
+    liquidity: num(a.reserve_in_usd) !== undefined ? { usd: num(a.reserve_in_usd) } : undefined,
+    fdv: num(a.fdv_usd),
+    marketCap: num(a.market_cap_usd),
+    pairCreatedAt: a.pool_created_at ? Date.parse(a.pool_created_at) : undefined,
+    source: "geckoterminal",
+  };
+}
+
+export async function geckoPairs(run: Run, chain: Chain, token: string): Promise<DsPair[]> {
+  if (!chain.geckoterminal) return [];
+  const j = await run.json<{ data?: GtPool[]; included?: GtIncluded[] }>(
+    `https://api.geckoterminal.com/api/v2/networks/${chain.geckoterminal}/tokens/${token}/pools?page=1&include=base_token,quote_token,dex`,
+    { source: "geckoterminal", ttl: 60, retries: 0, timeoutMs: 6000, headers: { accept: "application/json" } },
+  );
+  return (j.data ?? []).map((p) => geckoToPair(p, chain, j.included ?? []));
 }
 
 export async function searchPairs(run: Run, q: string): Promise<DsPair[]> {
