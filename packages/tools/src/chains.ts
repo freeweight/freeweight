@@ -43,7 +43,7 @@ export const CHAINS: Chain[] = [
     dexscreener: "robinhood",
     goplus: "4663",
     blockTime: 0.1,
-    logsSpan: 2_000_000,
+    logsSpan: 10_000_000,
   },
   {
     id: 1,

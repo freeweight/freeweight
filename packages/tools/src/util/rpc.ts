@@ -170,3 +170,35 @@ export function units(raw: bigint | null | undefined, decimals: number | null | 
 }
 
 export const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+
+/**
+ * JSON-RPC batch (one HTTP request). Returns per-call results, null for a failed item.
+ * Falls back to individual calls if the endpoint rejects batches.
+ */
+export async function rpcBatch(run: Run, chain: Chain, calls: { method: string; params: unknown[] }[]): Promise<(unknown | null)[]> {
+  if (calls.length === 0) return [];
+  for (const c of calls) if (!RPC_ALLOW.has(c.method)) throw new RpcError(-32601, `method ${c.method} not allowed`);
+  const urls = rpcUrls(chain, run.ctx.env.RPC_URLS);
+  const base = rpcId;
+  rpcId += calls.length;
+  const body = JSON.stringify(calls.map((c, i) => ({ jsonrpc: "2.0", id: base + i, method: c.method, params: c.params })));
+  for (const url of urls) {
+    try {
+      const txt = await run.text(url, { source: `rpc ${chain.key}`, method: "POST", body, ttl: 0, timeoutMs: 8000, retries: 1, public: false });
+      const arr = JSON.parse(txt) as { id: number; result?: unknown; error?: unknown }[];
+      if (!Array.isArray(arr)) continue;
+      const byId = new Map(arr.map((r) => [r.id, r]));
+      return calls.map((_, i) => {
+        const r = byId.get(base + i);
+        return r && r.error === undefined ? (r.result ?? null) : null;
+      });
+    } catch (e) {
+      if (e instanceof HttpError && e.message.includes("time budget")) throw e;
+    }
+  }
+  return Promise.all(calls.map((c) => rpc(run, chain, c.method, c.params).catch(() => null)));
+}
+
+export function balanceOfData(holder: string): Hex {
+  return encodeFunctionData({ abi: ERC20, functionName: "balanceOf", args: [holder as Hex] });
+}

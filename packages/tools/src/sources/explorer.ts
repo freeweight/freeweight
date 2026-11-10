@@ -7,17 +7,35 @@ import type { Run } from "../util/http.js";
  * returns null (and notes why) rather than throwing, so tools can fall back to RPC and GoPlus.
  */
 
+/** Hosts that answered with a bot challenge or 403 are skipped for a while (circuit breaker). */
+const BLOCKED = new Map<string, number>();
+const BLOCK_MS = 10 * 60_000;
+
+export function explorerBlocked(host: string): boolean {
+  const until = BLOCKED.get(host);
+  return until !== undefined && until > Date.now();
+}
+
 async function firstOf<T>(run: Run, chain: Chain, what: string, fn: (e: ExplorerRef) => Promise<T | null>): Promise<T | null> {
   if (chain.explorers.length === 0) {
-    run.note(`no keyless explorer API configured for ${chain.name} (${what})`);
+    run.note(`no keyless explorer API for ${chain.name}: ${what} from fallbacks only`);
     return null;
   }
   for (const e of chain.explorers) {
+    const host = new URL(e.base).host;
+    if (explorerBlocked(host)) {
+      run.note(`explorer API ${host} is blocking server requests; used fallbacks`);
+      continue;
+    }
     try {
       const r = await fn(e);
       if (r !== null) return r;
     } catch (err) {
-      run.note(`explorer ${new URL(e.base).host} unavailable for ${what} (${err instanceof Error ? err.message.slice(0, 80) : "error"})`);
+      const msg = err instanceof Error ? err.message : "error";
+      if (/challenge|HTTP 403/.test(msg)) {
+        BLOCKED.set(host, Date.now() + BLOCK_MS);
+        run.note(`explorer API ${host} is blocking server requests; used fallbacks`);
+      } else run.note(`explorer ${host} unavailable for ${what} (${msg.slice(0, 80)})`);
     }
   }
   return null;
