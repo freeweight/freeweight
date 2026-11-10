@@ -8,7 +8,7 @@ import { useConfig, useEvery, useMe } from "../../lib/hooks";
 import { showHidden, toolSummary, visible } from "../../lib/inert";
 import { Markdown } from "../../lib/markdown";
 import type { Live } from "../../lib/session";
-import { snippets, type Lang } from "../../lib/snippets";
+import { callsWithKey, snippets, type Lang } from "../../lib/snippets";
 import { Link } from "../../router";
 import { Code, Copy, Icon, Notice, Segmented, TierMark } from "../../ui/bits";
 import { Ticket, TicketActions } from "./Receipt";
@@ -487,9 +487,8 @@ function Endpoint({ session: s }: { session: Session }) {
   const me = useMe();
   const [lang, setLang] = useState<Lang>("curl");
   const base = absoluteBase(s.base_url);
-  // An API key belongs to a wallet and reaches the sessions it rents. A free session, or a visitor who is not signed
-  // in, has no key: the session id is the credential, so the snippet shows that form.
-  const keyed = Boolean(me?.address) && !s.free;
+  // An API key reaches only the sessions of the wallet that owns it. Everyone else calls with the session id.
+  const keyed = callsWithKey(s, me);
   const code = snippets(base, s.model_id, keyed ? null : s.id)[lang];
   return (
     <section className="endpoint" aria-label="Endpoint">

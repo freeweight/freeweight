@@ -3,6 +3,15 @@
 export type Lang = "curl" | "python" | "js";
 
 /**
+ * Whether the snippet reads an API key. A key belongs to a wallet and reaches only the sessions that wallet rents, so
+ * the key form is for the owner of a paid session alone. Anyone else holding the page (signed out, or signed in with
+ * another wallet) calls with the session id, and so does everyone on a free session.
+ */
+export function callsWithKey(session: { id: string; free: boolean }, me: { sessions: { id: string }[] } | null): boolean {
+  return !session.free && Boolean(me?.sessions.some((x) => x.id === session.id));
+}
+
+/**
  * The three snippets. With a session id they carry it as the bearer token, which is how a session without an API
  * key is called; without one they read a key from the environment.
  */

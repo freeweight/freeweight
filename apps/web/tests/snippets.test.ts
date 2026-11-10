@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressPieces, snippets } from "../src/lib/snippets";
+import { addressPieces, callsWithKey, snippets } from "../src/lib/snippets";
 
 const BASE = "https://api.example.test/v1";
 
@@ -26,6 +26,22 @@ describe("endpoint snippets", () => {
   });
   it("name the endpoint in full", () => {
     expect(snippets(BASE, "m").curl.split("\n")[0]).toBe(`curl ${BASE}/chat/completions \\`);
+  });
+});
+
+describe("which form the snippet shows", () => {
+  const paid = { id: "ses_mine", free: false };
+  const mine = { sessions: [{ id: "ses_mine" }] };
+  it("reads a key only for the wallet that rents the session", () => {
+    expect(callsWithKey(paid, mine)).toBe(true);
+  });
+  it("uses the session id for a signed-in wallet that does not own the session", () => {
+    expect(callsWithKey(paid, { sessions: [] })).toBe(false);
+    expect(callsWithKey(paid, { sessions: [{ id: "ses_other" }] })).toBe(false);
+  });
+  it("uses the session id when signed out, and on every free session", () => {
+    expect(callsWithKey(paid, null)).toBe(false);
+    expect(callsWithKey({ id: "ses_mine", free: true }, mine)).toBe(false);
   });
 });
 
