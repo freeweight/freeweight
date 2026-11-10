@@ -1,7 +1,7 @@
 /**
  * Record live responses for test/cases.ts into test/fixtures/<name>.json (keyless sources only, nothing secret).
  *   npm run record            # all cases
- *   npm run record -- holders # cases whose name contains "holders"
+ *   npm run record -- holders # cases whose name contains "holders" (then trims all fixtures)
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { runTool } from "../src/index.js";
@@ -22,3 +22,6 @@ for (const c of CASES) {
   writeFileSync(new URL(`../test/fixtures/${c.name}.json`, import.meta.url), JSON.stringify({ recorded_at: frozen, entries: rec.entries }) + "\n");
   console.log(`${c.name}: ${rec.entries.length} requests; ${r.ok ? "ok" : "FAIL"}${r.partial ? " partial" : ""}: ${r.summary.slice(0, 200)}`);
 }
+
+// Shrink what was just recorded to the fields the tools read.
+await import("./trim-fixtures.js");

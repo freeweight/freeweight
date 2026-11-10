@@ -2,7 +2,9 @@
  * Shrink recorded fixtures to the fields the tools read (run after `npm run record`):
  *   npx tsx scripts/trim-fixtures.ts
  * RPC log, block and transaction objects keep only the fields used; explorer listings keep the fields parsed.
- * Page bodies are left as recorded (page analysis reads them in full).
+ * Page bodies are left as recorded (page analysis reads them in full). chain_read fixtures are never trimmed: that
+ * tool returns whole transactions and blocks. Batch responses are paired with requests by JSON-RPC id; a batch whose
+ * ids do not line up is left untouched.
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 
@@ -22,7 +24,14 @@ function trimRpc(e: Entry): string {
   const req = JSON.parse(e.key.slice(e.key.indexOf(" ", 5) + 1)) as { method?: string } | { method?: string }[];
   const res = JSON.parse(e.body) as { result?: unknown } | { result?: unknown }[];
   const one = (q: { method?: string }, r: { result?: unknown }) => (q.method && RPC_KEEP[q.method] && "result" in r ? { ...r, result: RPC_KEEP[q.method]!(r.result) } : r);
-  if (Array.isArray(req) && Array.isArray(res)) return JSON.stringify(res.map((r, i) => one(req[i] ?? {}, r)));
+  if (Array.isArray(req) && Array.isArray(res)) {
+    // Recorded request bodies carry no ids (they are stripped from keys); responses were stored in request order by the
+    // recorder. Only trim when every response id is present and strictly increasing, i.e. the order is the request order.
+    const ids = res.map((r) => (r as { id?: unknown }).id);
+    const ordered = ids.every((id, i) => typeof id === "number" && (i === 0 || id > (ids[i - 1] as number)));
+    if (!ordered || req.length !== res.length) return e.body;
+    return JSON.stringify(res.map((r, i) => one(req[i] ?? {}, r)));
+  }
   if (!Array.isArray(req) && !Array.isArray(res)) return JSON.stringify(one(req, res));
   return e.body;
 }
@@ -49,7 +58,7 @@ function trim(e: Entry): string {
 
 let before = 0;
 let after = 0;
-for (const f of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
+for (const f of readdirSync(dir).filter((n) => n.endsWith(".json") && !n.startsWith("chain_read-"))) {
   const path = new URL(f, dir);
   const raw = readFileSync(path, "utf8");
   const fx = JSON.parse(raw) as { recorded_at: number; entries: Entry[] };
