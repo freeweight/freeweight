@@ -65,8 +65,9 @@ wake usually takes under a minute. It can take minutes on a cold GPU pool. Each 
 seconds for the Light model and 60 seconds for the Medium model at the start of v0.1. Heavy has not been
 measured yet. We design for a wake under two minutes. A first wake with nothing cached takes longer.
 
-You do not pay for the wake. The clock starts when the model is ready. A wake that is not ready within 10
-minutes has failed. If the wake fails, the session costs nothing and the hold is released.
+You do not pay for the wake. The clock starts when the model is ready. A wake has 10 minutes per GPU source. The
+Light model has two, so its wake can take up to about 20 minutes before it fails. If the wake fails, the session
+costs nothing and the hold is released.
 
 Free wakes have a limit. A paid session that you stop before the model is ready is an uncharged wake. After
 more than 3 of those in an hour, or 10 in a day, the next start is refused with `429 wake_budget` until the

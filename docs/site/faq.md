@@ -31,8 +31,9 @@ takes longer. A model that is already awake needs no wake at all.
 
 ### My wake failed. What now?
 
-Try again. A wake fails when the start broke or the model was not ready within 10 minutes. You were not charged,
-and a free try that failed this way is given back. The [models](/docs/models) page describes how a wake works.
+Try again. A wake fails when the start broke or the model was not ready in time. A wake has 10 minutes per GPU
+source. The Light model has two, so its wake can take up to about 20 minutes before it fails. You were not
+charged, and a free try that failed this way is given back. The [models](/docs/models) page describes how a wake works.
 
 ### What if the model stops while I am using it?
 
