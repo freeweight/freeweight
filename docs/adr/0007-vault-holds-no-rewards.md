@@ -27,7 +27,7 @@ Split the two jobs.
   The holder tiers stay in the types (`PERK_HOLD_TIERS`) and no code path grants them.
 - Credits are micro-USD of GPU time in the internal ledger. They are spent before the paid balance, expire with the
   day, cannot be transferred and cannot be withdrawn.
-- Perks are off unless `WEIGHT_TOKEN` or `STAKING_VAULT` is configured. In v0.1 both are unset. The stake rate
+- Perks are off unless `STAKING_VAULT` is configured. In v0.1 it is unset. The stake rate
   (`PERK_STAKE_USD_MICRO_PER_TOKEN_DAY`) has no default that grants anything.
 
 ## Consequences
