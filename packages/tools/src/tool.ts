@@ -1,0 +1,71 @@
+import type { Chain } from "./chains.js";
+import type { JsonSchema, ToolCtx, ToolDef, ToolResult } from "./types.js";
+import { InputError } from "./util/args.js";
+import { Run } from "./util/http.js";
+import { fetchEnrichment } from "./sources/facts.js";
+
+export type Body = { summary: string; data: Record<string, unknown>; ok?: boolean };
+
+export type ToolSpec = {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: JsonSchema;
+  /** When set, the Freeweight index is asked for enrichment for this token on Robinhood Chain. */
+  enrich?: (args: Record<string, unknown>) => { chain: Chain; token: string } | null;
+  run: (args: Record<string, unknown>, run: Run) => Promise<Body>;
+};
+
+export function defineTool(spec: ToolSpec): ToolDef {
+  return {
+    name: spec.name,
+    title: spec.title,
+    description: spec.description,
+    inputSchema: spec.inputSchema,
+    handler: (args, ctx) => execute(spec, args, ctx),
+  };
+}
+
+async function execute(spec: ToolSpec, args: Record<string, unknown>, ctx: ToolCtx): Promise<ToolResult> {
+  const run = new Run(ctx);
+  let enrichP: Promise<unknown> = Promise.resolve(undefined);
+  try {
+    const target = spec.enrich?.(args) ?? null;
+    if (target && target.chain.id === 4663) enrichP = fetchEnrichment(run, spec.name, target.token);
+  } catch {
+    /* input errors surface from run() below */
+  }
+  try {
+    const body = await spec.run(args, run);
+    const enriched = await enrichP.catch(() => undefined);
+    const res: ToolResult = {
+      tool: spec.name,
+      ok: body.ok ?? true,
+      summary: (run.partial ? "[partial] " : "") + body.summary,
+      partial: run.partial,
+      data: body.data,
+      notes: run.notes,
+      sources: [...run.sources],
+    };
+    if (enriched !== undefined) {
+      res.enriched = enriched;
+      res.sources.push("Freeweight index");
+    }
+    return res;
+  } catch (e) {
+    if (e instanceof InputError) {
+      return { tool: spec.name, ok: false, summary: e.message, partial: false, data: {}, notes: run.notes, sources: [...run.sources], error: { code: e.code, message: e.message } };
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      tool: spec.name,
+      ok: false,
+      summary: `${spec.name} failed: ${msg.slice(0, 200)}`,
+      partial: true,
+      data: {},
+      notes: run.notes,
+      sources: [...run.sources],
+      error: { code: "upstream_error", message: msg.slice(0, 300) },
+    };
+  }
+}
