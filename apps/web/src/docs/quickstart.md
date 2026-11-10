@@ -12,7 +12,7 @@ group: Start
 
 Open the [home page](/), pick a model and press the button. One free session a day runs on a Light model for 5 minutes, with no wallet and no signup.
 
-A model that is asleep takes a minute or two to wake. The wake view shows the real stages as they finish. Wake time is not billed.
+A model that is asleep takes from under a minute to a few minutes to wake, depending on its size. The wake view shows the real stages as they finish. Wake time is not billed.
 
 ## Call the session from code
 

@@ -29,7 +29,7 @@ export function Home() {
           <h1 className="hero-h">
             Rent any open model <b>by the minute.</b>
           </h1>
-          <p className="lead hero-lead">Models sleep as stored weights and cost nothing. Wake one on a GPU, typically in a minute or two, and pay only while your session runs. Never per token.</p>
+          <p className="lead hero-lead">Models sleep as stored weights and cost nothing. Wake one on a GPU and pay only while your session runs, never per token. A wake takes from under a minute to a few minutes, depending on the size of the model, and is not billed.</p>
           {running && (
             <div className="hero-resume">
               <Notice kind="brass">
@@ -133,7 +133,7 @@ function AwakeBoard({ awake, models, down }: { awake: Awake[] | null; models: Mo
         )
       ) : (
         <ul className="board-list">
-          {rows.length === 0 && <li className="board-empty">Nothing awake. A wake typically takes a minute or two.</li>}
+          {rows.length === 0 && <li className="board-empty">Nothing awake. A wake takes from under a minute to a few minutes, depending on size.</li>}
           {rows.map(({ a, m }) => (
             <li key={a.model_id}>
               <Link href={`/models/${m.id}`} className="board-row">
@@ -224,7 +224,7 @@ function Reps({ stats, down }: { stats: Stats | null; down: boolean }) {
 
 const HOW = [
   { k: "Asleep", t: "Stored weights. No GPU, no cost." },
-  { k: "Wake", t: "A GPU loads the model, typically in a minute or two. Not billed." },
+  { k: "Wake", t: "A GPU loads the model: under a minute to a few minutes, depending on size. Not billed." },
   { k: "Awake", t: "Chat, call the endpoint, run tools. Billed by the second, one-minute minimum once the model is awake." },
   { k: "Asleep again", t: "You stop, or the time runs out. Back to storage." },
 ];
