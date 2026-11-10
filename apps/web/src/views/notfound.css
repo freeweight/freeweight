@@ -1,0 +1,36 @@
+.nf {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: var(--s3);
+  padding-top: var(--s8);
+}
+.nf-mark {
+  color: var(--ink-3);
+  margin-bottom: var(--s4);
+}
+.nf-h {
+  font: 300 clamp(32px, 6vw, 48px) / 1.08 var(--sans);
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.nf-text {
+  color: var(--ink-2);
+  max-width: 48ch;
+}
+.nf-path {
+  max-width: 100%;
+  padding: 2px var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.nf-go {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}

@@ -1,0 +1,429 @@
+/* Catalog and model page. */
+
+.cat-bar {
+  display: grid;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+.cat-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+.cat-q {
+  flex: 1 1 100%;
+  height: 32px;
+  font-size: 14px;
+}
+.cat-q::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+.cat-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  /* one row of chips, held before the catalog arrives */
+  min-height: 28px;
+}
+.cat-count {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* One grid for the whole table; rows are subgrids, so every column lines up without a <table>. */
+.cat {
+  display: grid;
+  grid-template-columns: auto auto auto auto minmax(0, 1fr) auto;
+  column-gap: var(--s3);
+  border-top: 1px solid var(--line-2);
+}
+.cat-head,
+.cat-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+}
+.cat-head {
+  display: none;
+  align-items: center;
+  height: 32px;
+  border-bottom: 1px solid var(--line-2);
+  font: 500 11px/16px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.cat-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  transition: color var(--fast);
+}
+.cat-sort:hover,
+.cat-sort.on {
+  color: var(--ink);
+}
+.cat-sort svg {
+  opacity: 0;
+  transition:
+    opacity var(--fast),
+    transform var(--fast);
+}
+.cat-sort:hover svg {
+  opacity: 0.5;
+}
+.cat-sort.on svg {
+  opacity: 1;
+}
+.cat-sort.desc svg {
+  transform: rotate(180deg);
+}
+.cat-row {
+  position: relative;
+  align-items: center;
+  row-gap: 2px;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 20px;
+  transition: background var(--fast);
+}
+.cat-row:hover {
+  background: var(--surface);
+}
+.cat-row.off .cat-name,
+.cat-row.off [role="cell"]:not(.c-model):not(.c-state) {
+  color: var(--ink-3);
+}
+.cat-row [role="cell"] {
+  min-width: 0;
+  white-space: nowrap;
+}
+.cat-row .mono {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.c-model {
+  display: grid;
+  min-width: 0;
+}
+.cat-nameline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+.cat-name {
+  font-size: 15px;
+  line-height: 20px;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the whole row is the link's hit area */
+.cat-name::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.cat-name:focus-visible {
+  outline: none;
+}
+.cat-row:has(.cat-name:focus-visible) {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: -2px;
+}
+.cat-row:hover .cat-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.cat-nameline .tag {
+  flex: none;
+  vertical-align: 0;
+  transform: translateY(-1px);
+}
+.cat-repo {
+  display: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-3) !important;
+}
+.cat-row .c-class {
+  color: var(--ink);
+}
+/* A row that is still loading is as tall as a loaded one. */
+.cat-row.wait {
+  min-height: 61px;
+}
+.cat-none {
+  grid-column: 1 / -1;
+  display: grid;
+  justify-items: start;
+  gap: var(--s3);
+  padding: var(--s6) 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.cat-foot {
+  margin-top: var(--s4);
+  max-width: 72ch;
+}
+
+/* Phone: two lines per row. The name and the state, then the numbers in fixed columns so they line up down the
+   list. The name takes the room the state tag leaves and wraps; a model's name is never cut short here. */
+@media (max-width: 859.98px) {
+  .cat {
+    display: block;
+  }
+  .cat-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px var(--s3);
+    padding-block: var(--s3);
+  }
+  .cat-row::before {
+    content: "";
+    order: 2;
+    flex: 0 0 100%;
+  }
+  .cat-row.wait {
+    min-height: 71px;
+  }
+  .cat-row .c-model {
+    order: 0;
+    flex: 1 1 0;
+  }
+  .cat-row .c-state {
+    order: 1;
+    flex: none;
+  }
+  .cat-row .c-class,
+  .cat-row .c-price,
+  .cat-row .c-params,
+  .cat-row .c-quant,
+  .cat-row .c-ctx {
+    order: 3;
+    flex: none;
+  }
+  .cat-row .c-class {
+    width: 76px;
+  }
+  .cat-row .c-price {
+    width: 66px;
+  }
+  .cat-row .c-params {
+    width: 40px;
+  }
+  .cat-row .c-quant {
+    width: 60px;
+  }
+  /* No column header on a phone, so the one number that is not self-evident carries its unit. */
+  .cat-row .c-ctx::after {
+    content: " ctx";
+    color: var(--ink-3);
+  }
+  .c-lic {
+    display: none;
+  }
+  .cat-nameline {
+    flex-wrap: wrap;
+    gap: 2px var(--s2);
+  }
+  .cat-name {
+    font-size: 16px;
+    line-height: 24px;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* On a phone the tags are one line that scrolls sideways, so the table starts at the same height whatever the tags are. */
+@media (max-width: 599.98px) {
+  .cat-tags {
+    flex: 0 0 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-right: calc(-1 * var(--pad));
+    padding-right: var(--pad);
+    mask-image: linear-gradient(to left, transparent, #000 var(--s6));
+  }
+  .cat-tags::-webkit-scrollbar {
+    display: none;
+  }
+  .cat-tags .chip {
+    flex: none;
+  }
+}
+
+@media (min-width: 600px) {
+  .cat-q {
+    flex: 0 1 280px;
+  }
+}
+
+@media (min-width: 860px) {
+  .cat {
+    grid-template-columns: minmax(0, 1fr) 96px 80px 56px 56px 104px;
+    column-gap: var(--s4);
+  }
+  .cat-head {
+    display: grid;
+  }
+  .cat-repo {
+    display: block;
+  }
+  .c-quant,
+  .c-lic {
+    display: none;
+  }
+  .c-price,
+  .c-params,
+  .c-ctx {
+    text-align: right;
+    justify-self: end;
+  }
+  .cat-head .c-price,
+  .cat-head .c-params,
+  .cat-head .c-ctx {
+    justify-self: end;
+  }
+  /* right-aligned headers keep the arrow on the outside of the label */
+  .cat-head .c-price .cat-sort,
+  .cat-head .c-params .cat-sort,
+  .cat-head .c-ctx .cat-sort {
+    flex-direction: row-reverse;
+  }
+  /* The hover field runs past the table edge; the hairline under a row stays inside it. */
+  .cat-row {
+    padding-inline: var(--s3);
+    margin-inline: calc(var(--s3) * -1);
+    border-bottom: 0;
+  }
+  .cat-row::after {
+    content: "";
+    position: absolute;
+    inset: auto var(--s3) 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .cat-row > .c-state {
+    grid-column: -2;
+  }
+}
+
+@media (min-width: 1100px) {
+  .cat {
+    grid-template-columns: minmax(0, 1fr) 96px 80px 56px 80px 56px 104px 104px;
+  }
+  .c-quant,
+  .c-lic {
+    display: block;
+  }
+  .cat-row .c-lic {
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ---------- model page ---------- */
+
+.model {
+  display: grid;
+  gap: var(--s6);
+}
+.model-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+  transition: color var(--fast);
+}
+.model-crumb:hover {
+  color: var(--ink);
+}
+.model-crumb svg {
+  transform: rotate(180deg);
+}
+.model-main {
+  display: grid;
+  gap: var(--s5);
+  align-content: start;
+  min-width: 0;
+}
+.model-name {
+  font-size: clamp(32px, 7.4vw, 56px);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.model-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s4);
+  margin-top: var(--s3);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.model-sub .mono {
+  font-size: 13px;
+}
+.model-main .box {
+  max-width: 640px;
+}
+.model-call {
+  display: grid;
+  gap: var(--s3);
+  max-width: 640px;
+}
+.model-call p {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.model-side {
+  display: grid;
+  gap: var(--s5);
+  align-content: start;
+  min-width: 0;
+}
+.model-side .facts > div {
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+.model-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.model-tags .tag {
+  vertical-align: 0;
+}
+.model-fine {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+@media (min-width: 1000px) {
+  .model {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: var(--s8);
+  }
+  .model-side {
+    padding-top: var(--s7);
+  }
+}
