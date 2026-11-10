@@ -429,6 +429,11 @@
     padding-top: var(--s6);
     align-content: space-between;
   }
+  /* Before the first receipt there are two blocks: they sit together instead of being pushed to the two ends. */
+  .hero-side:not(:has(> :nth-child(3))) {
+    align-content: start;
+    gap: var(--s7);
+  }
   .ghost,
   .classes {
     grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
