@@ -40,10 +40,15 @@ export function collectDocs(site: string, fixtures: string): Page[] {
     [site, false],
   ] as const) {
     if (!existsSync(dir)) continue;
+    const taken = new Map<string, string>();
     for (const f of readdirSync(dir).sort()) {
       if (!f.endsWith(".md")) continue;
       const slug = basename(f, ".md").toLowerCase();
       if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) continue;
+      // Two files that differ only in case would be one page; which one would depend on the file system.
+      const other = taken.get(slug);
+      if (other) throw new Error(`docs: ${other} and ${f} would both be the page /docs/${slug}`);
+      taken.set(slug, f);
       const file = resolve(dir, f);
       bySlug.set(slug, { ...docMeta(slug, readFileSync(file, "utf8"), fixture), file });
     }
@@ -56,6 +61,20 @@ export function docs(opts: DocsOptions): Plugin {
   const publish = opts.publish ?? {};
   return {
     name: "freeweight-docs",
+    buildStart() {
+      // A release build sets FW_REQUIRE_DOCS=1: it must carry the real pages and files, never the stand-ins
+      // that keep a checkout without them working.
+      if (process.env.FW_REQUIRE_DOCS !== "1") return;
+      const missing = Object.entries(publish)
+        .filter(([, src]) => !existsSync(src))
+        .map(([name]) => name);
+      const standIns = collectDocs(opts.site, opts.fixtures)
+        .filter((p) => p.fixture)
+        .map((p) => p.slug);
+      if (!existsSync(opts.site)) this.error("FW_REQUIRE_DOCS=1: the docs pages directory is missing.");
+      if (missing.length) this.error(`FW_REQUIRE_DOCS=1: missing ${missing.join(", ")}.`);
+      if (standIns.length) this.error(`FW_REQUIRE_DOCS=1: no real page for ${standIns.join(", ")}.`);
+    },
     resolveId(id) {
       return id === VIRTUAL ? RESOLVED : undefined;
     },

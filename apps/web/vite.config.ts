@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
@@ -20,10 +21,21 @@ export default defineConfig(({ mode }) => {
     name: "fw-social",
     transformIndexHtml: (html) => (site ? html.replaceAll('content="/og.png"', `content="${site}/og.png"`) : html),
   };
+  // The fonts ship under licences that ask to travel with them: they are served next to the site.
+  const fonts = here("./src/assets/fonts");
+  const licences: Plugin = {
+    name: "fw-licences",
+    generateBundle() {
+      for (const f of readdirSync(fonts)) {
+        if (f.endsWith(".txt")) this.emitFile({ type: "asset", fileName: `licenses/${f}`, source: readFileSync(`${fonts}/${f}`) });
+      }
+    },
+  };
   return {
     plugins: [
       react(),
       social,
+      licences,
       docs({
         site: here("../../docs/site"),
         fixtures: here("./src/docs"),
