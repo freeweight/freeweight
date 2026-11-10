@@ -26,7 +26,7 @@ export const tokenOverview = defineTool({
       soft(run, "dexscreener", tokenPairs(run, chain, token)),
       creatorOf(run, chain, token),
     ]);
-    if (meta && !meta.isContract) {
+    if (meta && meta.isContract === false) {
       return { ok: false, summary: `${token} on ${chain.name} has no contract code (not a token, or wrong chain).`, data: { chain: chain.key, chain_id: chain.id, token } };
     }
     const { main, real, junk } = pickMainPool(pairs ?? [], token);

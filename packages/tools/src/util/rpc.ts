@@ -82,6 +82,8 @@ export async function rpc<T = unknown>(run: Run, chain: Chain, method: string, p
       return j.result as T;
     } catch (e) {
       last = e;
+      // Provider-side throttling or plan limits on a non-range call: try the next endpoint.
+      if (e instanceof RpcError && !/range|span|blocks/i.test(e.message) && /rate limit|too many|upgrade|capacity|exceeded|unauthorized|forbidden/i.test(e.message)) continue;
       if (e instanceof RpcError) throw e;
       if (e instanceof HttpError && e.message.includes("time budget")) throw e;
     }
@@ -122,7 +124,8 @@ async function readString(run: Run, chain: Chain, token: string, fn: "name" | "s
   }
 }
 
-export type Erc20Meta = { name: string | null; symbol: string | null; decimals: number | null; totalSupply: bigint | null; isContract: boolean };
+/** isContract is null when the code lookup itself failed (never claim 'no contract' on an RPC error). */
+export type Erc20Meta = { name: string | null; symbol: string | null; decimals: number | null; totalSupply: bigint | null; isContract: boolean | null };
 
 export async function erc20Meta(run: Run, chain: Chain, token: string): Promise<Erc20Meta> {
   const [code, name, symbol, decRaw, tsRaw] = await Promise.all([
@@ -134,7 +137,7 @@ export async function erc20Meta(run: Run, chain: Chain, token: string): Promise<
   ]);
   const dec = decRaw && decRaw !== "0x" ? Number(BigInt(decRaw.slice(0, 66))) : null;
   const ts = tsRaw && tsRaw !== "0x" ? BigInt(tsRaw.slice(0, 66)) : null;
-  return { name, symbol, decimals: dec !== null && dec <= 255 ? dec : null, totalSupply: ts, isContract: !!code && code !== "0x" };
+  return { name, symbol, decimals: dec !== null && dec <= 255 ? dec : null, totalSupply: ts, isContract: code === null ? null : code !== "0x" };
 }
 
 export async function balanceOf(run: Run, chain: Chain, token: string, holder: string): Promise<bigint | null> {

@@ -39,7 +39,11 @@ export const holdersTool = defineTool({
       soft(run, "dexscreener", tokenPairs(run, chain, token)),
       creatorOf(run, chain, token),
     ]);
-    if (!meta.isContract) return { ok: false, summary: `${token} has no contract code on ${chain.name}.`, data: { chain: chain.key, token } };
+    if (meta.isContract === false) return { ok: false, summary: `${token} has no contract code on ${chain.name}.`, data: { chain: chain.key, token } };
+    if (meta.totalSupply === null) {
+      run.partial = true;
+      run.note("total supply unreadable (RPC unavailable): percentages are missing");
+    }
     const dec = meta.decimals ?? 18;
     const supply = meta.totalSupply ?? 0n;
 
