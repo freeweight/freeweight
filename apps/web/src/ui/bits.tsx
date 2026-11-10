@@ -1,6 +1,6 @@
 // Primitives: the mark, plates, state tags, icons, copy, code, segmented control.
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { ModelState, Tier } from "../api/types";
 import { TIER_NAME, TIER_PLATES } from "../lib/format";
 import { addressPieces } from "../lib/snippets";
@@ -130,7 +130,7 @@ function folding(line: string): ReactNode {
 
 /**
  * A block of code with a copy button. It scrolls sideways when a line is too long; with `wrap` (narrow panels,
- * one-line values) long lines fold instead, and the folded part hangs under its line.
+ * one-line values) long lines fold instead, and the folded part hangs two characters in from where its line starts.
  */
 export function Code({ code, title, wrap = false }: { code: string; title?: string; wrap?: boolean }) {
   return (
@@ -143,7 +143,7 @@ export function Code({ code, title, wrap = false }: { code: string; title?: stri
         <code>
           {wrap
             ? code.split("\n").map((line, i) => (
-                <span key={i} className="ln">
+                <span key={i} className="ln" style={{ "--indent": line.length - line.trimStart().length } as CSSProperties}>
                   {folding(line)}
                   {"\n"}
                 </span>

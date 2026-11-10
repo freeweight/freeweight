@@ -678,15 +678,15 @@ table {
 .code pre:focus-visible {
   outline-offset: -2px;
 }
-/* A folded line hangs under its own start. */
+/* A folded line hangs two characters in from its own start: --indent is the indent the line begins with. */
 .code pre.wrap {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .code pre.wrap .ln {
   display: block;
-  padding-left: 2ch;
-  text-indent: -2ch;
+  padding-left: calc((var(--indent, 0) + 2) * 1ch);
+  text-indent: calc((var(--indent, 0) + 2) * -1ch);
 }
 /* The host of an address stays in one piece: the address folds after a slash, and a host wider than the block
    scrolls inside it. */
