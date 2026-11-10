@@ -5,7 +5,7 @@ import type { Model, Session } from "../../api";
 import { splitThinking, useChat, type Item } from "../../lib/chat";
 import { clock, grouped, perMin, took, usd } from "../../lib/format";
 import { useConfig, useEvery, useMe } from "../../lib/hooks";
-import { showHidden, toolSummary } from "../../lib/inert";
+import { showHidden, toolSummary, visible } from "../../lib/inert";
 import { Markdown } from "../../lib/markdown";
 import type { Live } from "../../lib/session";
 import { Link } from "../../router";
@@ -65,7 +65,7 @@ const Turn = memo(function Turn({ item, last, canAct, onRegenerate, plainLinks }
             <span className="tool-mark" aria-hidden="true" />
             <span className="mono tool-name">{item.name}</span>
             <span className="mono tool-args">{showHidden(compactArgs(item.args))}</span>
-            <span className="mono tool-ms">{item.state === "running" ? "running" : item.state === "error" ? "failed" : took(item.ms ?? 0)}</span>
+            <span className="mono tool-ms">{item.state === "running" ? "running" : item.state === "error" ? "failed" : item.state === "stopped" ? "stopped" : took(item.ms ?? 0)}</span>
             <Icon name="chevron" size={14} />
           </summary>
           <div className="tool-io">
@@ -88,8 +88,13 @@ const Turn = memo(function Turn({ item, last, canAct, onRegenerate, plainLinks }
       </div>
     );
   }
-  const { thinking, answer, open } = splitThinking(item.text);
+  // Thinking comes in its own field from most engines and inside <think> tags from some. Either way it is shown
+  // apart from the answer. A model's words are shown with nothing hidden in them.
+  const split = splitThinking(item.text);
+  const thinking = visible([item.thinking, split.thinking].filter(Boolean).join("\n\n"));
+  const answer = visible(split.answer);
   const streaming = item.state === "streaming";
+  const open = split.open || (Boolean(item.thinking) && !item.text);
   const rate = item.usage && item.ms ? item.usage.completion_tokens / (item.ms / 1000) : null;
   return (
     <div className="turn model">
@@ -106,10 +111,10 @@ const Turn = memo(function Turn({ item, last, canAct, onRegenerate, plainLinks }
         )}
         {answer ? (
           <div className={`md md-chat${streaming ? " live" : ""}`}>
-            <Markdown text={answer} plainLinks={plainLinks} />
+            <Markdown text={answer} plainLinks={plainLinks} clean />
           </div>
         ) : (
-          streaming && !thinking && <i className="caret" aria-label="The model is writing" />
+          streaming && !thinking && <i className="caret" aria-hidden="true" />
         )}
         {item.state === "error" && (
           <Notice kind="err">
@@ -162,12 +167,29 @@ function Log({ chat, live, paused = false, model }: { chat: Chat; live: boolean;
 
   const lastId = chat.items.at(-1)?.id;
   const firstTool = chat.items.findIndex((it) => it.kind === "tool");
+  // A reply that grows word by word is not read out as it grows. One line says that the model is writing, then
+  // that it is done; the reply itself is there to be read when the reader wants it.
+  const reply = chat.items.findLast((it) => it.kind === "assistant");
+  const status = chat.busy
+    ? "The model is writing."
+    : reply?.kind !== "assistant"
+      ? ""
+      : reply.state === "error"
+        ? "The reply failed."
+        : reply.state === "stopped"
+          ? "The reply was stopped."
+          : `Reply finished${reply.usage ? `, ${grouped(reply.usage.completion_tokens)} tokens` : ""}.`;
   return (
+    <>
+    <p className="sr" role="status">
+      {status}
+    </p>
     <div
       className="log"
       ref={box}
       tabIndex={0}
       role="log"
+      aria-live={chat.busy ? "off" : "polite"}
       aria-label="Conversation"
       onScroll={(e) => {
         const el = e.currentTarget;
@@ -200,6 +222,7 @@ function Log({ chat, live, paused = false, model }: { chat: Chat; live: boolean;
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -300,6 +323,8 @@ function Clock({ live, session: s, model }: { live: Live; session: Session; mode
   useEvery(250);
   const me = useMe();
   const [confirm, setConfirm] = useState(false);
+  /** True once the question was asked and turned down: focus then goes back to the button that asked. */
+  const asked = useRef(false);
   const idle = useConfig()?.idle_seconds ?? 0;
   const meter = useMeter(live, s);
   const { left, elapsed, total, stopped } = meter;
@@ -366,26 +391,33 @@ function Clock({ live, session: s, model }: { live: Live; session: Session; mode
         </div>
       </dl>
       <p className="small dimmer">
-        {s.free ? "This session is free. Tokens are counted, never charged." : "Billed by the second, one-minute minimum. Tokens are counted, never charged."}
+        {s.free ? "This session is free. Tokens are counted, never charged." : "Billed by the second, one-minute minimum once the model is awake. Tokens are counted, never charged."}
         {idle > 0 ? ` A session with no request for ${span(idle)} ends on its own.` : ""}
       </p>
 
       {live.actionError && <Notice kind="err">{ACTION_ERR[live.actionError.code] ?? live.actionError.message}</Notice>}
 
       {confirm ? (
-        <div className="meter-confirm">
+        <div className="meter-confirm" key="confirm">
           <span>Stop now and take the receipt?</span>
           <div className="row">
-            <button type="button" className="btn sm danger" onClick={() => void live.stop()} disabled={live.busy === "stop"} aria-busy={live.busy === "stop"}>
+            <button type="button" className="btn sm danger" autoFocus onClick={() => void live.stop()} disabled={live.busy === "stop"} aria-busy={live.busy === "stop"}>
               Stop the session
             </button>
-            <button type="button" className="btn sm quiet" onClick={() => setConfirm(false)}>
+            <button
+              type="button"
+              className="btn sm quiet"
+              onClick={() => {
+                asked.current = true;
+                setConfirm(false);
+              }}
+            >
               Keep going
             </button>
           </div>
         </div>
       ) : (
-        <div className="meter-act">
+        <div className="meter-act" key="act">
           {s.free ? (
             <span className="small dim meter-free">
               {me?.address ? "A free session cannot be extended." : (
@@ -408,7 +440,7 @@ function Clock({ live, session: s, model }: { live: Live; session: Session; mode
               </button>
             </>
           )}
-          <button type="button" className="btn sm meter-stop" onClick={() => setConfirm(true)}>
+          <button type="button" className="btn sm meter-stop" autoFocus={asked.current} onClick={() => setConfirm(true)}>
             <Icon name="stop" size={14} />
             Stop
           </button>
@@ -515,6 +547,7 @@ function Endpoint({ session: s }: { session: Session }) {
         ]}
       />
       <Code code={code} title={lang === "curl" ? "shell" : lang === "python" ? "python" : "javascript"} wrap />
+      <p className="small dimmer">The address of this page works like a key to this session until it ends. Do not share it while the session runs.</p>
       <p className="small dim">
         {me?.address ? (
           <>
@@ -548,13 +581,14 @@ export function Room({ live, session: s, model }: { live: Live; session: Session
   const [tab, setTab] = useState<"chat" | "session">("chat");
   const ended = useRef(false);
   useEffect(() => {
-    if (paused) chat.stop();
+    // While the model wakes again nothing new can be sent, but a request already on its way is left alone: the
+    // gateway holds it and answers when the model is back.
     if (!open && !ended.current) {
       ended.current = true;
       chat.stop();
       setTab("session");
     }
-  }, [open, paused, chat]);
+  }, [open, chat]);
 
   const readyAt = s.stages.find((e) => e.stage === "ready")?.t_ms ?? null;
   return (

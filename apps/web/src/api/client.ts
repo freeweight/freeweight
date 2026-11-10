@@ -98,7 +98,8 @@ export function normalizeConfig(raw: RawConfig | null | undefined): Config {
     turnstile_sitekey: r.turnstile?.enabled === false ? null : r.turnstile?.sitekey || null,
     chain_id: num(r.chain?.id, d.chain_id),
     chain_name: r.chain?.name || d.chain_name,
-    treasury: r.topups?.open === false ? null : r.topups?.treasury || null,
+    // Money is sent to this address, so it is shown only when it is one. Anything else reads as top-ups closed.
+    treasury: r.topups?.open !== false && typeof r.topups?.treasury === "string" && /^0x[0-9a-fA-F]{40}$/.test(r.topups.treasury) ? r.topups.treasury : null,
     topup_assets: r.topups?.assets ?? d.topup_assets,
     topup_confirmations: num(r.topups?.confirmations, d.topup_confirmations),
     perks_enabled: r.perks?.enabled === true,
@@ -136,13 +137,13 @@ export type Usage = { prompt_tokens: number; completion_tokens: number };
 export type ChatDelta = {
   content?: string;
   reasoning?: string;
-  tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[];
+  tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[];
   finish?: string;
   usage?: Usage;
 };
 
 type ChatChunk = {
-  choices?: { delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: ChatDelta["tool_calls"] }; finish_reason?: string | null }[];
+  choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: ChatDelta["tool_calls"] }; finish_reason?: string | null }[];
   usage?: Usage | null;
   error?: { code?: string; message?: string };
 };
@@ -264,6 +265,8 @@ export function createClient(f: FetchLike) {
         await parse<never>(res);
         throw new ApiError("error", "Empty response.", res.status);
       }
+      // A reply is whole when the stream says so: a finish reason or the closing mark. A body that just stops was cut.
+      let finished = false;
       for await (const m of readSse(res.body)) {
         if (m.data === "[DONE]") return;
         let chunk: ChatChunk;
@@ -276,12 +279,18 @@ export function createClient(f: FetchLike) {
         const c = chunk.choices?.[0];
         const out: ChatDelta = {};
         if (c?.delta?.content) out.content = c.delta.content;
-        if (c?.delta?.reasoning_content) out.reasoning = c.delta.reasoning_content;
+        // Engines name the thinking field one of two ways.
+        const thought = c?.delta?.reasoning ?? c?.delta?.reasoning_content;
+        if (thought) out.reasoning = thought;
         if (c?.delta?.tool_calls?.length) out.tool_calls = c.delta.tool_calls;
-        if (c?.finish_reason) out.finish = c.finish_reason;
+        if (c?.finish_reason) {
+          out.finish = c.finish_reason;
+          finished = true;
+        }
         if (chunk.usage) out.usage = chunk.usage;
         yield out;
       }
+      if (!finished) throw new ApiError("upstream_error", "The reply was cut off before it finished.", 200);
     },
 
     /** One stateless JSON-RPC call to the toolkit's MCP endpoint. */

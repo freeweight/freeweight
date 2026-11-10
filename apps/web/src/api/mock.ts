@@ -591,9 +591,15 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
     if (body.tools?.length && last?.role === "user" && (addr || /token|contract|holder|safe/i.test(user))) {
       const args = JSON.stringify({ chain: "robinhood", token: addr ?? "0x4e1f0a6c2b8d9e3f5a7c1b0d2e4f6a8c0b1d3e5f" });
       setTimeout(() => {
-        send(null, chunk({ role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "token_overview", arguments: "" } }] }));
-        send(null, chunk({ tool_calls: [{ index: 0, function: { arguments: args } }] }));
-        send(null, chunk({ tool_calls: [{ index: 1, id: "call_2", type: "function", function: { name: "safety_check", arguments: args } }] }));
+        // The shape an engine streams: an opening delta, blank lines, then each call's name and its arguments in pieces.
+        const cut = Math.ceil(args.length / 3);
+        const pieces = [args.slice(0, cut), args.slice(cut, 2 * cut), args.slice(2 * cut)];
+        send(null, chunk({ role: "assistant", content: "" }));
+        send(null, chunk({ content: "\n\n" }));
+        ["token_overview", "safety_check"].forEach((name, index) => {
+          send(null, chunk({ tool_calls: [{ index, id: `call_${index + 1}`, type: "function", function: { name, arguments: "" } }] }));
+          for (const piece of pieces) send(null, chunk({ tool_calls: [{ index, function: { arguments: piece } }] }));
+        });
         send(null, chunk({}, "tool_calls", { prompt_tokens: tokensIn, completion_tokens: 38 }));
         send(null, "[DONE]");
         x.s.tokens_in += tokensIn;
@@ -608,7 +614,10 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
         : last?.role === "tool"
         ? "Both tools answered.\n\n- **Overview**: PLATE trades on one main pool with about $182k of liquidity. The market cap is unknown, because the circulating supply could not be read.\n- **Sell test**: buying and selling 0.3 WETH from a fresh wallet lost 0.7%. The owner is renounced and the source is verified.\n\nThe sell test ran from one wallet at one small size, so it is not a guarantee. It is what the chain says right now."
         : REPLIES.find((r) => r.match.test(user))!.text;
-    const parts = text.match(/\s*\S+|\s+$/g) ?? [text];
+    // A model tagged for reasoning thinks first, in its own field, then leaves blank lines before the answer.
+    const thinks = last?.role === "user" && models.find((mm) => mm.id === body.model)?.tags.includes("reasoning");
+    const thought = thinks ? "The question is short, so the answer should be too. I will say what this session is and what it costs, then stop.".match(/\s*\S+/g)! : [];
+    const parts = [...thought.map((p) => ({ reasoning: p })), ...(thinks ? [{ content: "\n\n" }] : []), ...(text.match(/\s*\S+|\s+$/g) ?? [text]).map((p) => ({ content: p }))];
     let i = 0;
     const iv = setInterval(() => {
       if (sig?.aborted) {
@@ -626,7 +635,7 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
         close();
         return;
       }
-      send(null, chunk(i === 0 ? { role: "assistant", content: parts[i] } : { content: parts[i] }));
+      send(null, chunk(i === 0 ? { role: "assistant", ...parts[i] } : parts[i]!));
       i++;
     }, 28);
   }, signal);
@@ -962,7 +971,15 @@ export async function mockFetch(input: string, init: RequestInit = {}): Promise<
         send("tick", JSON.stringify(snap(sess)));
         if (sess.s.state === "ended" || sess.s.state === "failed") return close();
         sess.subs.add(sub);
-        sig?.addEventListener("abort", () => sess.subs.delete(sub));
+        // Like the gateway, a running session sends its whole view at a steady beat.
+        const beat = setInterval(() => {
+          if (sess.s.state === "active") send("tick", JSON.stringify(snap(sess)));
+          else if (!sess.subs.has(sub)) clearInterval(beat);
+        }, 2000);
+        sig?.addEventListener("abort", () => {
+          clearInterval(beat);
+          sess.subs.delete(sub);
+        });
       }, init.signal);
     }
     if (method === "POST" && seg[3] === "extend") {
