@@ -7,7 +7,14 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {WeightVault} from "../src/WeightVault.sol";
 import {IWeightVault} from "../src/IWeightVault.sol";
-import {MockToken, FeeToken, ReentrantToken, NoopToken} from "./mocks/Mocks.sol";
+import {
+    MockToken,
+    FeeToken,
+    ReentrantToken,
+    NoopToken,
+    CeiSpyToken,
+    MutantVault
+} from "./mocks/Mocks.sol";
 
 contract WeightVaultTest is Test {
     event Staked(address indexed user, uint256 amount, uint256 newStaked);
@@ -649,6 +656,7 @@ contract WeightVaultTest is Test {
             vm.stopPrank();
             assertEq(et.attempts(), 1);
             assertEq(et.innerReverts(), 1, "inner call must be blocked");
+            assertEq(et.lastInnerRevert(), ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
             assertEq(et.balanceOf(address(v)), 0);
             assertEq(et.balanceOf(alice), 1000 ether);
             assertEq(v.totalPending(), 0);
@@ -671,17 +679,65 @@ contract WeightVaultTest is Test {
         assertEq(amt, 100 ether);
     }
 
-    /// state is updated before the external transfer (checks-effects-interactions)
-    function test_withdraw_stateUpdatedBeforeTransfer() public {
-        (ReentrantToken et, WeightVault v) = _evil();
+    /// Checks-effects-interactions: while the vault pays out, the token itself asserts that the
+    /// user's pending is already 0 and totalPending already reduced.
+    function test_withdraw_stateFinalDuringTransfer() public {
+        CeiSpyToken ct = new CeiSpyToken();
+        WeightVault v = new WeightVault(address(ct), owner);
+        ct.mint(alice, 100 ether);
+        ct.mint(bob, 40 ether);
+        vm.startPrank(bob);
+        ct.approve(address(v), type(uint256).max);
+        v.stake(40 ether);
+        v.requestUnstake(40 ether, type(uint256).max);
+        vm.stopPrank();
         vm.startPrank(alice);
+        ct.approve(address(v), type(uint256).max);
         v.stake(100 ether);
         v.requestUnstake(100 ether, type(uint256).max);
         skip(CD);
-        et.arm(v, ReentrantToken.Mode.Off, false);
+        ct.arm(address(v), alice, 40 ether); // bob's 40 still pending after alice leaves
         v.withdraw();
         vm.stopPrank();
-        assertEq(v.totalPending(), 0);
+        assertEq(ct.checks(), 1, "the probe ran");
+    }
+
+    /// The same probe fails on a vault that transfers before updating state, so it can catch a
+    /// CEI break (the earlier assertion after the call could not).
+    function test_withdraw_ceiProbeCatchesMutant() public {
+        CeiSpyToken ct = new CeiSpyToken();
+        MutantVault m = new MutantVault(address(ct));
+        ct.mint(alice, 100 ether);
+        vm.startPrank(alice);
+        ct.approve(address(m), type(uint256).max);
+        m.stake(100 ether);
+        m.requestUnstake(100 ether);
+        skip(CD);
+        ct.arm(address(m), alice, 0);
+        vm.expectRevert(bytes("CEI"));
+        m.withdraw();
+        vm.stopPrank();
+    }
+
+    /// Stake path: a hook fired inside transferFrom cannot re-enter any entry point.
+    function test_reentrancy_duringStake_allModes() public {
+        ReentrantToken.Mode[4] memory modes = [
+            ReentrantToken.Mode.Stake,
+            ReentrantToken.Mode.RequestUnstake,
+            ReentrantToken.Mode.Withdraw,
+            ReentrantToken.Mode.Cancel
+        ];
+        for (uint256 i; i < modes.length; i++) {
+            (ReentrantToken et, WeightVault v) = _evil();
+            et.arm(v, modes[i], false);
+            vm.prank(alice);
+            v.stake(100 ether);
+            assertEq(et.attempts(), 1);
+            assertEq(et.innerReverts(), 1, "inner call must be blocked");
+            assertEq(et.lastInnerRevert(), ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+            assertEq(v.stakedOf(alice), 100 ether);
+            assertEq(v.totalStaked(), 100 ether);
+        }
     }
 
     // ------------------------------------------------------------ fuzz

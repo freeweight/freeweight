@@ -113,10 +113,18 @@ forge snapshot        # writes .gas-snapshot
 ```
 
 Tests cover every path and revert, cooldown boundaries (one second before / exactly at unlock,
-zero cooldown), the owner bounds and two-step ownership, a fee-on-transfer token, a token that
-reports success but moves nothing, reentrancy from a malicious token (inside `stake` and
-`withdraw`, all entry points), fuzzing of amounts and cooldowns, and invariants: vault balance ==
-`totalStaked + totalPending`, per-user sums equal the totals, conservation of in minus out.
+zero cooldown), re-request rules (`WithdrawFirst`, never shortened), `maxCooldown`, the owner
+bounds and two-step ownership, a fee-on-transfer token, a token that reports success but moves
+nothing, and `positionOf`. Reentrancy from a malicious token is tried inside `stake` and `withdraw`
+through every entry point, and each attempt must fail with `ReentrancyGuardReentrantCall`. A spy
+token asserts, during the payout transfer, that the accounting is already final (checks-effects-
+interactions); the same probe is shown to fail on a mutant that transfers first. `Regression.t.sol`
+holds exploit attempts against earlier versions of the contract; each must fail. The invariant run (fail_on_revert on, handlers
+pre-filter their preconditions) covers stake, request, cancel, withdraw (also warping to the unlock),
+donations and cooldown changes, and checks: vault balance >= `totalStaked + totalPending` (and equal
+once donations are subtracted), per-user sums equal the totals, conservation from measured balance
+deltas, position bounds (`stakedSince <= now`, `unlockTime <= last request + 30 days`) and liveness
+(a matured pending amount is always withdrawable for exactly `pending`).
 
 Optional static analysis: `slither . --filter-paths "lib|test|script"`. The two findings (strict
 equality on a zero check, timestamp comparison for the cooldown) are intended.
