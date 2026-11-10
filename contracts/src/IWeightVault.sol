@@ -14,6 +14,8 @@ interface IWeightVault {
     /// @dev A matured request is pending: withdraw it before requesting again.
     error WithdrawFirst(uint256 unlockTime);
     error CooldownTooLong(uint256 requested, uint256 max);
+    /// @dev The current cooldown is longer than the longest the caller accepts.
+    error CooldownAboveMax(uint256 cooldown, uint256 maxCooldown);
 
     // ---------------------------------------------------------------- events
     /// @param amount the amount actually received by the vault (balance delta)
@@ -27,7 +29,7 @@ interface IWeightVault {
 
     // ---------------------------------------------------------------- user actions
     function stake(uint256 amount) external;
-    function requestUnstake(uint256 amount) external;
+    function requestUnstake(uint256 amount, uint256 maxCooldown) external;
     function cancelUnstake() external;
     function withdraw() external;
 

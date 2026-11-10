@@ -126,7 +126,7 @@ contract WeightVaultTest is Test {
         vm.expectEmit(true, false, false, true);
         emit UnstakeRequested(alice, 40 ether, block.timestamp + CD);
         vm.prank(alice);
-        vault.requestUnstake(40 ether);
+        vault.requestUnstake(40 ether, type(uint256).max);
 
         assertEq(vault.stakedOf(alice), 60 ether);
         assertEq(vault.totalStaked(), 60 ether);
@@ -143,10 +143,39 @@ contract WeightVaultTest is Test {
     function test_requestUnstake_all_clearsStakedSince() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         vm.stopPrank();
         assertEq(vault.stakedOf(alice), 0);
         assertEq(vault.stakedSince(alice), 0);
+    }
+
+    /// Regression: an owner raise ordered before the request cannot lengthen an exit
+    /// beyond what the caller accepted.
+    function test_requestUnstake_maxCooldownProtectsAgainstRaise() public {
+        vm.prank(alice);
+        vault.stake(100 ether);
+        vm.prank(owner);
+        vault.setCooldown(30 days);
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IWeightVault.CooldownAboveMax.selector, 30 days, CD));
+        vault.requestUnstake(100 ether, CD);
+        // accepting the longer cooldown works, and exactly-equal is accepted
+        vault.requestUnstake(40 ether, 30 days);
+        vm.stopPrank();
+        (, uint256 unlock) = vault.pendingUnstake(alice);
+        assertEq(unlock, block.timestamp + 30 days);
+    }
+
+    function test_requestUnstake_maxCooldownZeroNeedsZeroCooldown() public {
+        vm.prank(alice);
+        vault.stake(10 ether);
+        vm.expectRevert(abi.encodeWithSelector(IWeightVault.CooldownAboveMax.selector, CD, 0));
+        vm.prank(alice);
+        vault.requestUnstake(10 ether, 0);
+        vm.prank(owner);
+        vault.setCooldown(0);
+        vm.prank(alice);
+        vault.requestUnstake(10 ether, 0);
     }
 
     function test_requestUnstake_revertsOnZero() public {
@@ -154,7 +183,7 @@ contract WeightVaultTest is Test {
         vault.stake(1 ether);
         vm.expectRevert(IWeightVault.ZeroAmount.selector);
         vm.prank(alice);
-        vault.requestUnstake(0);
+        vault.requestUnstake(0, type(uint256).max);
     }
 
     function test_requestUnstake_revertsAboveStaked() public {
@@ -163,31 +192,31 @@ contract WeightVaultTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IWeightVault.InsufficientStaked.selector, 11 ether, 10 ether)
         );
-        vault.requestUnstake(11 ether);
+        vault.requestUnstake(11 ether, type(uint256).max);
         vm.stopPrank();
     }
 
     function test_requestUnstake_revertsWithNothingStaked() public {
         vm.expectRevert(abi.encodeWithSelector(IWeightVault.InsufficientStaked.selector, 1, 0));
         vm.prank(alice);
-        vault.requestUnstake(1);
+        vault.requestUnstake(1, type(uint256).max);
     }
 
     function test_requestUnstake_cannotUnstakeWhatIsAlreadyPending() public {
         vm.startPrank(alice);
         vault.stake(10 ether);
-        vault.requestUnstake(10 ether);
+        vault.requestUnstake(10 ether, type(uint256).max);
         vm.expectRevert(abi.encodeWithSelector(IWeightVault.InsufficientStaked.selector, 1, 0));
-        vault.requestUnstake(1);
+        vault.requestUnstake(1, type(uint256).max);
         vm.stopPrank();
     }
 
     function test_requestUnstake_secondRequestWhileLockedAddsAndExtendsUnlock() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(30 ether);
+        vault.requestUnstake(30 ether, type(uint256).max);
         skip(3 days);
-        vault.requestUnstake(20 ether);
+        vault.requestUnstake(20 ether, type(uint256).max);
         vm.stopPrank();
         (uint256 amt, uint256 unlock) = vault.pendingUnstake(alice);
         assertEq(amt, 50 ether);
@@ -198,16 +227,16 @@ contract WeightVaultTest is Test {
     function test_requestUnstake_afterMaturityRevertsWithdrawFirst() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(30 ether);
+        vault.requestUnstake(30 ether, type(uint256).max);
         (, uint256 unlock) = vault.pendingUnstake(alice);
         vm.warp(unlock - 1);
-        vault.requestUnstake(1 ether); // still locked: allowed
+        vault.requestUnstake(1 ether, type(uint256).max); // still locked: allowed
         (, uint256 unlock2) = vault.pendingUnstake(alice);
         vm.warp(unlock2);
         vm.expectRevert(abi.encodeWithSelector(IWeightVault.WithdrawFirst.selector, unlock2));
-        vault.requestUnstake(1 ether);
+        vault.requestUnstake(1 ether, type(uint256).max);
         vault.withdraw();
-        vault.requestUnstake(1 ether); // fine once withdrawn
+        vault.requestUnstake(1 ether, type(uint256).max); // fine once withdrawn
         vm.stopPrank();
     }
 
@@ -216,7 +245,7 @@ contract WeightVaultTest is Test {
     function test_requestUnstake_rerequestCannotRelockMaturedFunds() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(99 ether);
+        vault.requestUnstake(99 ether, type(uint256).max);
         vm.stopPrank();
         skip(CD);
         vm.prank(owner);
@@ -224,7 +253,7 @@ contract WeightVaultTest is Test {
         (, uint256 unlock) = vault.pendingUnstake(alice);
         vm.startPrank(alice);
         vm.expectRevert(abi.encodeWithSelector(IWeightVault.WithdrawFirst.selector, unlock));
-        vault.requestUnstake(1);
+        vault.requestUnstake(1, type(uint256).max);
         vault.withdraw();
         vm.stopPrank();
         assertEq(token.balanceOf(alice), 1_000_000 ether - 1 ether);
@@ -235,13 +264,13 @@ contract WeightVaultTest is Test {
     function test_requestUnstake_rerequestCannotShortenExisting() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(99 ether);
+        vault.requestUnstake(99 ether, type(uint256).max);
         (, uint256 unlock) = vault.pendingUnstake(alice);
         vm.stopPrank();
         vm.prank(owner);
         vault.setCooldown(0);
         vm.startPrank(alice);
-        vault.requestUnstake(1);
+        vault.requestUnstake(1, type(uint256).max);
         (uint256 amt, uint256 unlockAfter) = vault.pendingUnstake(alice);
         assertEq(amt, 99 ether + 1);
         assertEq(unlockAfter, unlock);
@@ -255,7 +284,7 @@ contract WeightVaultTest is Test {
     function test_withdraw_afterCooldown() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         skip(CD);
         vm.expectEmit(true, false, false, true);
         emit Withdrawn(alice, 100 ether);
@@ -273,7 +302,7 @@ contract WeightVaultTest is Test {
     function test_withdraw_oneSecondBeforeUnlockReverts() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         uint256 unlock = block.timestamp + CD;
         vm.warp(unlock - 1);
         vm.expectRevert(abi.encodeWithSelector(IWeightVault.StillLocked.selector, unlock));
@@ -284,7 +313,7 @@ contract WeightVaultTest is Test {
     function test_withdraw_exactlyAtUnlockWorks() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         vm.warp(block.timestamp + CD);
         vault.withdraw();
         vm.stopPrank();
@@ -300,7 +329,7 @@ contract WeightVaultTest is Test {
     function test_withdraw_twiceSecondReverts() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         skip(CD);
         vault.withdraw();
         vm.expectRevert(IWeightVault.NothingPending.selector);
@@ -311,7 +340,7 @@ contract WeightVaultTest is Test {
     function test_withdraw_leavesStakedUntouched() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(25 ether);
+        vault.requestUnstake(25 ether, type(uint256).max);
         skip(CD);
         vault.withdraw();
         vm.stopPrank();
@@ -324,7 +353,7 @@ contract WeightVaultTest is Test {
         vault.setCooldown(0);
         vm.startPrank(alice);
         vault.stake(10 ether);
-        vault.requestUnstake(10 ether);
+        vault.requestUnstake(10 ether, type(uint256).max);
         vault.withdraw();
         vm.stopPrank();
         assertEq(token.balanceOf(alice), 1_000_000 ether);
@@ -335,7 +364,7 @@ contract WeightVaultTest is Test {
     function test_cancelUnstake() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(60 ether);
+        vault.requestUnstake(60 ether, type(uint256).max);
         skip(2 days);
         vm.expectEmit(true, false, false, true);
         emit UnstakeCancelled(alice, 60 ether);
@@ -355,7 +384,7 @@ contract WeightVaultTest is Test {
     function test_cancelUnstake_afterUnlockStillWorks() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         skip(CD + 10 days);
         vault.cancelUnstake();
         vm.stopPrank();
@@ -375,7 +404,7 @@ contract WeightVaultTest is Test {
         vm.startPrank(alice);
         vault.stake(100 ether);
         skip(10 days);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         assertEq(vault.stakedSince(alice), 0);
         vault.stake(100 ether);
         assertEq(vault.stakedSince(alice), block.timestamp);
@@ -422,7 +451,7 @@ contract WeightVaultTest is Test {
     function test_setCooldown_doesNotAffectExistingRequest() public {
         vm.startPrank(alice);
         vault.stake(10 ether);
-        vault.requestUnstake(10 ether);
+        vault.requestUnstake(10 ether, type(uint256).max);
         vm.stopPrank();
         (, uint256 unlockBefore) = vault.pendingUnstake(alice);
 
@@ -484,7 +513,7 @@ contract WeightVaultTest is Test {
         assertEq(v.totalStaked(), 950 ether);
         assertEq(ft.balanceOf(address(v)), 950 ether);
 
-        v.requestUnstake(950 ether);
+        v.requestUnstake(950 ether, type(uint256).max);
         skip(CD);
         v.withdraw(); // user pays the fee again on the way out; vault never short
         vm.stopPrank();
@@ -504,7 +533,7 @@ contract WeightVaultTest is Test {
         vm.startPrank(bob);
         ft.approve(address(v), type(uint256).max);
         v.stake(100 ether);
-        v.requestUnstake(97 ether);
+        v.requestUnstake(97 ether, type(uint256).max);
         skip(CD);
         v.withdraw();
         vm.stopPrank();
@@ -531,7 +560,7 @@ contract WeightVaultTest is Test {
         assertEq(token.balanceOf(address(vault)), 150 ether);
         // withdrawals still pay exactly what was requested
         vm.startPrank(alice);
-        vault.requestUnstake(100 ether);
+        vault.requestUnstake(100 ether, type(uint256).max);
         skip(CD);
         vault.withdraw();
         vm.stopPrank();
@@ -580,7 +609,7 @@ contract WeightVaultTest is Test {
             (ReentrantToken et, WeightVault v) = _evil();
             vm.startPrank(alice);
             v.stake(100 ether);
-            v.requestUnstake(100 ether);
+            v.requestUnstake(100 ether, type(uint256).max);
             skip(CD);
             et.arm(v, modes[i], false);
             v.withdraw();
@@ -598,7 +627,7 @@ contract WeightVaultTest is Test {
         (ReentrantToken et, WeightVault v) = _evil();
         vm.startPrank(alice);
         v.stake(100 ether);
-        v.requestUnstake(100 ether);
+        v.requestUnstake(100 ether, type(uint256).max);
         skip(CD);
         et.arm(v, ReentrantToken.Mode.Withdraw, true);
         vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
@@ -614,7 +643,7 @@ contract WeightVaultTest is Test {
         (ReentrantToken et, WeightVault v) = _evil();
         vm.startPrank(alice);
         v.stake(100 ether);
-        v.requestUnstake(100 ether);
+        v.requestUnstake(100 ether, type(uint256).max);
         skip(CD);
         et.arm(v, ReentrantToken.Mode.Off, false);
         v.withdraw();
@@ -629,7 +658,7 @@ contract WeightVaultTest is Test {
         b = uint96(bound(b, 1, a));
         vm.startPrank(alice);
         vault.stake(a);
-        vault.requestUnstake(b);
+        vault.requestUnstake(b, type(uint256).max);
         assertEq(vault.stakedOf(alice), a - b);
         (uint256 amt,) = vault.pendingUnstake(alice);
         assertEq(amt, b);
@@ -649,7 +678,7 @@ contract WeightVaultTest is Test {
         vault.setCooldown(cd);
         vm.startPrank(alice);
         vault.stake(10 ether);
-        vault.requestUnstake(10 ether);
+        vault.requestUnstake(10 ether, type(uint256).max);
         skip(elapsed);
         if (elapsed < cd) {
             vm.expectRevert();
@@ -695,7 +724,7 @@ contract WeightVaultTest is Test {
         vault.stake(amt);
         vm.startPrank(stranger);
         vm.expectRevert();
-        vault.requestUnstake(1);
+        vault.requestUnstake(1, type(uint256).max);
         vm.expectRevert(IWeightVault.NothingPending.selector);
         vault.withdraw();
         vm.expectRevert(IWeightVault.NothingPending.selector);

@@ -75,10 +75,15 @@ contract ReentrantToken is ERC20 {
             mode = Mode.Off; // one shot
             attempts++;
             bytes memory data;
-            if (m == Mode.Stake) data = abi.encodeCall(vault.stake, (1));
-            else if (m == Mode.RequestUnstake) data = abi.encodeCall(vault.requestUnstake, (1));
-            else if (m == Mode.Withdraw) data = abi.encodeCall(vault.withdraw, ());
-            else data = abi.encodeCall(vault.cancelUnstake, ());
+            if (m == Mode.Stake) {
+                data = abi.encodeCall(vault.stake, (1));
+            } else if (m == Mode.RequestUnstake) {
+                data = abi.encodeCall(vault.requestUnstake, (1, type(uint256).max));
+            } else if (m == Mode.Withdraw) {
+                data = abi.encodeCall(vault.withdraw, ());
+            } else {
+                data = abi.encodeCall(vault.cancelUnstake, ());
+            }
             (bool ok, bytes memory ret) = address(vault).call(data);
             if (!ok) {
                 innerReverts++;

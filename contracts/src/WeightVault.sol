@@ -69,10 +69,13 @@ contract WeightVault is IWeightVault, Ownable2Step, ReentrancyGuard {
     ///         be withdrawn once the cooldown (as of now) has passed. Requesting again while
     ///         something is still locked adds to the pending amount and moves the unlock of ALL
     ///         pending tokens to `max(old unlock, now + cooldown)`: a request is never shortened.
+    ///         `maxCooldown` is the longest cooldown the caller accepts: if the owner has raised the
+    ///         cooldown above it (even in the same block), the call reverts `CooldownAboveMax`.
     ///         If the pending amount has already matured, this reverts `WithdrawFirst`, so matured
     ///         funds are never re-locked by surprise.
-    function requestUnstake(uint256 amount) external nonReentrant {
+    function requestUnstake(uint256 amount, uint256 maxCooldown) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
+        if (cooldown > maxCooldown) revert CooldownAboveMax(cooldown, maxCooldown);
         Position storage p = _positions[msg.sender];
         if (amount > p.staked) revert InsufficientStaked(amount, p.staked);
         if (p.pending != 0 && block.timestamp >= p.unlockTime) revert WithdrawFirst(p.unlockTime);

@@ -47,7 +47,7 @@ contract VaultHandler is Test {
         if (s == 0) return;
         amt = bound(amt, 1, s);
         vm.prank(a);
-        vault.requestUnstake(amt);
+        vault.requestUnstake(amt, type(uint256).max);
     }
 
     function cancelUnstake(uint256 who) external {

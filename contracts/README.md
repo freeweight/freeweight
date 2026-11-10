@@ -15,7 +15,7 @@ Status: written and tested, **not deployed**. Nothing in this directory holds or
 | Call | Effect |
 |---|---|
 | `stake(amount)` | Pulls `amount` of the token (needs a prior `approve`). Credits what the vault actually received. |
-| `requestUnstake(amount)` | Moves `amount` out of counted stake into a cooldown (default 7 days). It stops counting at once. A new request while something is still locked adds to the pending amount and moves the unlock of all of it to `max(old unlock, now + cooldown)`, so it is never shortened. If the pending amount has already matured the call reverts `WithdrawFirst`: withdraw it first. |
+| `requestUnstake(amount, maxCooldown)` | Moves `amount` out of counted stake into a cooldown (default 7 days); `maxCooldown` is the longest cooldown you accept, and the call reverts `CooldownAboveMax` if the owner has raised it above that. It stops counting at once. A new request while something is still locked adds to the pending amount and moves the unlock of all of it to `max(old unlock, now + cooldown)`, so it is never shortened. If the pending amount has already matured the call reverts `WithdrawFirst`: withdraw it first. |
 | `cancelUnstake()` | Puts all pending tokens back into counted stake. |
 | `withdraw()` | After the cooldown, sends all pending tokens back. |
 | `setCooldown(seconds)` | Owner only. 0 to 30 days, affects future requests only. |
@@ -51,7 +51,9 @@ Gateway rule: credits count for `stakedOf(user)` if `stakedSince(user) != 0` and
   `Ownable2Step` (propose then accept) and can be renounced, which freezes the cooldown for good.
 - **Limits:** the token address is immutable; the token itself is trusted to be a plain ERC-20.
   Tokens sent to the vault directly (not via `stake`) are not accounted and cannot be recovered.
-  A cooldown the owner raises to 30 days applies to anyone who requests afterwards, so watch the event.
+  The owner can raise the cooldown (up to 30 days) for requests made afterwards. A request states the
+  longest cooldown it accepts (`maxCooldown`), so a raise ordered before it, even in the same block, makes
+  it revert instead of locking you longer than you agreed to. Watch `CooldownUpdated`.
 
 ## How the gateway reads it
 
