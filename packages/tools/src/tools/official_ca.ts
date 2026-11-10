@@ -16,6 +16,28 @@ export function isSocialHost(u: string): boolean {
   }
 }
 
+/** Standalone addresses only: 0x + 40 hex not inside a longer hex string (a tx hash, a bytes blob). */
+const ADDRESS_RE = /(?<![0-9a-fA-Fx])0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
+const WARNING_RE = /\b(scam|fake|not\s+(?:our|the\s+official|affiliated)|beware|do\s+not\s+buy|don'?t\s+buy|impersonat\w*|phishing|warning|fraud)\b/i;
+
+export type CaMention = { found: boolean; context: "plain" | "warning" | "list" | null; distinct_addresses: number; snippet_untrusted: string | null };
+
+/** Where and how a text shows the address: standalone match, nearby warning words, or one address among many. */
+export function caMention(text: string, token: string): CaMention {
+  const all = new Set<string>();
+  let firstAt = -1;
+  for (const m of text.matchAll(ADDRESS_RE)) {
+    const a = m[0].toLowerCase();
+    all.add(a);
+    if (a === token && firstAt < 0) firstAt = m.index ?? -1;
+    if (all.size > 200) break;
+  }
+  if (firstAt < 0) return { found: false, context: null, distinct_addresses: all.size, snippet_untrusted: null };
+  const near = text.slice(Math.max(0, firstAt - 200), firstAt + 242);
+  const context = WARNING_RE.test(cleanSnippet(near, 600)) ? "warning" : all.size > 3 ? "list" : "plain";
+  return { found: true, context, distinct_addresses: all.size, snippet_untrusted: snippetAround(text.slice(Math.max(0, firstAt - 200), firstAt + 242), token) };
+}
+
 type SiteCheck = {
   url: string;
   final_url?: string;
@@ -25,6 +47,9 @@ type SiteCheck = {
   ca_in_scripts: boolean;
   scripts_checked: number;
   other_addresses_on_page: string[];
+  /** How the CA appears: plain, next to warning words, or as one of many addresses. */
+  ca_context?: CaMention["context"];
+  distinct_addresses?: number;
   snippet_untrusted?: string | null;
 };
 
@@ -35,11 +60,15 @@ async function checkSite(run: Run, url: string, token: string, fromMetadata: boo
     const page = await safeFetch(run, url, { maxRedirects: fromMetadata ? 2 : 3 });
     out.fetched = true;
     out.final_url = page.final_url;
-    const lower = page.body.toLowerCase();
-    out.ca_in_html = lower.includes(token);
+    const mention = caMention(page.body, token);
+    out.ca_in_html = mention.found;
     const facts = analyzeHtml(page.body, page.final_url);
     out.other_addresses_on_page = facts.addresses_found.filter((a) => a !== token).slice(0, 5);
-    if (out.ca_in_html) out.snippet_untrusted = snippetAround(page.body, token);
+    if (mention.found) {
+      out.ca_context = mention.context;
+      out.distinct_addresses = mention.distinct_addresses;
+      out.snippet_untrusted = mention.snippet_untrusted;
+    }
     if (!out.ca_in_html) {
       // Client-rendered sites keep the CA in their JS bundles.
       for (const src of facts.script_srcs_same_origin.slice(0, fromMetadata ? 2 : 4)) {
@@ -47,12 +76,16 @@ async function checkSite(run: Run, url: string, token: string, fromMetadata: boo
         try {
           const js = await safeFetch(run, src, { maxBytes: 2_500_000, accept: "*/*", maxRedirects: 1 });
           out.scripts_checked++;
-          const jl = js.body.toLowerCase();
-          if (jl.includes(token)) {
+          const jm = caMention(js.body, token);
+          if (jm.found) {
             out.ca_in_scripts = true;
+            // Bundles hold many addresses (routers, tokens): only a nearby warning changes the reading.
+            out.ca_context = jm.context === "warning" ? "warning" : "plain";
+            out.distinct_addresses = jm.distinct_addresses;
+            out.snippet_untrusted = jm.snippet_untrusted;
             break;
           }
-          for (const m of js.body.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)) {
+          for (const m of js.body.matchAll(ADDRESS_RE)) {
             const a = m[0].toLowerCase();
             if (a !== token && !out.other_addresses_on_page.includes(a) && out.other_addresses_on_page.length < 8) out.other_addresses_on_page.push(a);
           }
@@ -113,9 +146,15 @@ export const officialCa = defineTool({
     const deeper = others.filter((o) => o.liquidity_usd > (mine?.liquidity_usd ?? 0)).length;
 
     const parts: string[] = [];
-    const found = siteChecks.find((s) => s.ca_in_html || s.ca_in_scripts);
+    const shown = siteChecks.filter((s) => s.ca_in_html || s.ca_in_scripts);
+    const found = shown.find((s) => s.ca_context !== "warning");
+    const warned = shown.find((s) => s.ca_context === "warning");
     if (!sites.length) parts.push("no website known (pass url to check one)");
-    else if (found) parts.push(`CA appears on ${new URL(found.final_url ?? found.url).hostname} (${found.ca_in_html ? "page HTML" : "site JS bundle"})`);
+    else if (found)
+      parts.push(
+        `CA appears on ${new URL(found.final_url ?? found.url).hostname} (${found.ca_in_html ? "page HTML" : "site JS bundle"}${found.ca_context === "list" ? `, as one of ${found.distinct_addresses} addresses on the page` : ""})`,
+      );
+    else if (warned) parts.push(`the site mentions the CA next to warning words (it may be calling it a fake): read snippet_untrusted`);
     else {
       const fetched = siteChecks.filter((s) => s.fetched);
       if (fetched.length) {
@@ -142,6 +181,7 @@ export const officialCa = defineTool({
         symbol_untrusted: symbol !== null ? cleanSnippet(symbol, 32) : null,
         sites: siteChecks,
         ca_on_site: sites.length ? Boolean(found) : null,
+        ca_mentioned_with_warning: Boolean(warned),
         this_token: mine ? { liquidity_usd: round(mine.liquidity_usd), first_pool_at: mine.first_pool_at ? new Date(mine.first_pool_at).toISOString() : null } : null,
         same_symbol_tokens: others.slice(0, 10).map((o) => ({
           address: o.address,

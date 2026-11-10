@@ -505,3 +505,37 @@ describe("#19/#23 unknown balances and decimals are not printed as facts", () =>
     expect(units(10n ** 18n, null)).toBeNull();
   });
 });
+
+describe("#9 official_ca matches standalone addresses and reads their context", () => {
+  const TOKEN = "0x4444444444444444444444444444444444444444";
+  const pages: Record<string, string> = {
+    "https://real-project.xyz/": `<html><title>Real</title><p>Our token: 0x5555555555555555555555555555555555555555</p><p>Launch tx 0x${TOKEN.slice(2)}aabbccddeeff00112233445566778899aabbccdd</p></html>`,
+    "https://warn.xyz/": `<html><title>Real</title><p>SCAM WARNING: ${TOKEN} is NOT our token.</p></html>`,
+    "https://plain.xyz/": `<html><title>Real</title><p>Contract: ${TOKEN}</p></html>`,
+  };
+  const f = fakeFetch([
+    dohRoute((_h, t) => (t === "A" ? ["93.184.216.34"] : [])),
+    (url) => (pages[url] ? new Response(pages[url], { headers: { "content-type": "text/html" } }) : null),
+    (url) => (url.includes("api.dexscreener.com") ? json(url.includes("search") ? { pairs: [] } : []) : null),
+  ]);
+  const run = async (url: string) => {
+    fresh();
+    return runTool("official_ca", { chain: "base", token: TOKEN, url }, { env: { RPC_URLS: { "8453": RPC } }, fetch: f });
+  };
+  it("an address inside a longer hex string is not the CA", async () => {
+    const r = await run("https://real-project.xyz/");
+    expect(r.data.ca_on_site).toBe(false);
+    expect(r.summary).toMatch(/CA NOT found/);
+  });
+  it("a scam warning about the CA is not 'CA appears on'", async () => {
+    const r = await run("https://warn.xyz/");
+    expect(r.data.ca_on_site).toBe(false);
+    expect(r.data.ca_mentioned_with_warning).toBe(true);
+    expect(r.summary).toMatch(/next to warning words/);
+  });
+  it("a plain mention still counts", async () => {
+    const r = await run("https://plain.xyz/");
+    expect(r.data.ca_on_site).toBe(true);
+    expect(r.summary).toMatch(/CA appears on plain\.xyz/);
+  });
+});
