@@ -220,6 +220,8 @@ thrown away:
   no GPU source can wake it, the session ends with the reason `model_lost`. So does a paused session that is
   still waiting after about half an hour. You pay for the time up to the point where the clock stopped, and
   the rest of your hold is released.
+- If you stop the session while the model is away, you pay for the seconds before the clock stopped, with no
+  one-minute minimum.
 
 ## Models from owners
 

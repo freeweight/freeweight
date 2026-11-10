@@ -40,8 +40,9 @@ A paid session is billed by the second, with a one-minute minimum once the model
 20 seconds after the model was ready costs one minute. On the test deployment, a session that used 11 GPU
 seconds on the Light model was charged $0.03. A session that never reaches a ready model costs nothing.
 
-The minimum does not apply when the model was lost under your session. Then you pay for the seconds before
-the model stopped and nothing more.
+The minimum does not apply when the model went away under your session: when it was lost, or when you stop
+the session while the model is being woken again. Then you pay for the seconds before the model stopped and
+nothing more.
 
 | Session | Tier | Charge |
 | ------- | ---- | ------ |
@@ -101,6 +102,8 @@ You can try a Light model for 5 minutes without a wallet and without paying.
   free try is closed until the next UTC day.
 - It starts from the site, not from an API key.
 - If the wake fails, you get the free try back.
+- A free session you stop early still uses at least one minute of the daily total, also when you stop it before
+  the model is ready. A wake costs GPU time whether or not you wait for it.
 
 ## Balance and top-ups
 

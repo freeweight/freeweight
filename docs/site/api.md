@@ -296,6 +296,10 @@ is `null` until the model is ready. Then the state is `active` again and `ends_a
 the pause. If the model cannot be woken again, the session ends with the reason `model_lost`. Do not treat
 `waking` as "never started": check `paused`, or `started_at`.
 
+After the model was woken again, the wake time of the session is still that of its first wake: `wake_s` on the
+receipt is what you waited at the start. `started_at` has moved forward by the time the model was away, so
+`started_at - created_at` is no longer the wake time, and `stages` is the list of the latest wake.
+
 A `receipt`:
 
 | Field | Meaning |
@@ -352,7 +356,8 @@ POST /api/sessions/{id}/extend
 
 Adds whole minutes at the session's own price. The extra amount is held from your balance. Returns the `Session`
 with a later `ends_at`. Needs the session's owner: an API key or the signed-in wallet. The session id alone is not
-enough. A session cannot go past 240 minutes in total.
+enough. A session cannot go past 240 minutes in total. An extension that arrives while the session ends answers
+`409 session_ended`, and the amount it held goes back to your balance.
 
 ### Stop a session
 
@@ -368,8 +373,8 @@ A paid session is billed by the second, with a one-minute minimum once the model
 during its first wake costs nothing, and for a paid session it counts against the wake budget. When the service
 has given away its share of uncharged wakes for the hour, such a stop costs the one-minute minimum instead and is
 not counted (`note: "wake_minimum"` on the receipt). Stopping a
-paused session costs the seconds used before the pause, with the same minimum. A session that ends because
-the model was lost (`model_lost`) pays for its seconds only, with no minimum. Stopping an ended session
+paused session costs the seconds used before the pause, with no minimum: the model went away under it. A
+session that ends because the model was lost (`model_lost`) pays for its seconds only, with no minimum either. Stopping an ended session
 returns it unchanged.
 
 ## Inference
