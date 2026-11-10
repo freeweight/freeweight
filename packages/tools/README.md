@@ -109,11 +109,23 @@ Can a buyer sell, and what can the owner do?
   amount are simulated from up to three real holders (recent small recipients first; never the largest holder, owner or
   creator), and the reason is in `fresh_wallet_unavailable`. Every result names the wallet(s) it ran from; without a
   cost figure it says "did not revert; cost not measured", never "OK". Last resort: a plain transfer from a holder.
+- **Two sale orders on Uniswap v4**: the round trip's sale runs twice, in separate calls. `wallet_held`: the tokens stay
+  in the selling wallet until the swap has run and are paid at settlement (the selling wallet is also the transaction
+  origin). `pre_transferred`: the tokens are moved to the pool manager and settled first, then swapped against that
+  credit, the order many bots and aggregators use. Both costs are in `wallets[0].route_costs`. If one loses more than
+  50% and the other under 15%, the verdict is `route_dependent` and the summary says **SELL DEPENDS ON THE ROUTE** with
+  both figures. (v2 pools always take the tokens before the swap; v3 pools pull them during the swap, so there is one
+  order each.)
+- **Index reconciliation**: when the Freeweight index has its own sell test (run through a router), the two readings are
+  merged into one statement. If they agree, the simulation's figures come first; if they disagree, the worse reading
+  sets the verdict and the summary says **SELL TESTS DISAGREE** with both figures, to be treated as a route-dependent
+  trap until shown otherwise. `sell_simulation.index_reading` and `sell_simulation.agreement` record this.
 - **Static flags**: EIP-1967 / EIP-1167 proxy, `owner()` and whether it is renounced, owner-power functions found in
   the bytecode by a PUSH4 scan (mint, blacklist, pause, trading switch, fee setters, limits, exclusions, upgrade),
   Sourcify verification, and GoPlus token security where GoPlus covers the chain.
-- It never says "safe". Blind spots: traps that target certain wallets, sizes, later times or particular routers (the
-  probe calls the pool directly); bonding-curve venues; front-end tricks. GoPlus does not see Uniswap v4 hook logic.
+- It never says "safe". Still blind: exemptions or penalties for specific wallets (the probe is one fresh address),
+  trade size (one small size), time (now only), logic keyed to a particular router or calldata (the probe calls the
+  pool manager or pool directly), bonding-curve venues, and front-end tricks. GoPlus does not see Uniswap v4 hook logic.
 
 ### `holders` `{ chain?, token, limit? }`
 Top holders with % of supply and tags (`pool`, `burn`, `creator`, `contract`), top-10 concentration excluding pools and
