@@ -1,4 +1,4 @@
-// Gzipped size of the build: what the landing route loads first, and every lazy chunk after it.
+// Gzipped size of the build: what the landing route loads first, every lazy chunk after it, and the pages of text.
 // Usage: node scripts/size.mjs [dist]. It exits 1 when the build is over the budget at the end of this file.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,9 +41,19 @@ for (const f of entryCss) {
 }
 console.log(`  ${kb(js)}  JS total (gzip)`);
 console.log(`  ${kb(css)}  CSS total (gzip)`);
+// A page of the docs is built as a chunk that holds one string and nothing else. That is text, not code, and it
+// grows with the docs: it is listed here and left out of the budget for code.
+const isText = (file) =>
+  /^const (\w+)=(['"`])[\s\S]*\2;export\{\1 as default\};?\s*$/.test(readFileSync(join(dist, file), "utf8"));
+const text = rest.filter((f) => f.endsWith(".js") && isText(f));
+const sum = (files) => files.reduce((n, f) => n + gz(f), 0);
+
 console.log("Loaded on demand");
-for (const f of rest.sort((a, b) => gz(b) - gz(a))) console.log(`  ${kb(gz(f))}  ${f}`);
-const all = js + rest.filter((f) => f.endsWith(".js")).reduce((n, f) => n + gz(f), 0);
+for (const f of rest.filter((f) => !text.includes(f)).sort((a, b) => gz(b) - gz(a))) console.log(`  ${kb(gz(f))}  ${f}`);
+console.log("Pages of text, outside the budget");
+for (const f of text.sort((a, b) => gz(b) - gz(a))) console.log(`  ${kb(gz(f))}  ${f}`);
+console.log(`  ${kb(sum(text))}  text total (gzip)`);
+const all = js + sum(rest.filter((f) => f.endsWith(".js") && !text.includes(f)));
 console.log("Budget");
 
 // The budget, in gzipped bytes. The build runs this file, so a change that grows past a line fails the build.
@@ -51,7 +61,7 @@ const KB = 1024;
 const BUDGET = [
   ["Landing JS", js, 100 * KB],
   ["The entry chunk", entry ? gz(entry) : 0, 20 * KB],
-  ["All JS", all, 140 * KB],
+  ["All JS code", all, 140 * KB],
 ];
 let over = false;
 for (const [what, size, limit] of BUDGET) {
