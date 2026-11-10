@@ -304,7 +304,8 @@ describe("Freeweight index field maps", () => {
     expect(m.name_untrusted).toBe("Zolva Agent");
     expect(m).not.toHaveProperty("name");
     expect(line("token_overview", m)).toBe("pons launch, graduated, main-venue price $0.0000336, mcap $33.6k, liquidity ~$15.3k");
-    expect(line("token_overview", { ...m, price_reliable: false, price_usd: null })).toMatch(/price not reliable/);
+    expect(line("token_overview", { ...m, price_reliable: false, price_usd: null, market_cap_usd: null })).toBe("pons launch, graduated, no reliable price right now (thin or junk market), liquidity ~$15.3k");
+    expect(line("official_ca", { is_official: false, official_token: null, copy_of_active_token: true })).toMatch(/earlier launch on the same site or repo is active now/);
     const oca = mapShape({ named_on_site: true, named_in_repo: false, is_official: true, official_token: "0x229f628da8a7d3e1b235bb8166f456ec1d7faec5", official_reason: "the project's website names this address", links: [{ link_type: "website", launches_on_link: 2, this_token_role: "official", official_token: "0x229f628da8a7d3e1b235bb8166f456ec1d7faec5", reason: "x" }], earlier_launches_on_same_links: 0, later_launches_on_same_links: 1, same_creator_earlier_attempts: 0, same_ticker_launches_24h: 2, lookalike_of_earlier: false, copy_of_active_token: false }, SHAPES.official_ca!);
     expect(line("official_ca", oca)).toBe("official per the project's website names this address");
     expect(line("official_ca", { ...oca, is_official: null })).toMatch(/not resolved/);

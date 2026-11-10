@@ -152,7 +152,16 @@ With `FACTS_URL` and `FACTS_KEY` set, the six token tools also ask the Freeweigh
 (`GET {FACTS_URL}/v1/{tool}?token=0x…`, header `X-FW-Facts-Key`, plus Cloudflare Access service-token headers when
 `FACTS_ACCESS_ID` / `FACTS_ACCESS_SECRET` are set). Only chain 4663, 60 s cache, 1.5 s timeout. Only documented fields
 are copied, into `index`; the summary gains one sentence. On any failure or an unknown token the tool answers from
-public sources and says so in `notes`.
+public sources and says so in `notes`. The index only knows tokens that reached about $5k market cap or drew real
+buying, so `found: false` is common for brand-new launches.
+
+How the summary words index facts:
+- No price is given when the index marks the price unreliable (thin or junk markets), only "no reliable price".
+- A creator's launch count is "at least N": launches that never reached about $5k are not counted. A shared launcher
+  contract (it launches for many people) is never presented as one developer's record.
+- "An earlier launch on the same site or repo is active now and this one is not the official token" comes from
+  `copy_of_active_token`; `is_official: null` is said as "not resolved", never as "not official".
+- Creator-written text (`name`, `symbol`, site title and description) comes back under `*_untrusted` keys.
 
 ## Safety of fetched content
 

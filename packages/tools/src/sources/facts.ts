@@ -201,7 +201,7 @@ export function describe(tool: string, f: Record<string, unknown>): string {
       const p: string[] = [];
       if (f.launchpad) p.push(`${f.launchpad} launch`);
       if (f.graduated !== null) p.push(f.graduated ? "graduated" : "not graduated");
-      if (f.price_reliable === false) p.push("price not reliable right now");
+      if (f.price_reliable === false || f.price_usd === null) p.push("no reliable price right now (thin or junk market)");
       else if (f.price_usd !== null) p.push(`main-venue price ${usd(f.price_usd)}, mcap ${usd(f.market_cap_usd)}`);
       if (f.liquidity_usd_approx !== null) p.push(`liquidity ~${usd(f.liquidity_usd_approx)}`);
       return p.join(", ");
@@ -249,7 +249,7 @@ export function describe(tool: string, f: Record<string, unknown>): string {
       else if (f.is_official === false) p.push(`NOT the official token${f.official_token ? ` (official: ${String(f.official_token).slice(0, 6)}…${String(f.official_token).slice(-4)})` : ""}`);
       else p.push("official status not resolved by site/repo evidence");
       if (typeof f.earlier_launches_on_same_links === "number" && f.earlier_launches_on_same_links > 0) p.push(`${f.earlier_launches_on_same_links} earlier launch(es) used the same links`);
-      if (f.copy_of_active_token === true) p.push("copy of an active token");
+      if (f.copy_of_active_token === true) p.push("an earlier launch on the same site or repo is active now and this one is not the official token");
       return p.join(", ");
     }
     case "project_check": {
