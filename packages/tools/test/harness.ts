@@ -64,6 +64,22 @@ function orderBatch(reqBody: string | undefined, resBody: string): string {
 export function resetState(): void {
   clearMemCache();
   resetExplorerCircuit();
+  fixedRandom();
+}
+
+/** The sell probe draws a random fresh address; recordings and replays need the same one. */
+export function fixedRandom(): void {
+  const c = globalThis.crypto as Crypto & { __fixed?: boolean };
+  if (c.__fixed) return;
+  const orig = c.getRandomValues.bind(c);
+  c.getRandomValues = (<T extends ArrayBufferView | null>(a: T): T => {
+    if (a instanceof Uint8Array && a.length === 20) {
+      a.fill(0x5a);
+      return a;
+    }
+    return orig(a as never) as T;
+  }) as Crypto["getRandomValues"];
+  c.__fixed = true;
 }
 
 export function recorder(real: typeof fetch): { fetch: typeof fetch; entries: Entry[] } {

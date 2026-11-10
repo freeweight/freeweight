@@ -196,15 +196,17 @@ const pct = (x: unknown) => (typeof x === "number" ? `${(x * 100).toFixed(x < 0.
 const usd = (x: unknown) => (typeof x === "number" ? (x >= 1e6 ? `$${(x / 1e6).toFixed(2)}M` : x >= 1e3 ? `$${(x / 1e3).toFixed(1)}k` : `$${x.toPrecision(3)}`) : "n/a");
 
 /** One short sentence per tool, for the summary. */
-export function describe(tool: string, f: Record<string, unknown>): string {
+export function describe(tool: string, f: Record<string, unknown>, omit: Set<string> = new Set()): string {
   switch (tool) {
     case "token_overview": {
       const p: string[] = [];
       if (f.launchpad) p.push(`${f.launchpad} launch`);
       if (f.graduated !== null) p.push(f.graduated ? "graduated" : "not graduated");
-      if (f.price_reliable === false || f.price_usd === null) p.push("no reliable price right now (thin or junk market)");
-      else if (f.price_usd !== null) p.push(`main-venue price ${usd(f.price_usd)}, mcap ${usd(f.market_cap_usd)}`);
-      if (f.liquidity_usd_approx !== null) p.push(`liquidity ~${usd(f.liquidity_usd_approx)}`);
+      if (!omit.has("price")) {
+        if (f.price_reliable === false || f.price_usd === null) p.push("no reliable price right now (thin or junk market)");
+        else p.push(`main-venue price ${usd(f.price_usd)}, mcap ${usd(f.market_cap_usd)}`);
+      }
+      if (f.liquidity_usd_approx !== null && !omit.has("liquidity")) p.push(`liquidity ~${usd(f.liquidity_usd_approx)}`);
       return p.join(", ");
     }
     case "safety_check": {
@@ -231,7 +233,7 @@ export function describe(tool: string, f: Record<string, unknown>): string {
       add("linked_wallets_share", "linked wallets");
       add("snipers_share", "snipers still holding");
       add("dev_share", "dev");
-      add("top10_share", "top 10");
+      if (!omit.has("top10")) add("top10_share", "top 10");
       if (typeof f.wallets_to_half === "number") p.push(`half of held supply in ${f.wallets_to_half} wallets`);
       return p.join(", ");
     }
@@ -239,7 +241,7 @@ export function describe(tool: string, f: Record<string, unknown>): string {
       const n = f.prior_launches_n;
       const sum = (f.prior_summary ?? {}) as Record<string, unknown>;
       if (f.creator_is_shared_launcher === true) return `creator is a shared launcher (it launches for many people): its launches (at least ${n ?? "?"}) are not one developer's record`;
-      const p = [`creator has at least ${n ?? "?"} other launch(es) that reached about $5k`];
+      const p = [n === 0 ? "no other launch by this creator reached about $5k" : `creator has at least ${n ?? "?"} other launch(es) that reached about $5k`];
       if (typeof sum.graduated === "number") p.push(`${sum.graduated} graduated, ${sum.active ?? "?"} active`);
       if (typeof f.dev_sold_share_of_peak === "number") p.push(`dev sold ${pct(f.dev_sold_share_of_peak)} of its peak bag`);
       return p.join(", ");

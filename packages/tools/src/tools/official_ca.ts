@@ -3,7 +3,7 @@ import { addr, chainArg, CHAIN_PROP, fmtAge, fmtUsd, round, short, str, TOKEN_PR
 import { soft, type Run } from "../util/http.js";
 import { erc20Meta } from "../util/rpc.js";
 import { BlockedUrl, safeFetch } from "../util/ssrf.js";
-import { analyzeHtml, snippetAround } from "../util/page.js";
+import { analyzeHtml, cleanSnippet, quoteUntrusted, snippetAround } from "../util/page.js";
 import { searchPairs, tokenPairs, websitesOf, type DsPair } from "../sources/dexscreener.js";
 
 const SOCIAL_HOSTS = /(^|\.)(x\.com|twitter\.com|t\.me|telegram\.me|discord\.(gg|com)|github\.com|farcaster\.xyz|warpcast\.com|medium\.com|youtube\.com|tiktok\.com|instagram\.com|linktr\.ee|reddit\.com|facebook\.com|dexscreener\.com|coingecko\.com|coinmarketcap\.com)$/i;
@@ -101,7 +101,7 @@ export const officialCa = defineTool({
       if (p.chainId !== chain.dexscreener) continue;
       if (!symbol || p.baseToken.symbol.toLowerCase() !== symbol.toLowerCase()) continue;
       const a = p.baseToken.address.toLowerCase();
-      const cur = bySym.get(a) ?? { address: a, name: p.baseToken.name, liquidity_usd: 0, first_pool_at: null, fdv_usd: null };
+      const cur = bySym.get(a) ?? { address: a, name: cleanSnippet(p.baseToken.name, 80), liquidity_usd: 0, first_pool_at: null, fdv_usd: null };
       cur.liquidity_usd += p.liquidity?.usd ?? 0;
       if (p.pairCreatedAt && (cur.first_pool_at === null || p.pairCreatedAt < cur.first_pool_at)) cur.first_pool_at = p.pairCreatedAt;
       cur.fdv_usd = Math.max(cur.fdv_usd ?? 0, p.fdv ?? 0) || null;
@@ -126,26 +126,26 @@ export const officialCa = defineTool({
     if (symbol) {
       parts.push(
         others.length
-          ? `${others.length} other $${symbol} token(s) on ${chain.name}: ${older} older, ${deeper} with more liquidity (largest ${short(others[0]!.address)} ${fmtUsd(others[0]!.liquidity_usd)})`
-          : `no other $${symbol} on ${chain.name} in DexScreener search`,
+          ? `${others.length} other ${quoteUntrusted(symbol)} token(s) on ${chain.name}: ${older} older, ${deeper} with more liquidity (largest ${short(others[0]!.address)} ${fmtUsd(others[0]!.liquidity_usd)})`
+          : `no other ${quoteUntrusted(symbol)} on ${chain.name} in DexScreener search`,
       );
     }
     if (sites.length && !urlArg) run.note("Website came from DexScreener token metadata, which the token's own team (or anyone who paid) set: a copycat can list a real project's site.");
     run.note("Neither age nor liquidity decides which token is official; the project's own channels do.");
 
     return {
-      summary: `$${symbol ?? "?"} ${short(token)} on ${chain.name}: ` + parts.join("; ") + ".",
+      summary: `${quoteUntrusted(symbol)} ${short(token)} on ${chain.name}: ` + parts.join("; ") + ".",
       data: {
         chain: chain.key,
         chain_id: chain.id,
         token,
-        symbol,
+        symbol_untrusted: symbol !== null ? cleanSnippet(symbol, 32) : null,
         sites: siteChecks,
         ca_on_site: sites.length ? Boolean(found) : null,
         this_token: mine ? { liquidity_usd: round(mine.liquidity_usd), first_pool_at: mine.first_pool_at ? new Date(mine.first_pool_at).toISOString() : null } : null,
         same_symbol_tokens: others.slice(0, 10).map((o) => ({
           address: o.address,
-          name: o.name,
+          name_untrusted: o.name,
           liquidity_usd: round(o.liquidity_usd),
           fdv_usd: round(o.fdv_usd),
           first_pool_at: o.first_pool_at ? new Date(o.first_pool_at).toISOString() : null,

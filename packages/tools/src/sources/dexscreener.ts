@@ -1,3 +1,4 @@
+import { cleanSnippet } from "../util/page.js";
 import type { Chain } from "../chains.js";
 import type { Run } from "../util/http.js";
 import { round } from "../util/args.js";
@@ -49,7 +50,8 @@ export type PoolSummary = {
   pair: string;
   dex: string;
   version: string | null;
-  quote: string;
+  /** The other side's symbol, as listed (creator-written). */
+  quote_symbol_untrusted: string;
   liquidity_usd: number | null;
   price_usd: number | null;
   volume_24h_usd: number | null;
@@ -73,7 +75,7 @@ export function summarizePool(p: DsPair, token: string): PoolSummary {
     pair: p.pairAddress.toLowerCase(),
     dex: p.dexId,
     version: p.labels?.[0] ?? null,
-    quote: other.symbol,
+    quote_symbol_untrusted: cleanSnippet(other.symbol, 32),
     liquidity_usd: round(p.liquidity?.usd ?? null, 6),
     price_usd: round(priceOf(p, token), 6),
     volume_24h_usd: round(p.volume?.h24 ?? null, 6),

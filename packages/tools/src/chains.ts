@@ -42,6 +42,7 @@ export const CHAINS: Chain[] = [
     aliases: ["robinhood", "rh", "robinhood-chain", "robinhoodchain", "hood"],
     nativeSymbol: "ETH",
     nativeCoingecko: "ethereum",
+    wrappedNative: "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
     rpcs: ["https://rpc.mainnet.chain.robinhood.com", "https://robinhood.drpc.org"],
     explorers: [{ type: "blockscout", base: "https://robinhoodchain.blockscout.com" }],
     explorerUi: "https://robinhoodchain.blockscout.com",

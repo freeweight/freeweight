@@ -1,12 +1,24 @@
 import { decodeEventLog, decodeFunctionResult, encodeFunctionData, formatEther, parseAbiItem, type AbiEvent, type AbiFunction, type Hex } from "viem";
 import { defineTool } from "../tool.js";
 import { addr, chainArg, CHAIN_PROP, InputError, int, short, str } from "../util/args.js";
-import { blockNumber, rpc, RpcError } from "../util/rpc.js";
+import { blockNumber, isRevert, rpc, RpcError } from "../util/rpc.js";
+import { cleanSnippet, quoteUntrusted } from "../util/page.js";
 
 const OPS = ["call", "balance", "code", "logs", "receipt", "tx", "block", "storage", "nonce"] as const;
 type Op = (typeof OPS)[number];
 const MAX_LOG_BLOCKS = 10_000;
 const MAX_LOGS_OUT = 100;
+
+/** Short summary form of decoded call output: numbers, booleans and addresses as is; strings cleaned, capped, quoted. */
+export function summarizeDecoded(v: unknown): string {
+  const one = (x: unknown): string => {
+    if (typeof x === "string") return /^0x[0-9a-fA-F]*$/.test(x) ? (x.length > 66 ? x.slice(0, 66) + "…" : x) : /^-?\d+$/.test(x) ? x : quoteUntrusted(x);
+    if (Array.isArray(x)) return "[" + x.slice(0, 4).map(one).join(", ") + (x.length > 4 ? ", …" : "") + "]";
+    if (x && typeof x === "object") return "{" + Object.entries(x).slice(0, 4).map(([k, y]) => `${k.slice(0, 20)}: ${one(y)}`).join(", ") + "}";
+    return String(x);
+  };
+  return one(v).slice(0, 200);
+}
 
 /** Cap every string in a nested RPC result (node responses are not ours to trust for size). */
 export function capStrings(v: unknown, max: number, depth = 0): unknown {
@@ -102,7 +114,8 @@ export const chainRead = defineTool({
               decoded = null;
             }
           }
-          const shown = decoded === null ? raw.slice(0, 140) : JSON.stringify(decoded).slice(0, 200);
+          // Decoded strings come from the contract: never raw in the summary.
+          const shown = decoded === null ? raw.slice(0, 140) : summarizeDecoded(decoded);
           return { summary: `${fn.name}() on ${short(to)} (${chain.name}) = ${shown}`, data: { ...base, to, function: fn.name, raw: raw.length > 4000 ? raw.slice(0, 4000) + "…" : raw, decoded } };
         }
         case "balance":
@@ -205,7 +218,16 @@ export const chainRead = defineTool({
         }
       }
     } catch (e) {
-      if (e instanceof RpcError) return { ok: false, summary: `RPC error: ${e.message.slice(0, 200)}`, data: { ...base, rpc_error: { code: e.code, message: e.message.slice(0, 300) } } };
+      if (isRevert(e)) {
+        // A revert string is written by the contract's author: data only, never the summary.
+        return {
+          ok: false,
+          summary: `the call reverted on ${chain.name}`,
+          data: { ...base, reverted: true, revert_reason_untrusted: cleanSnippet(e instanceof Error ? e.message : "", 200) },
+          error: { code: "reverted", message: "the call reverted" },
+        };
+      }
+      if (e instanceof RpcError) return { ok: false, summary: `RPC error (code ${e.code})`, data: { ...base, rpc_error: { code: e.code, message_untrusted: cleanSnippet(e.message, 200) } } };
       throw e;
     }
     throw new InputError("invalid_input", "unsupported op");

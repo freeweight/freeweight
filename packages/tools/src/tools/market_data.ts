@@ -1,3 +1,4 @@
+import { quoteUntrusted } from "../util/page.js";
 import { CHAINS } from "../chains.js";
 import { defineTool } from "../tool.js";
 import { addr, chainArg, CHAIN_PROP, fmtUsd, InputError, round, short, TOKEN_PROP } from "../util/args.js";
@@ -63,17 +64,17 @@ export const marketData = defineTool({
       data.other_pools = real.slice(1, 8).map((p) => poolRow(p, token));
       data.junk_pools = junk.slice(0, 5).map((p) => ({ pair: p.pairAddress.toLowerCase(), dex: p.dexId, liquidity_usd: round(p.liquidity?.usd ?? null), price_usd_unreliable: round(priceOf(p, token)) }));
       if (main) {
-        const sym = main.baseToken.address.toLowerCase() === token ? main.baseToken.symbol : main.quoteToken.symbol;
+        const sym = quoteUntrusted(main.baseToken.address.toLowerCase() === token ? main.baseToken.symbol : main.quoteToken.symbol);
         const t = main.txns?.h24;
         parts.push(
-          `$${sym} ${short(token)}: ${fmtUsd(priceOf(main, token))}, 24h ${main.priceChange?.h24 ?? "n/a"}%, 1h ${main.priceChange?.h1 ?? "n/a"}%, liquidity ${fmtUsd(real.reduce((s, p) => s + (p.liquidity?.usd ?? 0), 0))}, 24h volume ${fmtUsd(real.reduce((s, p) => s + (p.volume?.h24 ?? 0), 0))}${t ? `, 24h ${t.buys} buys / ${t.sells} sells (main pool)` : ""}`,
+          `${sym} ${short(token)}: ${fmtUsd(priceOf(main, token))}, 24h ${main.priceChange?.h24 ?? "n/a"}%, 1h ${main.priceChange?.h1 ?? "n/a"}%, liquidity ${fmtUsd(real.reduce((s, p) => s + (p.liquidity?.usd ?? 0), 0))}, 24h volume ${fmtUsd(real.reduce((s, p) => s + (p.volume?.h24 ?? 0), 0))}${t ? `, 24h ${t.buys} buys / ${t.sells} sells (main pool)` : ""}`,
         );
         if (junk.length) parts.push(`${junk.length} junk pool(s) excluded (their prices are unreliable)`);
       } else parts.push(`no pools for ${short(token)} on ${chain.name}`);
     }
     if (pairArg) {
       data.pair = single ? poolRow(single, single.baseToken.address.toLowerCase()) : null;
-      if (single) parts.push(`pair ${single.baseToken.symbol}/${single.quoteToken.symbol}: ${fmtUsd(single.priceUsd ? Number(single.priceUsd) : null)}, liquidity ${fmtUsd(single.liquidity?.usd ?? null)}`);
+      if (single) parts.push(`pair ${quoteUntrusted(single.baseToken.symbol, 16)}/${quoteUntrusted(single.quoteToken.symbol, 16)}: ${fmtUsd(single.priceUsd ? Number(single.priceUsd) : null)}, liquidity ${fmtUsd(single.liquidity?.usd ?? null)}`);
       else parts.push(`pair ${short(pairArg)} not found on DexScreener`);
     }
     if (cg) {

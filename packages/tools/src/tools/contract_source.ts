@@ -1,3 +1,4 @@
+import { cleanSnippet, quoteUntrusted } from "../util/page.js";
 import { defineTool } from "../tool.js";
 import { addr, chainArg, CHAIN_PROP, int, short, str } from "../util/args.js";
 import { soft } from "../util/http.js";
@@ -79,7 +80,7 @@ export const contractSource = defineTool({
       : null;
     if (file && !src.files.some((f) => f.path === chosen?.path)) run.note(`file ${file} not found; returned the main file`);
     return {
-      summary: `${src.name ?? "Contract"} at ${short(target)}${target !== address ? ` (implementation behind proxy ${short(address)})` : ""} is verified on ${src.via} (${src.match ?? "match"}), ${src.compiler ?? "compiler ?"}; ${src.files.length} file(s); returning ${chosen?.path ?? "?"}${truncated ? ` trimmed to ${cap} chars` : ""}.`,
+      summary: `${src.name ? "Contract " + quoteUntrusted(src.name) : "Contract"} at ${short(target)}${target !== address ? ` (implementation behind proxy ${short(address)})` : ""} is verified on ${src.via} (${src.match ?? "match"}), ${src.compiler ?? "compiler ?"}; ${src.files.length} file(s); returning ${chosen?.path ?? "?"}${truncated ? ` trimmed to ${cap} chars` : ""}.`,
       data: {
         chain: chain.key,
         chain_id: chain.id,
@@ -89,7 +90,7 @@ export const contractSource = defineTool({
         verified: true,
         via: src.via,
         match: src.match,
-        name: src.name,
+        name_untrusted: src.name !== null ? cleanSnippet(src.name, 80) : null,
         compiler: src.compiler,
         language: src.language,
         files: fileList.slice(0, 200),

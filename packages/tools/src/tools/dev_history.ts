@@ -1,7 +1,8 @@
+import { cleanSnippet, quoteUntrusted } from "../util/page.js";
 import { defineTool } from "../tool.js";
 import { addr, chainArg, CHAIN_PROP, fmtPct, fmtUsd, round, short, TOKEN_PROP } from "../util/args.js";
 import { soft, type Run } from "../util/http.js";
-import { balanceOf, blockNumber, erc20Meta, rpc, rpcBatch, TRANSFER_TOPIC, units } from "../util/rpc.js";
+import { balanceOf, blockNumber, erc20Meta, noteMetaFailures, rpc, rpcBatch, TRANSFER_TOPIC, units } from "../util/rpc.js";
 import { blockAt, scanTransfers } from "../util/logs.js";
 import { creatorOf } from "../sources/common.js";
 import { deployedBy } from "../sources/explorer.js";
@@ -96,14 +97,14 @@ export const devHistory = defineTool({
         const raw = syms[i];
         if (typeof raw === "string" && raw.length > 2) {
           try {
-            symbol = decodeFunctionResult({ abi: SYM, functionName: "symbol", data: raw as Hex }) as string;
+            symbol = cleanSnippet(decodeFunctionResult({ abi: SYM, functionName: "symbol", data: raw as Hex }) as string, 32);
           } catch {
             symbol = null;
           }
         }
         return {
           address: o.address,
-          symbol,
+          symbol_untrusted: symbol,
           deployed_at: o.timestamp,
           is_token: symbol !== null,
           dex: main ? { liquidity_usd: round(main.liquidity?.usd ?? null), fdv_usd: round(main.fdv ?? null), volume_24h_usd: round(main.volume?.h24 ?? null), pair_created_at: main.pairCreatedAt ? new Date(main.pairCreatedAt).toISOString() : null } : null,
@@ -115,7 +116,8 @@ export const devHistory = defineTool({
     const dead = tokens.filter((r) => r.dex === null || ((r.dex as { liquidity_usd?: number }).liquidity_usd ?? 0) < 1000);
 
     // Launcher's flow of this token.
-    const dec = meta.decimals ?? 18;
+    noteMetaFailures(run, meta);
+    const dec = meta.decimals;
     const supply = meta.totalSupply ?? 0n;
     const bal = await balanceOf(run, chain, token, launcher);
     let flow: Record<string, unknown> | null = null;
@@ -144,7 +146,7 @@ export const devHistory = defineTool({
     }
 
     const parts: string[] = [];
-    parts.push(`${meta.symbol ? "$" + meta.symbol : short(token)} on ${chain.name} launched by ${short(launcher)} (${launcherVia})`);
+    parts.push(`${meta.symbol ? quoteUntrusted(meta.symbol) + " " + short(token) : short(token)} on ${chain.name} launched by ${short(launcher)} (${launcherVia})`);
     if (creator.creator && creator.creator !== launcher) parts.push(`via contract ${short(creator.creator)}`);
     if (deployed) parts.push(`${tokens.length} other token(s) deployed directly by this wallet${deployed.more ? " (more not scanned)" : ""}: ${live.length} with ≥$10k liquidity now, ${dead.length} dead or unlisted`);
     else parts.push("other deployments unknown (no keyless explorer answered)");
@@ -152,7 +154,7 @@ export const devHistory = defineTool({
     if (flow) parts.push(`sent ${fmtPct(flow.sent_pct_supply as number | null)} of supply out (${flow.out_transfers} transfers${flow.complete ? "" : ", partial"})`);
     if (gp?.honeypot_with_same_creator === "1") parts.push("GoPlus: this creator has made a honeypot before");
     const best = [...live].sort((a, b) => ((b.dex as { fdv_usd: number }).fdv_usd ?? 0) - ((a.dex as { fdv_usd: number }).fdv_usd ?? 0))[0];
-    if (best) parts.push(`best other: ${best.symbol ?? short(best.address as string)} FDV ${fmtUsd((best.dex as { fdv_usd: number }).fdv_usd)}`);
+    if (best) parts.push(`best other: ${best.symbol_untrusted ? quoteUntrusted(best.symbol_untrusted as string) : short(best.address as string)} FDV ${fmtUsd((best.dex as { fdv_usd: number }).fdv_usd)}`);
     run.note("Direct deployments only: tokens made through a launchpad by the same wallet do not show as its deployments.");
 
     return {

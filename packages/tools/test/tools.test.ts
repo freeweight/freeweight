@@ -39,7 +39,7 @@ describe("recorded fixtures replay without network", () => {
 describe("tool shaping", () => {
   it("token_overview reports price, pools and creator", async () => {
     const { r } = await replay("token_overview-eth-pepe");
-    expect(r.data.symbol).toBe("PEPE");
+    expect(r.data.symbol_untrusted).toBe("PEPE");
     expect(r.data.decimals).toBe(18);
     expect(r.data.price_usd).toBeGreaterThan(0);
     expect((r.data.main_pool as { pair: string }).pair).toMatch(/^0x[0-9a-f]{40}$/);
@@ -54,28 +54,33 @@ describe("tool shaping", () => {
     expect(r.notes.join(" ")).toMatch(/blocking server requests/);
   });
 
-  it("safety_check simulates a v3 sell on Robinhood Chain and never says safe", async () => {
+  it("safety_check runs a fresh-wallet round trip on a v3 pool and never says safe", async () => {
     const { r } = await replay("safety_check-rh-wallet");
-    const sim = r.data.sell_simulation as { result: string; pool_kind: string };
-    expect(sim.result).toBe("ok");
+    const sim = r.data.sell_simulation as { method: string; verdict: string; pool_kind: string; wallets: { wallet_kind: string; round_trip_cost: number }[] };
+    expect(sim.method).toBe("fresh_wallet_round_trip");
+    expect(sim.verdict).toBe("ok");
     expect(sim.pool_kind).toMatch(/v3/);
+    expect(sim.wallets[0]!.wallet_kind).toBe("fresh address");
+    expect(sim.wallets[0]!.round_trip_cost).toBeGreaterThanOrEqual(0);
+    expect(r.summary).toMatch(/sell test from a fresh wallet \(round trip of [0-9.]+ WETH on uniswap v3\): costs [0-9.]+%/);
     expect(r.summary).toMatch(/Not a safety guarantee/);
-    expect(r.summary.toLowerCase()).not.toMatch(/\bis safe\b/);
+    expect(r.summary.toLowerCase()).not.toMatch(/\bis safe\b|\bsell simulation ok\b/);
   });
 
-  it("safety_check simulates a v4 sell through the pool's hook", async () => {
+  it("safety_check round-trips through a hooked v4 pool with native ETH", async () => {
     const { r } = await replay("safety_check-rh-v4-hooked");
-    const sim = r.data.sell_simulation as { result: string; pool_kind: string; hooks: string; out_raw: string };
-    expect(sim.result).toBe("ok");
+    const sim = r.data.sell_simulation as { method: string; pool_kind: string; hooks: string; wallets: { out_raw: string; round_trip_cost: number }[] };
+    expect(sim.method).toBe("fresh_wallet_round_trip");
     expect(sim.pool_kind).toBe("uniswap v4 (hooked pool)");
     expect(sim.hooks).toMatch(/^0x[0-9a-f]{40}$/);
-    expect(BigInt(sim.out_raw)).toBeGreaterThan(0n);
+    expect(BigInt(sim.wallets[0]!.out_raw)).toBeGreaterThan(0n);
+    expect(typeof sim.wallets[0]!.round_trip_cost).toBe("number");
     expect(r.summary).toMatch(/simulation ran through it/);
   });
 
-  it("safety_check simulates a v2 sell and reads owner + selectors", async () => {
+  it("safety_check round-trips on a v2 pool and reads owner + selectors", async () => {
     const { r } = await replay("safety_check-eth-pepe");
-    expect((r.data.sell_simulation as { result: string }).result).toBe("ok");
+    expect((r.data.sell_simulation as { verdict: string }).verdict).toBe("ok");
     expect(r.data.owner_renounced).toBe(true);
     expect((r.data.proxy as { is_proxy: boolean }).is_proxy).toBe(false);
     const keys = (r.data.owner_powers_in_bytecode as { key: string }[]).map((p) => p.key);
@@ -263,7 +268,7 @@ describe("Freeweight index enrichment (Contract 4)", () => {
     expect(r.ok).toBe(true);
     expect(r.enriched).toBe(false);
     expect(r.index).toBeUndefined();
-    expect(r.notes.join(" ")).toMatch(/no record of this token/);
+    expect(r.notes.join(" ")).toMatch(/Not tracked by the Freeweight index/);
     expect(r.sources).not.toContain("Freeweight index");
   });
 

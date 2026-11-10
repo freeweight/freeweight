@@ -83,7 +83,11 @@ export async function rpc<T = unknown>(run: Run, chain: Chain, method: string, p
     } catch (e) {
       last = e;
       // Provider-side throttling or plan limits on a non-range call: try the next endpoint.
-      if (e instanceof RpcError && !/range|span|blocks/i.test(e.message) && /rate limit|too many|upgrade|capacity|exceeded|unauthorized|forbidden/i.test(e.message)) continue;
+      if (e instanceof RpcError && !/range|span|blocks/i.test(e.message) && /rate limit|too many|upgrade|capacity|exceeded|unauthorized|forbidden/i.test(e.message)) {
+        // A throttled endpoint says nothing about the chain: surface it as a transport error, never as an answer.
+        last = new HttpError(429, `rpc throttled (${e.message.slice(0, 60)})`);
+        continue;
+      }
       if (e instanceof RpcError) throw e;
       if (e instanceof HttpError && e.message.includes("time budget")) throw e;
     }
@@ -106,6 +110,31 @@ export async function ethCall(run: Run, chain: Chain, to: string, data: Hex, o: 
   return rpc<Hex>(run, chain, "eth_call", [tx, o.block ?? "latest"], o);
 }
 
+/** A contract answered "no" (revert or empty return), as opposed to the RPC failing to answer. */
+export function isRevert(e: unknown): boolean {
+  return e instanceof RpcError && (e.code === 3 || /revert|invalid opcode|out of gas|execution/i.test(e.message));
+}
+
+/**
+ * Three-state read: a value, absent (the contract reverted or returned nothing), or an error (the RPC failed: the
+ * fact is unknown). Tools must never report "absent" when the state is "error".
+ */
+export type Tri<T> = { state: "value"; value: T } | { state: "absent" } | { state: "error"; error: string };
+
+export async function tri<T>(p: Promise<T | null | undefined>): Promise<Tri<T>> {
+  try {
+    const v = await p;
+    return v === null || v === undefined ? { state: "absent" } : { state: "value", value: v };
+  } catch (e) {
+    if (isRevert(e)) return { state: "absent" };
+    return { state: "error", error: e instanceof Error ? e.message.slice(0, 120) : "error" };
+  }
+}
+
+export function triValue<T>(t: Tri<T>): T | null {
+  return t.state === "value" ? t.value : null;
+}
+
 async function readString(run: Run, chain: Chain, token: string, fn: "name" | "symbol"): Promise<string | null> {
   const raw = await ethCall(run, chain, token, encodeFunctionData({ abi: ERC20, functionName: fn }), { ttl: 3600 });
   if (!raw || raw === "0x") return null;
@@ -124,20 +153,50 @@ async function readString(run: Run, chain: Chain, token: string, fn: "name" | "s
   }
 }
 
-/** isContract is null when the code lookup itself failed (never claim 'no contract' on an RPC error). */
-export type Erc20Meta = { name: string | null; symbol: string | null; decimals: number | null; totalSupply: bigint | null; isContract: boolean | null };
+/**
+ * Token metadata. Each field is null when unknown; `failed` lists the fields the RPC could not answer (as opposed to
+ * a contract that simply has no such function). isContract is null when the code lookup failed.
+ */
+export type Erc20Meta = { name: string | null; symbol: string | null; decimals: number | null; totalSupply: bigint | null; isContract: boolean | null; failed: string[] };
 
 export async function erc20Meta(run: Run, chain: Chain, token: string): Promise<Erc20Meta> {
   const [code, name, symbol, decRaw, tsRaw] = await Promise.all([
-    rpc<string>(run, chain, "eth_getCode", [token, "latest"], { ttl: 600 }).catch(() => null),
-    readString(run, chain, token, "name").catch(() => null),
-    readString(run, chain, token, "symbol").catch(() => null),
-    ethCall(run, chain, token, encodeFunctionData({ abi: ERC20, functionName: "decimals" }), { ttl: 3600 }).catch(() => null),
-    ethCall(run, chain, token, encodeFunctionData({ abi: ERC20, functionName: "totalSupply" }), { ttl: 60 }).catch(() => null),
+    tri(rpc<string>(run, chain, "eth_getCode", [token, "latest"], { ttl: 600 })),
+    tri(readString(run, chain, token, "name")),
+    tri(readString(run, chain, token, "symbol")),
+    tri(ethCall(run, chain, token, encodeFunctionData({ abi: ERC20, functionName: "decimals" }), { ttl: 3600 })),
+    tri(ethCall(run, chain, token, encodeFunctionData({ abi: ERC20, functionName: "totalSupply" }), { ttl: 60 })),
   ]);
-  const dec = decRaw && decRaw !== "0x" ? Number(BigInt(decRaw.slice(0, 66))) : null;
-  const ts = tsRaw && tsRaw !== "0x" ? BigInt(tsRaw.slice(0, 66)) : null;
-  return { name, symbol, decimals: dec !== null && dec <= 255 ? dec : null, totalSupply: ts, isContract: code === null ? null : code !== "0x" };
+  const failed = (
+    [
+      ["code", code],
+      ["name", name],
+      ["symbol", symbol],
+      ["decimals", decRaw],
+      ["totalSupply", tsRaw],
+    ] as [string, Tri<unknown>][]
+  )
+    .filter(([, t]) => t.state === "error")
+    .map(([k]) => k);
+  const d = triValue(decRaw);
+  const t = triValue(tsRaw);
+  const dec = d && d !== "0x" ? Number(BigInt(d.slice(0, 66))) : null;
+  const ts = t && t !== "0x" ? BigInt(t.slice(0, 66)) : null;
+  const c = triValue(code);
+  return {
+    name: triValue(name),
+    symbol: triValue(symbol),
+    decimals: dec !== null && dec <= 255 ? dec : null,
+    totalSupply: ts,
+    isContract: code.state === "error" ? null : c !== null && c !== "0x",
+    failed,
+  };
+}
+
+/** Mark the run partial when metadata reads failed, naming what is unknown. */
+export function noteMetaFailures(run: Run, meta: Erc20Meta): void {
+  if (meta.failed.length) run.miss("rpc", new Error(`could not read ${meta.failed.join(", ")}`));
+  if (meta.decimals === null && meta.totalSupply !== null) run.note("decimals unknown: token amounts are not converted (raw values only)");
 }
 
 export async function balanceOf(run: Run, chain: Chain, token: string, holder: string): Promise<bigint | null> {
@@ -149,24 +208,22 @@ export async function balanceOf(run: Run, chain: Chain, token: string, holder: s
   }
 }
 
-export async function ownerOf(run: Run, chain: Chain, contract: string): Promise<string | null> {
-  try {
-    const raw = await ethCall(run, chain, contract, encodeFunctionData({ abi: ERC20, functionName: "owner" }), { ttl: 300 });
-    if (!raw || raw.length < 66) return null;
-    return ("0x" + raw.slice(26, 66)).toLowerCase();
-  } catch {
-    return null;
-  }
+/** owner(): value, absent (no such function / reverted) or error (RPC failure). */
+export async function ownerOf(run: Run, chain: Chain, contract: string): Promise<Tri<string>> {
+  return tri(
+    ethCall(run, chain, contract, encodeFunctionData({ abi: ERC20, functionName: "owner" }), { ttl: 300 }).then((raw) =>
+      !raw || raw.length < 66 ? null : ("0x" + raw.slice(26, 66)).toLowerCase(),
+    ),
+  );
 }
 
 export async function blockNumber(run: Run, chain: Chain): Promise<number> {
   return Number(BigInt(await rpc<string>(run, chain, "eth_blockNumber", [], { ttl: 2 })));
 }
 
-/** Format a raw integer amount with decimals into a JS number (token units). */
 export function units(raw: bigint | null | undefined, decimals: number | null | undefined): number | null {
-  if (raw === null || raw === undefined) return null;
-  const d = decimals ?? 18;
+  if (raw === null || raw === undefined || decimals === null || decimals === undefined) return null;
+  const d = decimals;
   const s = raw.toString().padStart(d + 1, "0");
   const whole = s.slice(0, s.length - d);
   const frac = s.slice(s.length - d, s.length - d + 8);

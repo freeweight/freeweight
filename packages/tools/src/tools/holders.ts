@@ -1,7 +1,9 @@
-import { defineTool } from "../tool.js";
+import { cleanSnippet, quoteUntrusted } from "../util/page.js";
+import { defineTool, partsSummary } from "../tool.js";
+import { describe } from "../sources/facts.js";
 import { addr, chainArg, CHAIN_PROP, fmtPct, int, round, short, TOKEN_PROP } from "../util/args.js";
 import { soft } from "../util/http.js";
-import { balanceOf, balanceOfData, blockNumber, erc20Meta, rpcBatch, units } from "../util/rpc.js";
+import { balanceOf, balanceOfData, blockNumber, erc20Meta, noteMetaFailures, rpcBatch, units } from "../util/rpc.js";
 import { DEAD_ADDRESSES } from "../util/bytecode.js";
 import { balancesFrom, blockAt, scanTransfers } from "../util/logs.js";
 import { tokenHolders } from "../sources/explorer.js";
@@ -27,6 +29,14 @@ export const holdersTool = defineTool({
     additionalProperties: false,
   },
   enrich: (a) => ({ chain: chainArg(a), token: addr(a, "token")! }),
+  reconcile: (body, f) => {
+    // One "top 10" figure: the index's when it has one, with its basis; the public figure stays in data.
+    if (typeof f.top10_share === "number" && body.parts) {
+      body.parts.top10 = `top 10 wallets hold ${(f.top10_share * 100).toFixed(1)}% of supply (Freeweight index, holder-level view; public on-chain count: ${body.data.top10_ex_pools_burn_pct ?? "n/a"}%)`;
+      return describe("holders", f, new Set(["top10"]));
+    }
+    return undefined;
+  },
   run: async (args, run) => {
     const chain = chainArg(args);
     const token = addr(args, "token")!;
@@ -40,11 +50,13 @@ export const holdersTool = defineTool({
       creatorOf(run, chain, token),
     ]);
     if (meta.isContract === false) return { ok: false, summary: `${token} has no contract code on ${chain.name}.`, data: { chain: chain.key, token } };
+    noteMetaFailures(run, meta);
     if (meta.totalSupply === null) {
       run.partial = true;
-      run.note("total supply unreadable (RPC unavailable): percentages are missing");
+      run.note("total supply unreadable: percentages are missing");
     }
-    const dec = meta.decimals ?? 18;
+    /** Decimals for display only; unknown decimals mean balances are shown as null (raw ranking still works). */
+    const dec = meta.decimals;
     const supply = meta.totalSupply ?? 0n;
 
     // Pool addresses: v2/v3 pair contracts from DexScreener, v4 PoolManager from GoPlus.
@@ -66,7 +78,7 @@ export const holdersTool = defineTool({
       holderCount = explorer.holder_count;
     }
     if (!rows.length && gp?.holders?.length) {
-      rows = gp.holders.map((h) => ({ address: h.address.toLowerCase(), raw: toRaw(h.balance ?? "0", dec), is_contract: h.is_contract === undefined ? null : h.is_contract === 1, label: h.tag || null }));
+      rows = gp.holders.map((h) => ({ address: h.address.toLowerCase(), raw: toRaw(h.balance ?? "0", dec ?? 18), is_contract: h.is_contract === undefined ? null : h.is_contract === 1, label: h.tag || null }));
       method = "goplus (top 10)";
       holderCount = gp.holder_count ? Number(gp.holder_count) : null;
     }
@@ -99,6 +111,10 @@ export const holdersTool = defineTool({
             holderCount = recon.length;
             method = "transfer logs";
             coverage = mintSeen ? "full" : "partial";
+            if (!mintSeen) {
+              run.partial = true;
+              run.note("The scanned log window does not contain the mint: rows are net transfers within the window, re-read on-chain where possible, and holders from before the window are missing.");
+            }
           }
         } else {
           run.note(`log reconstruction skipped: token too old for keyless log scan (${Math.round(ageDays)} d)`);
@@ -110,14 +126,19 @@ export const holdersTool = defineTool({
       run.note("no holder list available from any source");
     }
 
-    // Verify top balances on-chain and tag contracts (one batched RPC request).
-    const top = rows.slice(0, limit);
+    // Verify balances on-chain and tag contracts (batched). Enough rows are verified for a real top 10 whatever `limit` is.
+    const top = rows.slice(0, Math.max(limit, 25));
     const special = [ZERO, "0x000000000000000000000000000000000000dead", ...(creator.creator ? [creator.creator] : [])];
     const batch = await rpcBatch(run, chain, [
       ...top.map((r) => ({ method: "eth_call", params: [{ to: token, data: balanceOfData(r.address) }, "latest"] })),
       ...top.map((r) => ({ method: "eth_getCode", params: [r.address, "latest"] })),
       ...special.map((a) => ({ method: "eth_call", params: [{ to: token, data: balanceOfData(a) }, "latest"] })),
     ]).catch(() => [] as unknown[]);
+    const verified = top.length > 0 && top.some((_, i) => typeof batch[i] === "string");
+    if (top.length && !verified) {
+      run.partial = true;
+      run.note("on-chain balance check failed: holder balances are as listed by the source, not verified");
+    }
     top.forEach((r, i) => {
       const b = batch[i];
       if (typeof b === "string" && b.length >= 66) r.raw = BigInt(b.slice(0, 66));
@@ -129,7 +150,9 @@ export const holdersTool = defineTool({
       const v = batch[top.length * 2 + i];
       return typeof v === "string" && v.length >= 66 ? BigInt(v.slice(0, 66)) : null;
     };
-    const burnRaw = (sb(0) ?? 0n) + (sb(1) ?? 0n);
+    const burn0 = sb(0);
+    const burnDead = sb(1);
+    const burnRaw = burn0 === null && burnDead === null ? null : (burn0 ?? 0n) + (burnDead ?? 0n);
     const creatorRaw = creator.creator ? (sb(2) ?? (await balanceOf(run, chain, token, creator.creator))) : null;
 
     const pct = (raw: bigint) => (supply > 0n ? Number((raw * 1_000_000n) / supply) / 10_000 : null);
@@ -142,40 +165,43 @@ export const holdersTool = defineTool({
       if (r.label) t.push(r.label.slice(0, 40));
       return t;
     };
-    const table = top.map((r) => ({ address: r.address, balance: units(r.raw, dec), pct_supply: round(pct(r.raw), 4), tags: tag(r) }));
+    const table = top.slice(0, limit).map((r) => ({ address: r.address, balance: units(r.raw, dec), pct_supply: round(pct(r.raw), 4), tags: tag(r) }));
     const inPools = top.filter((r) => pools.has(r.address)).reduce((s, r) => s + r.raw, 0n);
     const ex = top.filter((r) => !pools.has(r.address) && !DEAD_ADDRESSES.has(r.address));
+    const topN = Math.min(10, ex.length);
     const top10 = ex.slice(0, 10).reduce((s, r) => s + r.raw, 0n);
     const topContracts = ex.filter((r) => r.is_contract).slice(0, 5).map((r) => r.address);
 
-    const summary = [
-      `${meta.symbol ? "$" + meta.symbol : short(token)} on ${chain.name}: ${holderCount !== null ? `${holderCount} holders` : "holder count unknown"} (via ${method || "none"}${coverage === "partial" ? ", partial" : ""})`,
-      `top 10 excl. pools/burn hold ${fmtPct(pct(top10))}`,
-      `pools ${fmtPct(pct(inPools))}`,
-      `burned ${fmtPct(pct(burnRaw))}`,
-      creatorRaw !== null ? `creator ${short(creator.creator)} holds ${fmtPct(pct(creatorRaw))}` : "creator unknown",
-      ex[0] ? `largest non-pool holder ${short(ex[0].address)} ${fmtPct(pct(ex[0].raw))}${ex[0].is_contract ? " (contract)" : ""}` : "",
-    ].filter(Boolean);
+    const parts: Record<string, string> = {
+      id: `${meta.symbol ? quoteUntrusted(meta.symbol) + " " + short(token) : short(token)} on ${chain.name}: ${holderCount !== null ? `${holderCount} holders` : "holder count unknown"} (via ${method || "none"}${coverage === "partial" ? ", partial window" : ""})`,
+      top10: topN === 10 ? `top 10 wallets (excl. pools and burns) hold ${fmtPct(pct(top10))}` : `the ${topN} known non-pool wallets hold ${fmtPct(pct(top10))}`,
+      pools: `pools ${fmtPct(pct(inPools))}`,
+      burned: burnRaw === null ? "burned share unknown" : `burned ${fmtPct(pct(burnRaw))}`,
+      creator: creatorRaw !== null ? `creator ${short(creator.creator)} holds ${fmtPct(pct(creatorRaw))}` : "creator unknown",
+    };
+    if (ex[0]) parts.largest = `largest non-pool holder ${short(ex[0].address)} ${fmtPct(pct(ex[0].raw))}${ex[0].is_contract ? " (contract)" : ""}`;
     if (topContracts.length) run.note("Contract holders can be lockers, vesting, routers or a team multisig: check before reading them as whales.");
     if (method.startsWith("goplus")) run.note("GoPlus lists only the top 10 holders.");
 
     return {
-      summary: summary.join("; ") + ".",
+      summary: partsSummary(parts),
+      parts,
       data: {
         chain: chain.key,
         chain_id: chain.id,
         token,
-        symbol: meta.symbol,
+        symbol_untrusted: meta.symbol !== null ? cleanSnippet(meta.symbol, 32) : null,
         decimals: dec,
-        total_supply: units(supply, dec),
+        total_supply: meta.totalSupply === null ? null : units(supply, dec),
         holder_count: holderCount,
         method: method || null,
         coverage,
         top: table,
         top10_ex_pools_burn_pct: round(pct(top10), 4),
+        top10_basis: `${topN} largest verified non-pool, non-burn wallets`,
         pools_pct: round(pct(inPools), 4),
         pool_addresses: [...pools].slice(0, 10),
-        burned_pct: round(pct(burnRaw), 4),
+        burned_pct: burnRaw === null ? null : round(pct(burnRaw), 4),
         creator: creator.creator,
         creator_pct: creatorRaw !== null ? round(pct(creatorRaw), 4) : null,
         log_scan: scanInfo,
