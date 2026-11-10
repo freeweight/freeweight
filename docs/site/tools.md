@@ -76,7 +76,8 @@ Three rules hold for every tool:
   revert messages sit in `data` under keys that end in `_untrusted`, such as `name_untrusted`. In a summary such
   text is cleaned, cut to 32 characters and put in double quotes.
 - **Arguments are checked.** A missing field, an unknown field or a value out of range is answered with the
-  error `invalid_input` before anything runs.
+  error `invalid_input` before anything runs. Where the input schema gives an example for a field, the error
+  message quotes it, for example `["eth","btc"]` for `majors`. The examples are in the schema as `examples`.
 
 Over MCP the envelope is the tool result: as JSON text in `content[0].text`, as an object in `structuredContent`,
 and `isError` is `true` when `ok` is `false`.
@@ -91,6 +92,12 @@ The basic facts of an ERC-20 token. Name, symbol, decimals and total supply come
 the symbol are in `name_untrusted` and `symbol_untrusted`. The creator and the creation time come from a block
 explorer where one answers. The price in US dollars, the fully diluted value, the market cap, the liquidity and
 the main pool come from DexScreener, with the project's websites and social links.
+
+When the DexScreener request fails, the pools and prices come from GeckoTerminal instead, and a note says that
+DexScreener was unavailable. An empty answer from DexScreener is taken as "no pool" and does not fall back. Of
+the GeckoTerminal pools, only those quoted in the native coin, its wrapped form or a major stablecoin are kept
+when there are any, because a thin pool against an obscure token can report a large reserve and a wrong price.
+The same fallback serves every tool that looks up pools.
 
 The main pool is the deepest one. A pool with less than $1,000 in it, or with less than 1% of the deepest pool
 and less than $25,000, counts as junk. Junk pools are listed apart and never used for the price, because a pool
@@ -154,8 +161,15 @@ the owner or the creator. This fallback is weaker, because a token can let chose
 everybody else. As a last resort the tool simulates a plain transfer from a holder.
 
 `data.sell_simulation` holds the details: the `method` (`fresh_wallet_round_trip`, `holder_sell` or `none`), the
-`verdict`, the kind of pool, the size of the trade, and one entry in `wallets` for every address the simulation
-ran from, with its own verdict and costs. On Robinhood Chain it can also hold `index_reading` and `agreement`:
+`verdict`, the kind of pool, `pool_source`, the size of the trade, and one entry in `wallets` for every address the
+simulation ran from, with its own verdict and costs.
+
+`pool_source` says which source named the pool that was tested: `dexscreener`, `geckoterminal` when DexScreener
+failed, or `freeweight_index`. The summary names the source when it is not DexScreener. On Robinhood Chain, when
+no public source names a pool, the main venue from Freeweight's index is tested: a 32-byte pool id as a Uniswap
+v4 pool, an address as a v2 or v3 pool with its quote side read from the chain. A venue that is a bonding curve
+is reported as such and not simulated. When there is still no pool, the reason says whether the pool lookup was
+throttled or no pool is listed. On Robinhood Chain it can also hold `index_reading` and `agreement`:
 see [enriched results](#enriched-results-on-robinhood-chain).
 
 **Contract flags.** Whether the contract is a proxy, who the owner is and whether ownership is renounced, which
@@ -176,6 +190,10 @@ pools, the share burned and the creator's share.
 The list comes from a block explorer where one answers, else from GoPlus (ten holders), else it is rebuilt from
 the token's transfer history. The rebuild only works for young tokens. It reports `coverage`, and the coverage is
 `full` only when the scan reached back to the token's first mint.
+
+When no source gives a list, the summary says what was tried and how each attempt ended, and that older tokens
+on chains without Freeweight's index need a keyed explorer API for their holder list. The burned and creator
+figures read from the chain are still given.
 
 Up to 25 balances are read again from the chain, so the top-ten share does not depend on `limit`. `top10_basis`
 says what that share was computed from. A balance that could not be read is `null`, and so are totals that
@@ -234,8 +252,9 @@ in the free try. Otherwise it answers with the error `not_configured`.
 
 Input: `token` or `pair` (a pool address), `chain`, and `majors` for a list of up to 10 large coins.
 
-Live market data from DexScreener: the main pool and the other real pools of a token, or one pool, with price,
-liquidity, volume, the count of buys and sells and the price change. Junk side pools are flagged. It also
+Live market data from DexScreener, or from GeckoTerminal when DexScreener fails: the main pool and the other
+real pools of a token, or one pool, with price, liquidity, volume, the count of buys and sells and the price
+change. Junk side pools are flagged. It also
 returns US dollar prices of large coins from CoinGecko, such as `eth`, `btc` and `sol`.
 
 ### `chain_read`
@@ -257,8 +276,9 @@ Direct read access to a chain, for the questions the other tools do not answer.
 | `logs` | Event logs of one contract | `address`, optional `from_block`, `to_block`, `topics`, `signature` |
 
 `signature` is written the way Solidity writes it, for example
-`function balanceOf(address) view returns (uint256)`. For `logs` it is an event signature, used to decode the
-logs. A `logs` read spans at most 10,000 blocks and returns the first 100 logs. Without `from_block` it covers
+`function balanceOf(address) view returns (uint256)`. The short form `name(args)(returns)`, such as
+`symbol()(string)`, is read as a view function too. A signature that cannot be parsed is answered with
+`invalid_input` and the accepted forms. For `logs` it is an event signature, used to decode the logs. A `logs` read spans at most 10,000 blocks and returns the first 100 logs. Without `from_block` it covers
 the last 1,000 blocks.
 
 A `call` that the contract rejects is answered with `ok: false` and the error `reverted`. The contract's own
