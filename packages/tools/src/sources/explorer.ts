@@ -51,14 +51,14 @@ export type Creation = { creator: string; tx: string | null; factory: string | n
 export async function contractCreation(run: Run, chain: Chain, address: string): Promise<Creation | null> {
   return firstOf(run, chain, "contract creator", async (e) => {
     if (e.type === "blockscout") {
-      const j = await run.json<Record<string, unknown>>(`${e.base}/api/v2/addresses/${address}`, { source: "blockscout", ttl: 3600, timeoutMs: 7000, retries: 0 });
+      const j = await run.json<Record<string, unknown>>(`${e.base}/api/v2/addresses/${address}`, { source: "blockscout", share: true, ttl: 3600, timeoutMs: 7000, retries: 0 });
       const creator = (j.creator_address_hash ?? null) as string | null;
       const tx = (j.creation_transaction_hash ?? j.creation_tx_hash ?? null) as string | null;
       return creator ? { creator: creator.toLowerCase(), tx: tx?.toLowerCase() ?? null, factory: null } : null;
     }
     const j = await run.json<{ status: string; result?: { contractCreator: string; txHash: string; contractFactory?: string }[] | null }>(
       `${e.base}?module=contract&action=getcontractcreation&contractaddresses=${address}`,
-      { source: "routescan", ttl: 3600, timeoutMs: 7000, retries: 0 },
+      { source: "routescan", share: true, ttl: 3600, timeoutMs: 7000, retries: 0 },
     );
     const r = j.result?.[0];
     return r ? { creator: r.contractCreator.toLowerCase(), tx: r.txHash.toLowerCase(), factory: r.contractFactory ? r.contractFactory.toLowerCase() : null } : null;
@@ -158,7 +158,7 @@ export async function explorerSource(run: Run, chain: Chain, address: string): P
   const bs = chain.explorers.filter((e) => e.type === "blockscout");
   if (bs.length === 0) return null;
   return firstOf(run, { ...chain, explorers: bs }, "verified source", async (e) => {
-    const j = await run.json<Record<string, unknown>>(`${e.base}/api/v2/smart-contracts/${address}`, { source: "blockscout", ttl: 3600, timeoutMs: 8000, retries: 0, maxBytes: 6_000_000 });
+    const j = await run.json<Record<string, unknown>>(`${e.base}/api/v2/smart-contracts/${address}`, { source: "blockscout", share: true, ttl: 3600, timeoutMs: 8000, retries: 0, maxBytes: 6_000_000 });
     const files: { path: string; content: string }[] = [];
     if (typeof j.source_code === "string") files.push({ path: String(j.file_path ?? `${j.name ?? "Contract"}.sol`), content: j.source_code });
     for (const a of (j.additional_sources as { file_path: string; source_code: string }[] | undefined) ?? []) files.push({ path: a.file_path, content: a.source_code });

@@ -4,34 +4,70 @@ import type { ToolCtx } from "../types.js";
 export const TOOL_BUDGET_MS = 15_000;
 const UA = "freeweight-tools/0.1 (+read-only token toolkit)";
 
-type MemEntry = { exp: number; value: string };
+/**
+ * In-memory cache, one per isolate, shared by every request in it. Budgeted by bytes (an isolate has 128 MB), LRU.
+ * Bytes are counted exactly for one-byte strings and doubled when a value holds any character above U+00FF.
+ */
+export const MEM_MAX_BYTES = 16 * 1024 * 1024;
+export const MEM_ENTRY_MAX_BYTES = 256 * 1024;
+type MemEntry = { exp: number; value: string; bytes: number };
 const MEM = new Map<string, MemEntry>();
-const MEM_MAX = 600;
-const INFLIGHT = new Map<string, Promise<string>>();
+let memBytes = 0;
+
+function sizeOf(s: string): number {
+  // eslint-disable-next-line no-control-regex
+  return /[^\u0000-\u00ff]/.test(s) ? s.length * 2 : s.length;
+}
+
+function memDelete(key: string): void {
+  const e = MEM.get(key);
+  if (e) {
+    memBytes -= e.bytes + key.length;
+    MEM.delete(key);
+  }
+}
 
 function memGet(key: string): string | undefined {
   const e = MEM.get(key);
   if (!e) return undefined;
   if (e.exp < Date.now()) {
-    MEM.delete(key);
+    memDelete(key);
     return undefined;
   }
+  // LRU: move to the end.
+  MEM.delete(key);
+  MEM.set(key, e);
   return e.value;
 }
 
 function memPut(key: string, value: string, ttlS: number): void {
-  if (value.length > 400_000) return;
-  if (MEM.size >= MEM_MAX) {
-    const first = MEM.keys().next().value;
-    if (first !== undefined) MEM.delete(first);
+  const bytes = sizeOf(value);
+  if (bytes > MEM_ENTRY_MAX_BYTES || key.length > 2048) return;
+  memDelete(key);
+  while (memBytes + bytes + key.length > MEM_MAX_BYTES && MEM.size > 0) {
+    const oldest = MEM.keys().next().value;
+    if (oldest === undefined) break;
+    memDelete(oldest);
   }
-  MEM.set(key, { exp: Date.now() + ttlS * 1000, value });
+  MEM.set(key, { exp: Date.now() + ttlS * 1000, value, bytes });
+  memBytes += bytes + key.length;
 }
 
-/** Test hook. */
+/** Test hooks. */
 export function clearMemCache(): void {
   MEM.clear();
+  memBytes = 0;
 }
+export function memCacheBytes(): number {
+  return memBytes;
+}
+
+/** Hard cap on outbound requests per tool call (Workers count subrequests per invocation; DoH included). */
+export const MAX_SUBREQUESTS = 40;
+/** At most this many KV writes per tool call. */
+export const MAX_KV_WRITES = 4;
+/** Shared (KV) caching only for entries that live at least this long. */
+export const KV_MIN_TTL_S = 60;
 
 export class HttpError extends Error {
   constructor(
@@ -62,6 +98,16 @@ export type FetchOpts = {
   validate?: (body: string) => boolean;
   /** Return non-2xx bodies that are JSON-RPC error objects instead of throwing (RPC endpoints). */
   jsonRpc?: boolean;
+  /**
+   * Also cache in the shared KV (ctx.cache). Only for stable, worth-sharing responses under bounded keys (index facts,
+   * source verification, RDAP, creation records, token security); written only when ttl >= 60 s.
+   */
+  share?: boolean;
+  /**
+   * "manual" refuses redirects (the request fails). Default: "manual" for private requests (public: false) because they
+   * may carry keys, which fetch would replay to the redirect target; "follow" otherwise.
+   */
+  redirect?: "follow" | "manual";
 };
 
 /**
@@ -72,6 +118,10 @@ export class Run {
   readonly sources = new Set<string>();
   readonly notes: string[] = [];
   partial = false;
+  /** Outbound requests made by this call (cache hits excluded). */
+  subrequests = 0;
+  kvWrites = 0;
+  private readonly inflight = new Map<string, Promise<string>>();
 
   constructor(
     readonly ctx: ToolCtx,
@@ -86,6 +136,16 @@ export class Run {
 
   note(msg: string): void {
     if (!this.notes.includes(msg)) this.notes.push(msg);
+  }
+
+  /** Count one outbound request; throws once the per-call budget is used up. */
+  spend(): void {
+    if (this.subrequests >= MAX_SUBREQUESTS) {
+      this.partial = true;
+      this.note(`request budget for this call reached (${MAX_SUBREQUESTS} upstream requests): some sources were skipped`);
+      throw new HttpError(0, "request budget exhausted");
+    }
+    this.subrequests++;
   }
 
   /** Mark partial and note why. */
@@ -104,7 +164,7 @@ export class Run {
         this.addSource(o, url);
         return hit;
       }
-      if (this.ctx.cache) {
+      if (this.ctx.cache && o.share && ttl >= KV_MIN_TTL_S) {
         try {
           const kv = await this.ctx.cache.get(key, "text");
           if (kv !== null) {
@@ -116,21 +176,19 @@ export class Run {
           /* cache is best effort */
         }
       }
-    }
-    // Coalesce identical in-flight requests (two sources asking for the same GoPlus record at once).
-    if (ttl > 0) {
-      const pending = INFLIGHT.get(key);
+      // Coalesce identical in-flight requests within this call (two sources asking for the same GoPlus record).
+      const pending = this.inflight.get(key);
       if (pending) {
         const body = await pending;
         this.addSource(o, url);
         return body;
       }
       const p = this.fetchWithRetry(url, o, key, ttl);
-      INFLIGHT.set(key, p);
+      this.inflight.set(key, p);
       try {
         return await p;
       } finally {
-        INFLIGHT.delete(key);
+        this.inflight.delete(key);
       }
     }
     return this.fetchWithRetry(url, o, key, ttl);
@@ -148,8 +206,9 @@ export class Run {
         if (o.validate && !o.validate(body)) throw new HttpError(429, `rejected response (${body.slice(0, 60)})`);
         if (ttl > 0) {
           memPut(key, body, ttl);
-          if (this.ctx.cache && body.length < 200_000) {
-            this.ctx.cache.put(key, body, { expirationTtl: Math.max(60, ttl) }).catch(() => undefined);
+          if (this.ctx.cache && o.share && ttl >= KV_MIN_TTL_S && body.length <= MEM_ENTRY_MAX_BYTES && this.kvWrites < MAX_KV_WRITES) {
+            this.kvWrites++;
+            this.ctx.cache.put(key, body, { expirationTtl: ttl }).catch(() => undefined);
           }
         }
         this.addSource(o, url);
@@ -157,7 +216,7 @@ export class Run {
       } catch (e) {
         lastErr = e;
         const st = e instanceof HttpError ? e.status : 0;
-        const retryable = st === 0 || st === 429 || st >= 500;
+        const retryable = (st === 0 || st === 429 || st >= 500) && !(e instanceof Error && /budget|redirect refused/.test(e.message));
         if (!retryable || attempt === retries) break;
         await sleep(Math.min(250 * (attempt + 1) * (st === 429 ? 4 : 1), Math.max(0, this.remaining() - 500)));
       }
@@ -190,12 +249,18 @@ export class Run {
   }
 
   private async once(url: string, o: FetchOpts, timeoutMs: number): Promise<string> {
+    this.spend();
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeoutMs);
+    const redirect = o.redirect ?? (o.public === false ? "manual" : "follow");
     try {
       const headers: Record<string, string> = { "user-agent": UA, accept: "application/json, */*;q=0.5", ...o.headers };
       if (o.body && !headers["content-type"]) headers["content-type"] = "application/json";
-      const res = await this.ctx.fetch(url, { method: o.method ?? "GET", body: o.body, headers, signal: ac.signal, redirect: "follow" });
+      const res = await this.ctx.fetch(url, { method: o.method ?? "GET", body: o.body, headers, signal: ac.signal, redirect });
+      if (redirect === "manual" && (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400))) {
+        await res.body?.cancel().catch(() => undefined);
+        throw new HttpError(res.status, "redirect refused (keyed request)");
+      }
       const body = await readCapped(res, o.maxBytes ?? 4_000_000);
       if (!res.ok && o.jsonRpc && res.status !== 429 && body.trimStart().startsWith("{") && body.includes('"jsonrpc"')) return body;
       if (!res.ok) {

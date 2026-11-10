@@ -28,10 +28,11 @@ type SiteCheck = {
   snippet_untrusted?: string | null;
 };
 
-async function checkSite(run: Run, url: string, token: string): Promise<SiteCheck> {
+async function checkSite(run: Run, url: string, token: string, fromMetadata: boolean): Promise<SiteCheck> {
   const out: SiteCheck = { url, fetched: false, ca_in_html: false, ca_in_scripts: false, scripts_checked: 0, other_addresses_on_page: [] };
   try {
-    const page = await safeFetch(run, url);
+    // A site taken from token metadata is chosen by whoever listed the token: fewer hops and bundles.
+    const page = await safeFetch(run, url, { maxRedirects: fromMetadata ? 2 : 3 });
     out.fetched = true;
     out.final_url = page.final_url;
     const lower = page.body.toLowerCase();
@@ -41,10 +42,10 @@ async function checkSite(run: Run, url: string, token: string): Promise<SiteChec
     if (out.ca_in_html) out.snippet_untrusted = snippetAround(page.body, token);
     if (!out.ca_in_html) {
       // Client-rendered sites keep the CA in their JS bundles.
-      for (const src of facts.script_srcs_same_origin.slice(0, 4)) {
+      for (const src of facts.script_srcs_same_origin.slice(0, fromMetadata ? 2 : 4)) {
         if (run.remaining() < 3000) break;
         try {
-          const js = await safeFetch(run, src, { maxBytes: 2_500_000, accept: "*/*" });
+          const js = await safeFetch(run, src, { maxBytes: 2_500_000, accept: "*/*", maxRedirects: 1 });
           out.scripts_checked++;
           const jl = js.body.toLowerCase();
           if (jl.includes(token)) {
@@ -86,10 +87,10 @@ export const officialCa = defineTool({
     const urlArg = str(args, "url", 2000);
     const [meta, pairs] = await Promise.all([soft(run, "rpc", erc20Meta(run, chain, token)), soft(run, "dexscreener", tokenPairs(run, chain, token))]);
     const symbol = meta?.symbol ?? pairs?.find((p) => p.baseToken.address.toLowerCase() === token)?.baseToken.symbol ?? null;
-    const sites = urlArg ? [urlArg] : websitesOf(pairs ?? []).filter((u) => !isSocialHost(u)).slice(0, 2);
+    const sites = urlArg ? [urlArg] : websitesOf(pairs ?? []).filter((u) => !isSocialHost(u)).slice(0, 1);
 
     const [siteChecks, same] = await Promise.all([
-      Promise.all(sites.map((s) => checkSite(run, s, token))),
+      Promise.all(sites.map((s) => checkSite(run, s, token, !urlArg))),
       symbol ? soft(run, "dexscreener search", searchPairs(run, symbol)) : Promise.resolve([] as DsPair[]),
     ]);
 

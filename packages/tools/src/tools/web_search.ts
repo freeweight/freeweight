@@ -36,6 +36,7 @@ export const webSearch = defineTool({
       method: "POST",
       body: JSON.stringify(body),
       headers: { "x-api-key": key },
+      redirect: "manual",
       cacheKey: `exa:${JSON.stringify(body)}`,
       ttl: 600,
       timeoutMs: 10_000,

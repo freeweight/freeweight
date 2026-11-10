@@ -3,6 +3,12 @@ import { readUpTo, type Run } from "./http.js";
 /**
  * Guarded fetch for user-supplied URLs: https only, default port, no credentials, no IP literals, no internal names,
  * DNS (over HTTPS) must resolve to public addresses only, manual redirects (max 3, each re-checked), size + time caps.
+ *
+ * Defence in depth: on Cloudflare Workers the runtime resolves the name again when it connects, and Workers egress
+ * cannot reach private address ranges, so the DNS check there mainly protects against Cloudflare-internal names and
+ * keeps behaviour honest on other hosts. Verdicts are never cached: a record flipped after a clean lookup is caught on
+ * the next request. On a Node host the check-then-connect gap remains (a rebinding record with TTL 0 can still win the
+ * race); such a host should pin the connection to the checked address.
  */
 
 export class BlockedUrl extends Error {}
@@ -29,17 +35,58 @@ export function ipv4Private(ip: string): boolean {
   );
 }
 
+/** Parse an IPv6 literal into 8 hextets (handles "::" and an embedded dotted IPv4 tail); null when malformed. */
+export function parseIpv6(ip: string): number[] | null {
+  let s = ip.toLowerCase().replace(/^\[|\]$/g, "");
+  const zone = s.indexOf("%");
+  if (zone >= 0) s = s.slice(0, zone);
+  let tail: number[] = [];
+  const v4 = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(s);
+  if (v4) {
+    const b = v4.slice(1).map(Number);
+    if (b.some((x) => x > 255)) return null;
+    tail = [(b[0]! << 8) | b[1]!, (b[2]! << 8) | b[3]!];
+    s = s.slice(0, v4.index) + "0:0";
+  }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const part = (x: string) => (x === "" ? [] : x.split(":"));
+  const head = part(halves[0]!);
+  const back = halves.length === 2 ? part(halves[1]!) : [];
+  const fill = 8 - head.length - back.length;
+  if (halves.length === 1 ? head.length !== 8 : fill < 0) return null;
+  const words = [...head, ...Array(halves.length === 2 ? fill : 0).fill("0"), ...back];
+  if (words.length !== 8 || words.some((w) => !/^[0-9a-f]{1,4}$/.test(w))) return null;
+  const out = words.map((w) => parseInt(w, 16));
+  if (tail.length) {
+    out[6] = tail[0]!;
+    out[7] = tail[1]!;
+  }
+  return out;
+}
+
 export function ipv6Private(ip: string): boolean {
-  const s = ip.toLowerCase().replace(/^\[|\]$/g, "");
-  if (s === "::" || s === "::1") return true;
-  const mapped = /^(?:::ffff:|64:ff9b::)(\d+\.\d+\.\d+\.\d+)$/.exec(s);
-  if (mapped) return ipv4Private(mapped[1]!);
-  if (/^::ffff:/.test(s) || /^64:ff9b:/.test(s)) return true;
-  const first = parseInt(s.split(":")[0] || "0", 16);
-  if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
-  if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link local
-  if ((first & 0xff00) === 0xff00) return true; // multicast
-  if (s.startsWith("2001:db8") || s.startsWith("100::") || s.startsWith("2001:10:") || s.startsWith("2002:")) return true;
+  const h = parseIpv6(ip);
+  if (!h) return true; // unparseable: refuse
+  const v4of = (a: number, b: number) => `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`;
+  const zero = (from: number, to: number) => h.slice(from, to).every((x) => x === 0);
+  if (zero(0, 8)) return true; // ::
+  if (zero(0, 7) && h[7] === 1) return true; // ::1
+  if (zero(0, 6)) return true; // ::a.b.c.d IPv4-compatible (deprecated): never a public destination
+  if (zero(0, 5) && h[5] === 0xffff) return true; // ::ffff:0:0/96 IPv4-mapped: refuse outright
+  if (zero(0, 4) && h[4] === 0xffff && h[5] === 0) return true; // ::ffff:0:a.b.c.d (SIIT)
+  if (h[0] === 0x64 && h[1] === 0xff9b && zero(2, 6)) return ipv4Private(v4of(h[6]!, h[7]!)); // 64:ff9b::/96 NAT64
+  if (h[0] === 0x64 && h[1] === 0xff9b && h[2] === 1) return true; // 64:ff9b:1::/48 local-use NAT64
+  if (h[0] === 0x100 && zero(1, 4)) return true; // 100::/64 discard
+  if (h[0] === 0x2001 && h[1]! < 0x200) return true; // 2001::/23 IETF special (Teredo, ORCHID, benchmarking ...)
+  if (h[0] === 0x2001 && h[1] === 0xdb8) return true; // documentation
+  if (h[0] === 0x2002) return true; // 6to4: embeds an IPv4 destination
+  if (h[0] === 0x3fff && h[1]! < 0x1000) return true; // 3fff::/20 documentation
+  if ((h[0]! & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
+  if ((h[0]! & 0xffc0) === 0xfe80) return true; // fe80::/10 link local
+  if ((h[0]! & 0xffc0) === 0xfec0) return true; // fec0::/10 site local (deprecated)
+  if ((h[0]! & 0xff00) === 0xff00) return true; // multicast
+  if ((h[0]! & 0xe000) !== 0x2000) return true; // outside 2000::/3 global unicast
   return false;
 }
 
@@ -66,24 +113,29 @@ export function checkUrl(raw: string): URL {
   return u;
 }
 
-/** Resolve A + AAAA over DNS-over-HTTPS; reject when any answer is private/reserved or nothing resolves. */
+/**
+ * Resolve A + AAAA over DNS-over-HTTPS; reject when any answer is private/reserved, nothing resolves, or either lookup
+ * fails (fail closed). Never cached: see the note at the top of this file.
+ */
 export async function checkDns(run: Run, host: string): Promise<void> {
   const q = async (type: "A" | "AAAA") => {
     const j = await run.json<{ Status: number; Answer?: { type: number; data: string }[] }>(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`, {
       source: "dns",
-      ttl: 300,
+      ttl: 0,
       timeoutMs: 4000,
+      retries: 0,
       headers: { accept: "application/dns-json" },
       public: false,
     });
+    if (j.Status !== 0 && j.Status !== 3) throw new BlockedUrl(`DNS ${type} lookup failed (status ${j.Status})`);
     return (j.Answer ?? []).filter((a) => a.type === 1 || a.type === 28).map((a) => a.data);
   };
   let ips: string[];
   try {
-    const [a, aaaa] = await Promise.all([q("A"), q("AAAA").catch(() => [] as string[])]);
+    const [a, aaaa] = await Promise.all([q("A"), q("AAAA")]);
     ips = [...a, ...aaaa];
-  } catch {
-    throw new BlockedUrl("DNS check failed");
+  } catch (e) {
+    throw new BlockedUrl(e instanceof BlockedUrl ? e.message : "DNS check failed");
   }
   if (ips.length === 0) throw new BlockedUrl("host does not resolve");
   for (const ip of ips) {
@@ -94,12 +146,18 @@ export async function checkDns(run: Run, host: string): Promise<void> {
 export type SafePage = { url: string; final_url: string; status: number; content_type: string; body: string; redirects: number; truncated: boolean };
 
 /** Fetch a user-supplied URL with every guard on. */
-export async function safeFetch(run: Run, raw: string, o: { maxBytes?: number; timeoutMs?: number; accept?: string } = {}): Promise<SafePage> {
+export async function safeFetch(run: Run, raw: string, o: { maxBytes?: number; timeoutMs?: number; accept?: string; maxRedirects?: number } = {}): Promise<SafePage> {
   let u = checkUrl(raw);
   const start = u.toString();
   const maxBytes = o.maxBytes ?? 1_500_000;
-  for (let hop = 0; hop <= 3; hop++) {
+  const maxRedirects = o.maxRedirects ?? 3;
+  for (let hop = 0; hop <= maxRedirects; hop++) {
     await checkDns(run, u.hostname);
+    try {
+      run.spend();
+    } catch {
+      throw new BlockedUrl("request budget exhausted");
+    }
     const left = run.remaining();
     if (left < 800) throw new BlockedUrl("time budget exhausted");
     const ac = new AbortController();

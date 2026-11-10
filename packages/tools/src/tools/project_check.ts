@@ -13,7 +13,7 @@ async function rdap(run: Run, domain: string): Promise<Rdap> {
     events?: { eventAction: string; eventDate: string }[];
     entities?: { roles?: string[]; vcardArray?: [string, [string, unknown, string, string][]] }[];
     status?: string[];
-  }>(`https://rdap.org/domain/${encodeURIComponent(domain)}`, { source: "rdap", ttl: 3600, timeoutMs: 8000, headers: { accept: "application/rdap+json, application/json" } });
+  }>(`https://rdap.org/domain/${encodeURIComponent(domain)}`, { source: "rdap", share: true, ttl: 3600, timeoutMs: 8000, headers: { accept: "application/rdap+json, application/json" } });
   const ev = (a: string) => j.events?.find((e) => e.eventAction.toLowerCase() === a)?.eventDate ?? null;
   let registrar: string | null = null;
   for (const e of j.entities ?? []) {
@@ -27,6 +27,7 @@ async function rdap(run: Run, domain: string): Promise<Rdap> {
 async function firstCapture(run: Run, domain: string): Promise<string | null> {
   const j = await run.json<string[][]>(`https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(domain)}&output=json&limit=1&fl=timestamp`, {
     source: "wayback",
+    share: true,
     ttl: 86400,
     timeoutMs: 6000,
     retries: 0,
@@ -37,6 +38,11 @@ async function firstCapture(run: Run, domain: string): Promise<string | null> {
 }
 
 type Gh = { url: string; kind: "user" | "repo"; created_at: string | null; pushed_at?: string | null; public_repos?: number; followers?: number; stars?: number; fork?: boolean; commits_seen?: number | string; error?: string };
+
+/** Keyed GitHub requests must not follow redirects (fetch would replay the token). */
+function ghOpts(run: Run): { redirect: "manual" | "follow" } {
+  return { redirect: run.ctx.env.GITHUB_TOKEN ? "manual" : "follow" };
+}
 
 function ghHeaders(run: Run): Record<string, string> {
   const h: Record<string, string> = { accept: "application/vnd.github+json" };
@@ -58,9 +64,10 @@ async function github(run: Run, link: string): Promise<Gh | null> {
         timeoutMs: 6000,
         retries: 0,
         headers: ghHeaders(run),
+        ...ghOpts(run),
       });
       const commits = await run
-        .json<unknown[]>(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`, { source: "github", ttl: 3600, timeoutMs: 6000, retries: 0, headers: ghHeaders(run) })
+        .json<unknown[]>(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`, { source: "github", ttl: 3600, timeoutMs: 6000, retries: 0, headers: ghHeaders(run), ...ghOpts(run) })
         .catch(() => null);
       return {
         url: link,
@@ -78,6 +85,7 @@ async function github(run: Run, link: string): Promise<Gh | null> {
       timeoutMs: 6000,
       retries: 0,
       headers: ghHeaders(run),
+        ...ghOpts(run),
     });
     return { url: link, kind: "user", created_at: u.created_at, public_repos: u.public_repos, followers: u.followers };
   } catch (e) {

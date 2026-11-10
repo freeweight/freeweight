@@ -174,6 +174,7 @@ export async function fetchEnrichment(run: Run, tool: string, token: string): Pr
       source: "Freeweight index",
       public: false,
       ttl: TTL_S,
+      share: true,
       timeoutMs: TIMEOUT_MS,
       retries: 0,
       headers,

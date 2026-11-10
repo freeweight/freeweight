@@ -18,7 +18,7 @@ export async function sourcify(run: Run, chain: Chain, address: string, full: bo
   const url = `${BASE}/v2/contract/${chain.id}/${address}${full ? "?fields=sources,abi,compilation,proxyResolution" : ""}`;
   let j: Record<string, unknown>;
   try {
-    j = await run.json<Record<string, unknown>>(url, { source: "sourcify", ttl: 3600, timeoutMs: 8000, maxBytes: 8_000_000 });
+    j = await run.json<Record<string, unknown>>(url, { source: "sourcify", share: true, ttl: 3600, timeoutMs: 8000, maxBytes: 8_000_000 });
   } catch (e) {
     if (e instanceof HttpError && e.status === 404) return null;
     throw e;
