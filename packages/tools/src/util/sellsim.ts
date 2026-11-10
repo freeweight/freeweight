@@ -278,14 +278,14 @@ function overrideUnsupported(e: unknown): boolean {
  */
 type OneTrip = { stage: WalletSim["stage"] | null; bought: bigint; qOut: bigint; reason: Hex } | { unavailable: string };
 
-export async function oneTrip(run: Run, chain: Chain, token: string, p: PoolInfo, wallet: string, qIn: bigint, preTransfer: boolean, origin = wallet): Promise<OneTrip> {
+export async function oneTrip(run: Run, chain: Chain, token: string, p: PoolInfo, wallet: string, qIn: bigint, preTransfer: boolean): Promise<OneTrip> {
   let data: Hex;
   if (p.kind === "v4") data = encodeFunctionData({ abi: PROBE, functionName: "roundTripV4", args: [token as Hex, (p.wrap ?? ZERO) as Hex, chain.v4!.poolManager as Hex, p.key!, qIn, preTransfer] });
   else data = encodeFunctionData({ abi: PROBE, functionName: p.kind === "v3" ? "roundTripV3" : "roundTripV2", args: [token as Hex, p.wrap as Hex, p.pool as Hex, qIn] });
   let raw: Hex;
   try {
     // from = to = the fresh wallet: it is tx.origin and it holds the bought tokens until it sells.
-    raw = await rpc<Hex>(run, chain, "eth_call", [{ from: origin, to: wallet, data, gas: GAS }, "latest", { [wallet]: { code: SELL_PROBE_RUNTIME, balance: FRESH_BALANCE } }], { ttl: 0 });
+    raw = await rpc<Hex>(run, chain, "eth_call", [{ from: wallet, to: wallet, data, gas: GAS }, "latest", { [wallet]: { code: SELL_PROBE_RUNTIME, balance: FRESH_BALANCE } }], { ttl: 0 });
   } catch (e) {
     if (overrideUnsupported(e)) return { unavailable: "the RPC does not support eth_call state overrides (code + balance), which the fresh-wallet test needs" };
     return { unavailable: `the round-trip call failed (${e instanceof Error ? e.message.slice(0, 80) : "error"})` };
