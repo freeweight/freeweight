@@ -105,4 +105,8 @@ jobs:
           cache: pip
           cache-dependency-path: serving/modal/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
+      # The offline tests do not load the platform modules, so a file that
+      # does not parse or import would otherwise leave this job green.
+      - run: python -m compileall -q fw_modal register.py bench.py
+      - run: python -c "import fw_modal.app, fw_modal.lane, fw_modal.build"
       - run: python -m pytest -q
