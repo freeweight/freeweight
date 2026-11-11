@@ -216,8 +216,8 @@ const models: Model[] = [
   }),
   // Pasted models: nobody wrote a blurb, and the only tag says nobody tested them.
   pasted({ id: "smallworks_fable-3b", name: "fable-3b", hf_repo: "smallworks/fable-3b", sha: "a41c09d2e7f35b6c8d1e0f2a3b4c5d6e7f8091a2", license: "apache-2.0", params_b: 3.1, tier: "light", context: 8192, wake_estimate_s: 71 }),
-  pasted({ id: "northfield_ledger-12b", name: "ledger-12b", hf_repo: "northfield/ledger-12b", sha: "7be2d4f6a8c0e1b3d5f7a9c1e3b5d7f9a1c3e5b7", license: "mit", params_b: 12.2, tier: "medium", context: 32768, wake_estimate_s: null, state: "needs_load" }),
-  pasted({ id: "you_scratch-7b", name: "scratch-7b", hf_repo: "you/scratch-7b", sha: "c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1", license: "other", params_b: 7.2, tier: "light", context: 16384, wake_estimate_s: 88, private: true, mine: true }),
+  pasted({ id: "northfield_ledger-12b", name: "ledger-12b", hf_repo: "northfield/ledger-12b", sha: "7be2d4f6a8c0e1b3d5f7a9c1e3b5d7f9a1c3e5b7", license: "mit", params_b: 12.2, tier: "medium", context: 8192, wake_estimate_s: null, state: "needs_load" }),
+  pasted({ id: "you_scratch-7b", name: "scratch-7b", hf_repo: "you/scratch-7b", sha: "c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1", license: "other", params_b: 7.2, tier: "light", context: 8192, wake_estimate_s: 88, private: true, mine: true }),
 ];
 function pasted(m: Pick<Model, "id" | "name" | "hf_repo" | "sha" | "license" | "params_b" | "tier" | "context" | "wake_estimate_s"> & Partial<Model>): Model {
   return model({ quant: "bf16", tags: ["untested"], blurb: "", origin: "pasted", private: false, mine: false, tools_ok: false, ...m });
@@ -894,7 +894,7 @@ function checkPasted(repo: string): RepoCheck {
     tier,
     size_bytes: bytes,
     params_b: params,
-    context: known?.context ?? 32768,
+    context: known?.context ?? 8192,
     architecture: "qwen2",
     price_usd_micro_per_min: PRICE[tier],
     load_cap_minutes: LOAD_CAP_MIN[tier],
@@ -963,7 +963,7 @@ function startLoad(repo: string, keepPrivate: boolean, id: string, payer: boolea
       x.l.bytes = bytes;
       if (payer) balance -= x.l.charged_usd_micro;
       if (known) known.state = "asleep";
-      else models.push(pasted({ id: x.l.model_id, name: repo.split("/")[1]!, hf_repo: repo, sha: x.l.sha, license: "apache-2.0", params_b: params, tier, context: 32768, wake_estimate_s: null, private: keepPrivate, mine: payer }));
+      else models.push(pasted({ id: x.l.model_id, name: repo.split("/")[1]!, hf_repo: repo, sha: x.l.sha, license: "apache-2.0", params_b: params, tier, context: 8192, wake_estimate_s: null, private: keepPrivate, mine: payer }));
     }
     tell("load");
     tell("ended");
