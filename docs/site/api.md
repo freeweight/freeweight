@@ -933,7 +933,7 @@ Refusals come before any money is held:
 
 The `code` of a failed load is one of `insufficient_balance`, `too_big`, `unsupported_architecture`,
 `custom_code`, `unsupported_quantization`, `no_chat_template`, `no_weights`, `unsupported_format`, `unsafe_files`, `too_many_files`, `no_config`,
-`download_failed`, `wake_failed`, `timeout`, `removed`, `lane_unavailable`, `build_error`.
+`download_failed`, `wake_failed`, `timeout`, `removed`, `blocked`, `lane_unavailable`, `build_error`.
 
 `private` names the copy you load: `true` your own private copy, which gets an id of its own (the public id with
 `_p` and six more characters); `false` the public model; left out, your private copy if you have one, else the
