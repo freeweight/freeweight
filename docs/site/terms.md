@@ -77,6 +77,8 @@ We can change or stop it at any time. Getting around its limits breaks the accep
 ## The models
 
 - The models are open-weight models made by other people. They answer as they were trained. We do not add a filter.
+- The always-awake model is an uncensored build: it does not refuse topics. You are responsible for what you ask
+  and for what you do with the answers.
 - Answers can be wrong, out of date, offensive or made up. Check anything that matters. Nothing a model says is
   legal, medical or financial advice from us.
 - Each model has its own licence, shown on its page. You must follow it.

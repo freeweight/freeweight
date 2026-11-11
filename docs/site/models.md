@@ -22,9 +22,9 @@ quantised copy is not the original weights, and its answers can differ. Every mo
 has a context of 16,384 tokens.
 
 Next to these stands one model that is not rented: `deepseek-v4.1-flash`, DeepSeek V4.1 Flash in its uncensored
-build. It is always awake and paid per token. It has no tier, no wake and no pinned commit, because it is served
-by a hosted endpoint and not from weights loaded here. Its context is 128,000 tokens. The rest of this page is
-about the rented models. See [pricing](/docs/pricing#the-always-awake-model) for this one.
+build: it does not refuse topics, and you are responsible for what you do with the answers. It is always awake
+and paid per token. It has no tier, no wake and no pinned commit, because it is served by a hosted endpoint and
+not from weights loaded here. Its context is 128,000 tokens. The rest of this page is about the rented models. See [pricing](/docs/pricing#the-always-awake-model) for this one.
 
 This page explains how to read the catalog. The catalog itself is live:
 

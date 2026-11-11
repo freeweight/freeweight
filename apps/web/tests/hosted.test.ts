@@ -285,6 +285,7 @@ describe("mock gateway", () => {
     const m = (await api.hosted())!;
     expect(m).toMatchObject({ id: "deepseek-v4.1-flash", kind: "hosted", ...PRICES, tools_ok: true });
     expect(m.free.per_day).toBe(20);
+    expect(m.blurb).toMatch(/uncensored build: it does not refuse topics, and you are responsible/);
     expect((await api.models()).some((x) => x.id === m.id)).toBe(false);
     const s = await api.stats();
     expect(s.hosted_requests).toBeGreaterThan(0);

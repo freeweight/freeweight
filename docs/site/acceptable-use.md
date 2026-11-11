@@ -16,6 +16,9 @@ front of them, we do not read your prompts, and we do not ban anyone for lawful 
 "Uncensored" means that. It does not mean that anything goes. You are responsible for what you ask and for what you
 do with the answer, under the law that applies to you.
 
+The always-awake model carries the label "uncensored" on the site. It is an uncensored build: it does not refuse
+topics. Everything on this page applies to it in full.
+
 ## What is not allowed
 
 We refuse only what the law requires us to refuse, and what would break the service for others.

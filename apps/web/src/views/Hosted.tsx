@@ -51,7 +51,10 @@ function HostedRoom({ model }: { model: HostedModel }) {
   return (
     <div className="wrap room" data-tab={tab}>
       <div className="room-bar">
-        <span className="state awake">always awake</span>
+        <span className="hc-tags">
+          <span className="state awake">always awake</span>
+          <span className="state">uncensored</span>
+        </span>
         <Segmented
           label="View"
           value={tab}
@@ -67,6 +70,7 @@ function HostedRoom({ model }: { model: HostedModel }) {
         <header className="chat-h">
           <h1 className="chat-name">{model.name}</h1>
           <span className="state awake hc-state">always awake</span>
+          <span className="state hc-state">uncensored</span>
           <span className="chat-meta mono">
             <span>per token</span>
             <span>{tokenPrices(model)}</span>

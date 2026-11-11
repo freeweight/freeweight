@@ -20,9 +20,10 @@ wrong choice.
 
 ### Is there a model I can use without waking anything?
 
-One. DeepSeek V4.1 Flash, in its uncensored build, is always awake. It has no session and no clock, and it is
-paid per token: $0.50 per million tokens in and $2.00 per million out, from the same balance. In the chat on the
-site, 20 short messages a day are free. It is served by a hosted endpoint, not from a GPU rented here. See
+One. DeepSeek V4.1 Flash is always awake. It is an uncensored build: it does not refuse topics, and you are
+responsible for what you do with the answers. It has no session and no clock, and it is paid per token: $0.50
+per million tokens in and $2.00 per million out, from the same balance. In the chat on the site, 20 short
+messages a day are free. It is served by a hosted endpoint, not from a GPU rented here. See
 [pricing](/docs/pricing#the-always-awake-model).
 
 ### Is waking a model free?
@@ -117,6 +118,8 @@ No.
 ### What does "uncensored" mean here?
 
 The models answer as they were trained. We add no filter, we do not read prompts, and we do not ban lawful use.
+The always-awake model goes one step further: it is an uncensored build, made so that it does not refuse topics.
+You are responsible for what you do with the answers.
 Some things are still not allowed. The [acceptable use](/docs/acceptable-use) page says which.
 
 ### Are the models changed in any way?

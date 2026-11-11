@@ -131,6 +131,9 @@ One model in the catalog never sleeps: DeepSeek V4.1 Flash in its uncensored bui
 `deepseek-v4.1-flash`. It is served by a hosted endpoint and not from a GPU rented here, so there is nothing to
 wake, no session and no clock. Its description on the site says where it is served from.
 
+It is an uncensored build: it does not refuse topics, and you are responsible for what you do with the answers.
+The [acceptable use](/docs/acceptable-use) rules apply to it as to every model.
+
 It is paid per token, from the same balance as rented minutes.
 
 | Tokens | Price |

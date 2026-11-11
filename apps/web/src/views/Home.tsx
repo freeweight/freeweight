@@ -120,6 +120,7 @@ function Ask({ model }: { model: HostedModel }) {
       <div className="ask-h">
         <span className="ask-name">{model.name}</span>
         <span className="state awake">always awake</span>
+        <span className="state">uncensored</span>
       </div>
       <textarea className="ask-in" rows={2} value={text} placeholder="Ask it something. Nothing to wake, nothing to wait for." aria-label={`Ask ${model.name}`} onChange={(e) => setText(e.target.value)} onKeyDown={key} />
       <div className="ask-row">

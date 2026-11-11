@@ -67,9 +67,14 @@ export default function Catalog() {
           <Link href={HOSTED_PATH} className="cat-hosted">
             <span className="cat-hosted-main">
               <b className="cat-hosted-name">{hosted.name}</b>
-              <span className="state awake">always awake · per token</span>
+              <span className="cat-hosted-tags">
+                <span className="state awake">always awake · per token</span>
+                <span className="state">uncensored</span>
+              </span>
             </span>
-            <span className="cat-hosted-blurb">{hosted.blurb}</span>
+            <span className="cat-hosted-blurb" title={hosted.blurb}>
+              {hosted.blurb}
+            </span>
             <span className="mono cat-hosted-price">{tokenPrices(hosted)}</span>
             <span className="cat-hosted-go">
               Chat

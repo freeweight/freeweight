@@ -1,7 +1,13 @@
 /* The always-awake model's room. The room itself is the session's (session.css); these are the few parts that
    only this room has. */
 
-/* On a phone the bar above the chat already says "always awake". */
+.hc-tags {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+/* On a phone the bar above the chat already carries both labels. */
 .hc-state {
   display: none;
 }

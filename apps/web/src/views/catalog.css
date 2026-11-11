@@ -62,6 +62,11 @@ a.cat-hosted:hover {
   gap: var(--s1);
   min-width: 0;
 }
+.cat-hosted-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--s4);
+}
 .cat-hosted-name {
   font: 600 16px/24px var(--sans);
   letter-spacing: -0.01em;
@@ -76,8 +81,6 @@ a.cat-hosted:hover {
   line-height: 20px;
   color: var(--ink-2);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
 }
 .cat-hosted-price {
@@ -105,15 +108,19 @@ a.cat-hosted:hover .cat-hosted-go svg {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     grid-template-areas: "main blurb price go";
     column-gap: var(--s5);
-    min-height: 64px;
+    min-height: 66px;
   }
   .cat-hosted-main {
     display: flex;
     align-items: center;
     gap: var(--s4);
   }
+  /* Two lines: enough for the sentence that says what the build is. */
   .cat-hosted-blurb {
-    display: block;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 }
 

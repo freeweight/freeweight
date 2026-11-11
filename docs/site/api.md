@@ -544,7 +544,7 @@ GET /api/hosted
     "id": "deepseek-v4.1-flash",
     "kind": "hosted",
     "name": "DeepSeek V4.1 Flash",
-    "blurb": "A fast general model in its uncensored build. Always awake: no wake, no session, paid per token.",
+    "blurb": "A fast general model in an uncensored build: it does not refuse topics, and you are responsible for what you do with the answers. Always awake: no wake, no session, paid per token.",
     "source": "",
     "context": 128000,
     "price_in_usd_micro_per_mtok": 500000,
