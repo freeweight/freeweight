@@ -20,12 +20,16 @@
 //   tools:hostile  the demo token's name tries to pass for markup, instructions and a badge
 //   think:long     every model reasons at length before it answers or calls a tool      think:hold   ...and never gets past it
 //
+//   hosted:off     the always-awake model is not offered     hosted:used   today's free messages are spent
+//   hosted:few     three free messages are left              hosted:busy   it refuses: the day's ceiling is reached
+//
 // Any session address that starts with "demo" creates its own session (/s/demo, /s/demo-2), and
 // "demo-ended" opens one that has already finished, so every screen has a direct address.
 
+import { tokenCost } from "../lib/hosted";
 import { setTimeRate } from "../lib/time";
 import type { RawConfig, RawMe } from "./client";
-import type { ApiKey, Awake, Check, Listing, Model, PublicReceipt, Session, Stage, StageEvent, Stats, Tier } from "./types";
+import type { ApiKey, Awake, Check, HostedAccount, HostedModel, HostedUse, Listing, Model, PublicReceipt, Session, Stage, StageEvent, Stats, Tier } from "./types";
 
 type Opts = Record<string, string>;
 function readOpts(): Opts {
@@ -217,6 +221,7 @@ const extraSessions = new Map<string, number>([
 const stats: Stats = empty()
   ? { gpu_seconds: 0, sessions: 0, tokens: 0, wakes: 0, median_wake_s: null }
   : { gpu_seconds: 1_284_660, sessions: 4_812, tokens: 96_400_000, wakes: 1_937, median_wake_s: 97 };
+const hostedStats = empty() ? { hosted_requests: 0, hosted_tokens: 0 } : { hosted_requests: 3_406, hosted_tokens: 5_912_000 };
 
 // ---------- account ----------
 
@@ -829,6 +834,108 @@ function err(status: number, code: string, message: string, extra: Record<string
 }
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+// ---------- the always-awake model ----------
+
+const HOSTED: HostedModel = {
+  id: "deepseek-v4.1-flash",
+  kind: "hosted",
+  name: "DeepSeek V4.1 Flash",
+  blurb: "A fast general model in its uncensored build. Always awake: no wake, no session, paid per token.",
+  source: "Served by a hosted endpoint, not from a GPU rented here.",
+  context: 128_000,
+  price_in_usd_micro_per_mtok: 500_000,
+  price_out_usd_micro_per_mtok: 2_000_000,
+  max_output_tokens: 4096,
+  tools_ok: true,
+  free: { per_day: 20, max_input_bytes: 4000, max_output_tokens: 400 },
+  created_at: Date.UTC(2026, 10, 11),
+};
+const hostedOn = (): boolean => opts.hosted !== "off";
+let hostedFreeLeft = opts.hosted === "used" ? 0 : opts.hosted === "few" ? 3 : HOSTED.free.per_day;
+let hostedSeq = 4;
+const hostedUses: HostedUse[] = [
+  { id: "hr_3", at: vnow() - 40 * 60_000, surface: "api", free: false, tokens_in: 1_840, tokens_out: 412, charged_usd_micro: tokenCost(HOSTED, 1_840, 412) },
+  { id: "hr_2", at: vnow() - 3 * 3_600_000, surface: "chat", free: false, tokens_in: 620, tokens_out: 288, charged_usd_micro: tokenCost(HOSTED, 620, 288) },
+  { id: "hr_1", at: vnow() - 26 * 3_600_000, surface: "chat", free: true, tokens_in: 96, tokens_out: 154, charged_usd_micro: 0 },
+];
+function hostedAccount(): HostedAccount | null {
+  if (!hostedOn()) return null;
+  return { model_id: HOSTED.id, free_per_day: HOSTED.free.per_day, free_left: hostedFreeLeft, check_needed: false, recent: signedIn && !empty() ? hostedUses.slice(0, 20) : [] };
+}
+
+/**
+ * One turn on the always-awake model, as the gateway streams it: a wallet with a balance pays and may use tools,
+ * anyone else spends one of the day's free messages. A paid message about a token runs one round of two tools.
+ */
+function hostedChat(body: { messages: Msg[]; tools?: boolean }, signal?: AbortSignal | null): Response {
+  if (!hostedOn()) return err(404, "model_not_found", "No such model.");
+  if (opts.hosted === "busy") return err(503, "hosted_busy", "This model has reached its limit for today. Try again later.");
+  const paid = signedIn && balance > 0;
+  if (!paid && hostedFreeLeft <= 0) return err(429, "free_used", "Today's free messages are used.");
+  const user = [...body.messages].reverse().find((mm) => mm.role === "user")?.content ?? "";
+  if (!paid && user.length > HOSTED.free.max_input_bytes) return err(413, "message_too_long", "A free message can be at most 4,000 bytes.");
+  if (!paid) hostedFreeLeft--;
+  const tools = paid && body.tools === true;
+  const addr = /0x[0-9a-fA-F]{40}/.exec(user)?.[0];
+  const looksUp = tools && (addr != null || /token|contract|holder|safe/i.test(user));
+  const token = (addr ?? "0x4e1f0a6c2b8d9e3f5a7c1b0d2e4f6a8c0b1d3e5f").toLowerCase();
+  const tokensIn = Math.round(body.messages.reduce((n, mm) => n + (mm.content?.length ?? 0), 0) / 4) + 12;
+
+  return sseResponse((send, close, sig) => {
+    const say = (event: string, data: object): void => send(event, JSON.stringify(data));
+    /** Close one upstream call: the tokens it used, what they cost, and the account's record of it. */
+    const settle = (tin: number, tout: number): void => {
+      const cost = paid ? tokenCost(HOSTED, tin, tout) : 0;
+      balance = Math.max(0, balance - cost);
+      hostedUses.unshift({ id: `hr_${hostedSeq++}`, at: vnow(), surface: "chat", free: !paid, tokens_in: tin, tokens_out: tout, charged_usd_micro: cost });
+      hostedStats.hosted_requests++;
+      hostedStats.hosted_tokens += tin + tout;
+      say("usage", { tokens_in: tin, tokens_out: tout, cost_usd_micro: cost, free: !paid });
+    };
+    const answer = (text: string, tin: number, rounds: number): void => {
+      const parts = text.match(/\s*\S+|\s+$/g) ?? [text];
+      let i = 0;
+      const iv = setInterval(() => {
+        if (sig?.aborted) return clearInterval(iv);
+        if (i < parts.length) return say("delta", { text: parts[i++] });
+        clearInterval(iv);
+        settle(tin, parts.length);
+        say("done", { rounds });
+        close();
+      }, 28);
+    };
+
+    say("start", { free: !paid, free_left: paid ? null : hostedFreeLeft, tools });
+    if (!looksUp) {
+      const text = /code|python|function|script|rust|typescript/i.test(user)
+        ? "Here is a small, complete version.\n\n```python\ndef price(tokens_in: int, tokens_out: int, per_m_in: float = 0.50, per_m_out: float = 2.00) -> float:\n    \"\"\"What one answer costs, in US dollars.\"\"\"\n    return (tokens_in * per_m_in + tokens_out * per_m_out) / 1_000_000\n\nprint(round(price(1_200, 350), 6))\n```\n\nThe input is everything the model read, the whole conversation included. The output is what it wrote."
+        : "I am always awake, so there was nothing to wait for.\n\n- **Billing** is per token: what I read and what I write. There is no clock.\n- **The API** takes this model's id with an API key, with no session to start.\n- **Tools** run on paid messages: switch them on and paste a token address.\n\nAsk me something.";
+      answer(text, tokensIn, 1);
+      return;
+    }
+    // The gateway runs the tools itself and reports each call and a short result.
+    const calls = [
+      { id: "call_1", name: "token_overview", ms: 550, res: tokenOverview(token) },
+      { id: "call_2", name: "safety_check", ms: 900, res: safetyCheck(token) },
+    ];
+    const args = JSON.stringify({ chain: "robinhood", token });
+    setTimeout(() => {
+      if (sig?.aborted) return;
+      settle(tokensIn, 38);
+      for (const c of calls) say("tool_call", { id: c.id, name: c.name, arguments: args });
+      for (const c of calls)
+        setTimeout(() => {
+          if (sig?.aborted) return;
+          say("tool_result", { id: c.id, name: c.name, ok: c.res.ok, summary: String(c.res.summary) });
+          if (c !== calls.at(-1)) return;
+          const text =
+            "Both tools answered.\n\n- **Overview**: PLATE trades on one main pool with about $182k of liquidity. The market cap is unknown, because the circulating supply could not be read.\n- **Sell test**: buying and selling 0.3 WETH from a fresh wallet lost 0.7%. The owner is renounced and the source is verified.\n\nThe sell test ran from one wallet at one small size, so it is not a guarantee. It is what the chain says right now.";
+          answer(text, tokensIn + 38 + 420, 2);
+        }, c.ms);
+    }, 400);
+  }, signal);
+}
+
 const liveOnes = (): Sess[] => [...sessions.values()].filter((o) => o.s.state === "waking" || o.s.state === "active");
 /** `/api/me`, in the gateway's shape. */
 function me(): RawMe {
@@ -839,7 +946,7 @@ function me(): RawMe {
     return n + (o.s.free || !m || o.s.started_at == null || o.s.ends_at == null ? 0 : priceOf((o.s.ends_at - o.s.started_at) / 1000, m.price_usd_micro_per_min));
   }, 0);
   if (!signedIn)
-    return { address: null, balance_usd_micro: 0, held_usd_micro: 0, free_today: { trial_available: freeToday, trial_minutes: FREE_MINUTES, allowance_usd_micro: 0 }, keys: [], perks: { enabled: perksOn }, sessions: live };
+    return { address: null, balance_usd_micro: 0, held_usd_micro: 0, free_today: { trial_available: freeToday, trial_minutes: FREE_MINUTES, allowance_usd_micro: 0 }, keys: [], perks: { enabled: perksOn }, sessions: live, hosted: hostedAccount() };
   const allowance = perksOn ? 10 * PRICE.light : 0;
   return {
     address: ADDRESS,
@@ -852,6 +959,7 @@ function me(): RawMe {
       : { enabled: false, day: new Date(vnow()).toISOString().slice(0, 10), hold: null, stake: null, allowance_usd_micro: 0 },
     sessions: live,
     listing_proof_line: proofLine(ADDRESS),
+    hosted: hostedAccount(),
   };
 }
 
@@ -940,7 +1048,7 @@ export async function mockFetch(input: string, init: RequestInit = {}): Promise<
   }
   if (method === "GET" && path === "/api/stats") {
     const live = [...sessions.values()].filter((o) => o.s.state === "active").reduce((n, o) => n + snap(o).gpu_seconds, 0);
-    return json({ ...stats, gpu_seconds: stats.gpu_seconds + live });
+    return json({ ...stats, gpu_seconds: stats.gpu_seconds + live, ...(hostedOn() ? hostedStats : {}) });
   }
   if (method === "GET" && path === "/api/config") return json(config());
   if (method === "GET" && path === "/api/receipts") return json({ receipts: receipts() });
@@ -1039,6 +1147,8 @@ export async function mockFetch(input: string, init: RequestInit = {}): Promise<
   }
 
   if (method === "GET" && path === "/api/me") return json(me());
+  if (method === "GET" && path === "/api/hosted") return json({ model: hostedOn() ? HOSTED : null });
+  if (method === "POST" && path === "/api/hosted/chat") return hostedChat(body as never, init.signal);
   if (path === "/api/auth/nonce") return json({ nonce: Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("") });
   if (path === "/api/auth/verify") {
     signedIn = true;

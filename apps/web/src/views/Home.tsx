@@ -1,8 +1,9 @@
-import { useEffect } from "react";
-import { api, type Awake, type Model, type Stats } from "../api";
-import { ago, clock, grouped, perMin, TIER_CLASS, typicalWake, usd } from "../lib/format";
-import { loadFailed, refreshMe, useEvery, useLive, useLoad, useMe, useTitle } from "../lib/hooks";
-import { Link } from "../router";
+import { useEffect, useState, type KeyboardEvent } from "react";
+import { api, type Awake, type HostedModel, type Model, type Stats } from "../api";
+import { ago, clock, compact, grouped, perMin, TIER_CLASS, typicalWake, usd } from "../lib/format";
+import { loadFailed, refreshMe, useEvery, useHosted, useLive, useLoad, useMe, useTitle } from "../lib/hooks";
+import { HOSTED_PATH, leaveOpening, tokenPrices } from "../lib/hosted";
+import { Link, navigate } from "../router";
 import { Icon, Notice, Rule, TierMark } from "../ui/bits";
 import { WakeBox } from "../ui/wakebox";
 import { ROADMAP } from "./roadmap-data";
@@ -19,6 +20,7 @@ export function Home() {
     void refreshMe().catch(() => undefined);
   }, []);
   const running = me?.sessions.find((x) => x.state === "waking" || x.state === "active");
+  const hosted = useHosted();
   const runningName = running && (models?.find((m) => m.id === running.model_id)?.name ?? running.model_id);
 
   return (
@@ -29,6 +31,7 @@ export function Home() {
           <h1 className="hero-h">
             Rent any open model <b>by the minute.</b>
           </h1>
+          {hosted === undefined ? <div className="ask ask-wait" aria-hidden="true" /> : hosted && <Ask model={hosted} />}
           <p className="lead hero-lead">Models sleep as stored weights and cost nothing. Wake one on a GPU and pay only while your session runs, never per token. A wake takes from under a minute to a few minutes, depending on the size of the model, and is not billed.</p>
           {running && (
             <div className="hero-resume">
@@ -87,6 +90,48 @@ export function Home() {
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * The always-awake model, ready to type to. What is written here goes with the visitor to its chat room and is
+ * sent there, so the answer streams in the room and not in a second, smaller chat.
+ */
+function Ask({ model }: { model: HostedModel }) {
+  const [text, setText] = useState("");
+  function go(): void {
+    leaveOpening(text);
+    navigate(HOSTED_PATH);
+  }
+  function key(e: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      go();
+    }
+  }
+  return (
+    <form
+      className="ask"
+      onSubmit={(e) => {
+        e.preventDefault();
+        go();
+      }}
+    >
+      <div className="ask-h">
+        <span className="ask-name">{model.name}</span>
+        <span className="state awake">always awake</span>
+      </div>
+      <textarea className="ask-in" rows={2} value={text} placeholder="Ask it something. Nothing to wake, nothing to wait for." aria-label={`Ask ${model.name}`} onChange={(e) => setText(e.target.value)} onKeyDown={key} />
+      <div className="ask-row">
+        <span className="ask-fine">
+          {model.free.per_day} free messages a day. After that, per token: <span className="mono">{tokenPrices(model)}</span>.
+        </span>
+        <button type="submit" className="btn sm primary">
+          {text.trim() ? "Send" : "Open the chat"}
+          <Icon name={text.trim() ? "up" : "arrow"} size={14} />
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -217,6 +262,11 @@ function Reps({ stats, down }: { stats: Stats | null; down: boolean }) {
         {cell("Wakes", stats && grouped(stats.wakes))}
         {cell("Median wake", stats && (stats.wakes >= MEDIAN_FROM && stats.median_wake_s ? clock(stats.median_wake_s * 1000) : "\u2014"))}
       </div>
+      {stats && (stats.hosted_requests ?? 0) > 0 && (
+        <p className="board-fine">
+          The always-awake model is counted apart: <span className="mono">{grouped(stats.hosted_requests ?? 0)}</span> answers, <span className="mono">{compact(stats.hosted_tokens ?? 0)}</span> tokens.
+        </p>
+      )}
       {stats && stats.wakes < MEDIAN_FROM && <p className="board-fine">{stats.sessions === 0 ? "No sessions yet. " : ""}The median shows after five wakes.</p>}
     </div>
   );

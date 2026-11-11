@@ -27,6 +27,76 @@
   max-width: 54ch;
   margin-block: var(--s5) var(--s6);
 }
+
+/* The always-awake model, ready to type to, right under the headline. The brass edge says it is awake. */
+.ask {
+  max-width: 640px;
+  /* The height the box takes once the model is known, so the page below does not move when it arrives. */
+  min-height: 198px;
+  margin-top: var(--s5);
+  border: 1px solid var(--field);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-2);
+  background: var(--raised);
+  transition: border-color var(--fast);
+}
+@media (min-width: 560px) {
+  .ask {
+    min-height: 152px;
+  }
+}
+.ask-wait {
+  border-color: var(--line-2);
+  background: var(--surface);
+}
+.ask:focus-within {
+  border-color: var(--accent-ink);
+}
+.ask-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--s4);
+  padding: var(--s3) var(--s4) 0;
+}
+.ask-name {
+  font: 600 15px/24px var(--sans);
+  letter-spacing: -0.01em;
+}
+.ask-in {
+  display: block;
+  width: 100%;
+  height: 64px;
+  resize: none;
+  border: 0;
+  background: none;
+  padding: var(--s2) var(--s4);
+  font-size: 16px;
+  line-height: 24px;
+}
+.ask-in:focus-visible {
+  outline-offset: -2px;
+}
+.ask-in::placeholder {
+  color: var(--ink-3);
+}
+.ask-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2) var(--s4);
+  padding: 0 var(--s2) var(--s2) var(--s4);
+}
+.ask-fine {
+  flex: 1 1 260px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.ask-fine .mono {
+  font-size: 12px;
+}
 .hero-main .box,
 .hero-main > .notice {
   max-width: 640px;

@@ -32,6 +32,91 @@
   white-space: nowrap;
 }
 
+/* The always-awake model: one row of its own above the filters. Its height is fixed so the page holds still
+   while the answer to "is there one" is on its way. */
+.cat-hosted {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "main go" "price go";
+  align-items: center;
+  gap: var(--s1) var(--s4);
+  min-height: 112px;
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s5);
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-1);
+  background: var(--surface);
+  transition: border-color var(--fast);
+}
+.cat-hosted.wait {
+  border-left-color: var(--line-2);
+}
+a.cat-hosted:hover {
+  border-color: var(--ink-2);
+  border-left-color: var(--accent);
+}
+.cat-hosted-main {
+  grid-area: main;
+  display: grid;
+  gap: var(--s1);
+  min-width: 0;
+}
+.cat-hosted-name {
+  font: 600 16px/24px var(--sans);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cat-hosted-blurb {
+  display: none;
+  grid-area: blurb;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.cat-hosted-price {
+  grid-area: price;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+.cat-hosted-go {
+  grid-area: go;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.cat-hosted-go svg {
+  transition: transform var(--fast);
+}
+a.cat-hosted:hover .cat-hosted-go svg {
+  transform: translateX(2px);
+}
+@media (min-width: 860px) {
+  .cat-hosted {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "main blurb price go";
+    column-gap: var(--s5);
+    min-height: 64px;
+  }
+  .cat-hosted-main {
+    display: flex;
+    align-items: center;
+    gap: var(--s4);
+  }
+  .cat-hosted-blurb {
+    display: block;
+  }
+}
+
 /* One grid for the whole table; rows are subgrids, so every column lines up without a <table>. */
 .cat {
   display: grid;

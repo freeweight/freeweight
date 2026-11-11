@@ -1,8 +1,9 @@
-// Account: wallet sign-in, balance and top-up, API keys, perks.
+// Account: wallet sign-in, balance and top-up, API keys, what the always-awake model was used for, perks.
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, TIERS, type ApiKey, type Config, type Me, type Model, type NewKey, type Tier, type Topup } from "../api";
-import { ago, day, TIER_NAME, usd } from "../lib/format";
+import { ago, day, grouped, TIER_NAME, usd } from "../lib/format";
+import { HOSTED_PATH } from "../lib/hosted";
 import { refreshMe, toApiError, useLive, useLoad, useMe, useTitle } from "../lib/hooks";
 import { discover, signIn, WalletError, type Step, type Wallet } from "../lib/wallet";
 import { Link } from "../router";
@@ -44,6 +45,7 @@ export default function Account() {
           <WalletSection me={me} chainId={config.data?.chain_id ?? 4663} />
           <BalanceSection me={me} config={config.data} models={models} />
           <KeysSection me={me} />
+          {me?.hosted && <HostedSection me={me} />}
           <PerksSection me={me} />
         </>
       )}
@@ -510,6 +512,51 @@ function KeysSection({ me }: { me: Me | null }) {
             {error && <Notice kind="err">{error}</Notice>}
           </>
         )}
+      </div>
+    </section>
+  );
+}
+
+// ---------- the always-awake model ----------
+
+/** The last answers the always-awake model gave this account: free or paid, from the chat or from the API. */
+function HostedSection({ me }: { me: Me }) {
+  const h = me.hosted!;
+  return (
+    <section className="sec" id="hosted-use" aria-labelledby="acct-hosted">
+      <div className="sec-h">
+        <h2 className="h3" id="acct-hosted">
+          Always-awake model
+        </h2>
+        <p>
+          Paid per token from the same balance, with {h.free_per_day} free messages a day in the{" "}
+          <Link className="link" href={HOSTED_PATH}>
+            chat
+          </Link>
+          .
+        </p>
+      </div>
+      <div className="sec-b">
+        <p className="small dim">
+          Free messages left today: <span className="mono">{h.free_left}</span> of <span className="mono">{h.free_per_day}</span>.
+        </p>
+        {h.recent.length === 0 ? (
+          <p className="keys-none">No answers yet.</p>
+        ) : (
+          <ul className="uses" aria-label="Recent answers">
+            {h.recent.map((u) => (
+              <li key={u.id} className="use">
+                <span className="mono use-when">{new Date(u.at).toISOString().slice(0, 16).replace("T", " ")}</span>
+                <span className="use-where">{u.surface === "api" ? "API" : "Chat"}</span>
+                <span className="mono use-tok">
+                  {grouped(u.tokens_in)} in · {grouped(u.tokens_out)} out
+                </span>
+                <b className={`mono use-cost${u.free ? " dim" : ""}`}>{u.free ? "free" : usd(u.charged_usd_micro)}</b>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="small dimmer">Times are UTC. Each line is one answer: the tokens it read, the tokens it wrote and what was taken from your balance.</p>
       </div>
     </section>
   );

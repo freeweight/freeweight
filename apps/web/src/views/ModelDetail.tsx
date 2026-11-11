@@ -2,8 +2,10 @@
 
 import { api, type Model } from "../api";
 import { context, params as fmtParams, perMin, shortAddr, shortSha, TIER_CLASS, typicalWake } from "../lib/format";
-import { loadFailed, refreshLive, useLive, useLoad, useTitle } from "../lib/hooks";
-import { Link } from "../router";
+import { useEffect } from "react";
+import { loadFailed, refreshLive, useHosted, useLive, useLoad, useTitle } from "../lib/hooks";
+import { HOSTED_PATH } from "../lib/hosted";
+import { Link, navigate } from "../router";
 import { Code, Icon, Notice, StateTag, TierMark } from "../ui/bits";
 import { WakeBox } from "../ui/wakebox";
 import NotFound from "./NotFound";
@@ -37,7 +39,14 @@ export default function ModelDetail({ params }: { params: Record<string, string>
   const config = useLoad(() => api.config(), []);
   const model = models?.find((m) => m.id === id) ?? null;
   useTitle(model?.name ?? "Model");
+  // The always-awake model is not in the list of models that sleep. Its id leads to its own room.
+  const hosted = useHosted();
+  const isHosted = Boolean(hosted && hosted.id === id);
+  useEffect(() => {
+    if (isHosted) navigate(HOSTED_PATH, { replace: true });
+  }, [isHosted]);
 
+  if (isHosted || (models && !model && hosted === undefined)) return <div className="page wrap" aria-busy="true" />;
   if (models && !model) {
     return <NotFound title="No model with this id" text="It may have been unlisted, or the link is wrong." back={{ href: "/models", label: "See the models" }} />;
   }

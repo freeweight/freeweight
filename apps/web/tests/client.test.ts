@@ -63,7 +63,7 @@ describe("normalizeMe", () => {
   });
   it("defaults to a signed-out visitor with perks off", () => {
     const me = normalizeMe({});
-    expect(me).toEqual({ address: null, balance_usd_micro: 0, held_usd_micro: 0, free_today: false, allowance_usd_micro: 0, keys: [], perks: { enabled: false }, sessions: [], listing_proof_line: null });
+    expect(me).toEqual({ address: null, balance_usd_micro: 0, held_usd_micro: 0, free_today: false, allowance_usd_micro: 0, keys: [], perks: { enabled: false }, sessions: [], listing_proof_line: null, hosted: null });
   });
   it("carries the hold, the allowance, the live sessions and the owner line of a wallet", () => {
     const me = normalizeMe({

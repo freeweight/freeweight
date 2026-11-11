@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { TIERS, type Model, type Tier } from "../api";
 import { filterModels, isFiltered, NO_FILTERS, readFilters, tagsOf, toQuery, type Filters, type SortKey, type StateFilter } from "../lib/catalog";
 import { context, params as fmtParams, perMin, TIER_NAME } from "../lib/format";
-import { loadFailed, refreshLive, useLive, useTitle } from "../lib/hooks";
+import { loadFailed, refreshLive, useHosted, useLive, useTitle } from "../lib/hooks";
+import { HOSTED_PATH, inCatalog, tokenPrices } from "../lib/hosted";
 import { Link, navigate } from "../router";
 import { Icon, Notice, Segmented, StateTag, TierMark } from "../ui/bits";
 import "./catalog.css";
@@ -31,6 +32,7 @@ const COLS: { key: SortKey | null; label: string; cls: string }[] = [
 export default function Catalog() {
   useTitle("Models");
   const { models, error } = useLive();
+  const hosted = useHosted();
   const [f, setF] = useState<Filters>(() => readFilters(location.search));
   const patch = (p: Partial<Filters>): void => setF((cur) => ({ ...cur, ...p }));
 
@@ -55,6 +57,27 @@ export default function Catalog() {
         <h1 className="h2">Models</h1>
         <p>Open text models, stored asleep. Wake one when you need it. The class sets the price per GPU minute, and an awake model can be joined at once.</p>
       </header>
+
+      {/* The one model that never sleeps stands apart from the table: it has no class, no wake and another price. */}
+      {hosted === undefined ? (
+        <div className="cat-hosted wait" aria-hidden="true" />
+      ) : (
+        hosted &&
+        inCatalog(hosted, f) && (
+          <Link href={HOSTED_PATH} className="cat-hosted">
+            <span className="cat-hosted-main">
+              <b className="cat-hosted-name">{hosted.name}</b>
+              <span className="state awake">always awake · per token</span>
+            </span>
+            <span className="cat-hosted-blurb">{hosted.blurb}</span>
+            <span className="mono cat-hosted-price">{tokenPrices(hosted)}</span>
+            <span className="cat-hosted-go">
+              Chat
+              <Icon name="arrow" size={14} />
+            </span>
+          </Link>
+        )
+      )}
 
       <div className="cat-bar">
         <div className="cat-bar-row">

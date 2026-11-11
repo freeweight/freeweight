@@ -37,4 +37,4 @@ curl "$BASE_URL/chat/completions" \
 | Medium |                $0.06 |
 | Heavy  |                $0.10 |
 
-Billing is by the second while your session runs, with a one-minute minimum once the model is awake. Never per token. See [pricing](pricing.md).
+Billing is by the second while your session runs, with a one-minute minimum once the model is awake. A rented model is never priced per token. The one always-awake model is: see [pricing](pricing.md).

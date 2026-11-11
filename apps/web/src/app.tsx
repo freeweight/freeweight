@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 import { MOCK } from "./api";
 import { shortAddr } from "./lib/format";
+import { HOSTED_PATH } from "./lib/hosted";
 import { useLive, useMe } from "./lib/hooks";
 import { Link, match, usePath } from "./router";
 import { Icon, Mark } from "./ui/bits";
@@ -13,6 +14,7 @@ const ModelDetail = lazy(() => import("./views/ModelDetail"));
 const Account = lazy(() => import("./views/Account"));
 const ListModel = lazy(() => import("./views/ListModel"));
 const Docs = lazy(() => import("./views/Docs"));
+const Hosted = lazy(() => import("./views/Hosted"));
 const Roadmap = lazy(() => import("./views/Roadmap"));
 const NotFound = lazy(() => import("./views/NotFound"));
 
@@ -20,6 +22,7 @@ type Params = Record<string, string>;
 const ROUTES: [string, ComponentType<{ params: Params }>][] = [
   ["/", Home],
   ["/s/:id", SessionView],
+  [HOSTED_PATH, Hosted],
   ["/models", Catalog],
   ["/models/:id", ModelDetail],
   ["/account", Account],
@@ -105,7 +108,8 @@ export function App() {
       break;
     }
   }
-  const inSession = path.startsWith("/s/");
+  // A room fills the window: a session, and the chat of the always-awake model.
+  const inSession = path.startsWith("/s/") || path === HOSTED_PATH;
   const live = (awake?.length ?? 0) > 0;
 
   return (
@@ -159,7 +163,7 @@ export function App() {
       {!inSession && (
         <footer className="ftr">
           <div className="wrap ftr-in">
-            <span>Freeweight. Rent any open model by the minute. Preview: prices are per GPU minute, in USD.</span>
+            <span>Freeweight. Rent any open model by the minute. Preview: prices are per GPU minute, in USD; the one always-awake model is priced per token.</span>
             <nav aria-label="Footer">
               <Link href="/docs">Docs</Link>
               <Link href="/docs/pricing">Pricing</Link>

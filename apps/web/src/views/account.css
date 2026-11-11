@@ -575,3 +575,36 @@
     gap: var(--s4);
   }
 }
+
+/* What the always-awake model was used for: one line per answer. */
+.uses {
+  border-top: 1px solid var(--line-2);
+}
+.use {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--s3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 20px;
+}
+.use-when {
+  color: var(--ink-2);
+}
+.use-where {
+  text-align: right;
+  color: var(--ink-3);
+}
+.use-cost {
+  font-weight: 500;
+  text-align: right;
+}
+@media (min-width: 720px) {
+  .use {
+    grid-template-columns: 150px 56px minmax(0, 1fr) auto;
+  }
+  .use-where {
+    text-align: left;
+  }
+}

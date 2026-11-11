@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { api, ApiError, type Awake, type Config, type Me, type Model } from "../api";
+import { api, ApiError, type Awake, type Config, type HostedModel, type Me, type Model } from "../api";
 
 export type Load<T> = { data: T | null; error: ApiError | null; loading: boolean; reload: () => void };
 
@@ -102,6 +102,33 @@ export function useConfig(): Config | null {
   const v = useSyncExternalStore(configStore.sub, configStore.get, configStore.get);
   useEffect(() => {
     if (configStore.get() === null) void loadConfig();
+  }, []);
+  return v;
+}
+
+// `undefined` until the gateway has answered, then the always-awake model or null when there is none.
+const hostedStore = store<HostedModel | null | undefined>(undefined);
+let hostedInflight: Promise<HostedModel | null> | null = null;
+/** The always-awake model, asked for once and shared. A gateway that cannot be asked offers none. */
+export function loadHosted(): Promise<HostedModel | null> {
+  const have = hostedStore.get();
+  if (have !== undefined) return Promise.resolve(have);
+  hostedInflight ??= api
+    .hosted()
+    .catch(() => null)
+    .then((m) => {
+      hostedStore.set(m);
+      return m;
+    })
+    .finally(() => {
+      hostedInflight = null;
+    });
+  return hostedInflight;
+}
+export function useHosted(): HostedModel | null | undefined {
+  const v = useSyncExternalStore(hostedStore.sub, hostedStore.get, hostedStore.get);
+  useEffect(() => {
+    if (hostedStore.get() === undefined) void loadHosted();
   }, []);
   return v;
 }

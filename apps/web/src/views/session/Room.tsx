@@ -1,6 +1,6 @@
 // The session room: chat on the left; the meter, the endpoint and, at the end, the receipt on the right.
 
-import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { Model, Session } from "../../api";
 import { splitThinking, useChat, type Item } from "../../lib/chat";
 import { clock, grouped, perMin, took, usd } from "../../lib/format";
@@ -15,6 +15,8 @@ import { Code, Copy, Icon, Notice, Segmented, TierMark } from "../../ui/bits";
 import { Ticket, TicketActions } from "./Receipt";
 
 type Chat = ReturnType<typeof useChat>;
+/** What the transcript and the message box need to know about the model they serve. */
+type Talks = Pick<Model, "tools_ok">;
 
 // ---------- transcript ----------
 
@@ -218,7 +220,8 @@ const STARTERS = [
   "Compare the three weight classes in a table.",
 ];
 
-function Log({ chat, live, paused = false, model }: { chat: Chat; live: boolean; paused?: boolean; model: Model | null }) {
+/** The transcript. `empty` replaces what a room with nothing said shows. */
+export function Log({ chat, live, paused = false, model, empty }: { chat: Chat; live: boolean; paused?: boolean; model: Talks | null; empty?: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   useLayoutEffect(() => {
@@ -257,7 +260,9 @@ function Log({ chat, live, paused = false, model }: { chat: Chat; live: boolean;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       }}
     >
-      {chat.items.length === 0 ? (
+      {chat.items.length === 0 && empty ? (
+        <div className="log-empty">{empty}</div>
+      ) : chat.items.length === 0 ? (
         <div className="log-empty">
           <p className="h3">{live ? "It is awake. Say something." : paused ? "Nothing said yet." : "Nothing was said in this session."}</p>
           {live && (
@@ -287,8 +292,15 @@ function Log({ chat, live, paused = false, model }: { chat: Chat; live: boolean;
   );
 }
 
-function Composer({ chat, model }: { chat: Chat; model: Model | null }) {
+/** The message box. `note` replaces the line beside the Tools switch; `draft` puts a message back in the box. */
+export function Composer({ chat, model, note, draft }: { chat: Chat; model: Talks | null; note?: string; draft?: { text: string; n: number } }) {
   const [text, setText] = useState("");
+  const back = draft?.n ?? 0;
+  useEffect(() => {
+    if (back > 0 && draft) setText(draft.text);
+    // Only a new hand-back counts: the text itself is read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [back]);
   const ta = useRef<HTMLTextAreaElement>(null);
   const grow = (): void => {
     const el = ta.current;
@@ -339,7 +351,7 @@ function Composer({ chat, model }: { chat: Chat; model: Model | null }) {
           </span>
           Tools
         </button>
-        <span className="small dimmer composer-hint">{hint}</span>
+        <span className="small dimmer composer-hint">{note ?? hint}</span>
         {chat.busy ? (
           <button type="button" className="btn sm" onClick={chat.stop}>
             <Icon name="stop" size={14} />

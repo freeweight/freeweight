@@ -44,6 +44,13 @@ const tools = async (page, open = false) => {
   await say(page, "Is the token 0x4e1f0a6c2b8d9e3f5a7c1b0d2e4f6a8c0b1d3e5f safe to sell?");
   if (open) await page.locator(".tool summary").first().click();
 };
+/** Send a message the always-awake model does not take, and wait for the reason. */
+const refused = async (page) => {
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill("What can I ask you?");
+  await box.press("Enter");
+  await page.locator(".hc-refused").waitFor({ timeout: 10_000 });
+};
 /** Below 1000 px the clock, the endpoint and the receipt sit behind a tab. */
 const rail = async (page) => {
   const tab = page.getByRole("group", { name: "View" }).getByRole("button", { name: /Session|Receipt/ });
@@ -109,6 +116,17 @@ const SHOTS = [
   { name: "receipt-minimum", url: "/s/demo-ended?mock=user:1,min:0", wait: ".ticket" },
   { name: "receipt-tab", url: "/s/demo-ended?mock=user:1,min:16", wait: ".room", narrow: true, act: rail },
   { name: "session-missing", url: "/s/no-such-session", wait: ".gone", view: true },
+
+  { name: "hosted-empty", url: "/chat", act: room, view: true },
+  { name: "hosted-chat", url: "/chat", view: true, act: async (p) => (await room(p), await say(p, "What can I ask you?")) },
+  { name: "hosted-paid", url: "/chat?mock=user:1", act: async (p) => (await room(p), await say(p, "Write a function that prices a request in python")) },
+  { name: "hosted-tools", url: "/chat?mock=user:1", act: (p) => tools(p) },
+  { name: "hosted-free-used", url: "/chat?mock=hosted:used", view: true, act: (p) => refused(p) },
+  { name: "hosted-free-used-in", url: "/chat?mock=hosted:used,user:1,empty:1", view: true, act: room },
+  { name: "hosted-busy", url: "/chat?mock=hosted:busy,user:1", view: true, act: (p) => refused(p) },
+  { name: "hosted-usage", url: "/chat?mock=user:1", narrow: true, act: async (p) => (await room(p), await say(p, "What can I ask you?"), await p.getByRole("group", { name: "View" }).getByRole("button", { name: "Usage" }).click()) },
+  { name: "hosted-off", url: "/chat?mock=hosted:off", wait: ".nf", view: true },
+  { name: "home-hosted-off", url: "/?mock=hosted:off", wait: ".box", view: true },
 
   { name: "catalog", url: "/models", wait: ".cat-row a" },
   { name: "catalog-filtered", url: "/models?class=light&state=awake&sort=-price", wait: ".cat-row a", view: true },

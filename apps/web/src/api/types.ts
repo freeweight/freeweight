@@ -72,8 +72,40 @@ export type Session = {
 };
 
 export type Awake = { model_id: string; since: number; sessions: number };
-/** `median_wake_s` is null until a wake has been timed. */
-export type Stats = { gpu_seconds: number; sessions: number; tokens: number; wakes: number; median_wake_s: number | null };
+/**
+ * `median_wake_s` is null until a wake has been timed. The two `hosted_` counters are the always-awake model's
+ * own: its requests and tokens are not in the other figures. Absent from a gateway that does not offer it.
+ */
+export type Stats = { gpu_seconds: number; sessions: number; tokens: number; wakes: number; median_wake_s: number | null; hosted_requests?: number; hosted_tokens?: number };
+
+/** The one model that is always awake and paid per token. Prices are USD micro per million tokens. */
+export type HostedModel = {
+  id: string;
+  kind: "hosted";
+  name: string;
+  blurb: string;
+  /** One public line that says where the model runs. */
+  source: string;
+  context: number;
+  price_in_usd_micro_per_mtok: number;
+  price_out_usd_micro_per_mtok: number;
+  max_output_tokens: number;
+  tools_ok: boolean;
+  /** What a free message may be: how many a day, and how large. */
+  free: { per_day: number; max_input_bytes: number; max_output_tokens: number };
+  created_at: number;
+};
+/** One answered request to the always-awake model, as the account's history lists it. */
+export type HostedUse = { id: string; at: number; surface: "api" | "chat"; free: boolean; tokens_in: number; tokens_out: number; charged_usd_micro: number };
+/** What this visitor has used of the always-awake model. */
+export type HostedAccount = {
+  model_id: string;
+  free_per_day: number;
+  free_left: number;
+  /** The next free message runs the human check first. */
+  check_needed: boolean;
+  recent: HostedUse[];
+};
 
 export type ApiKey = {
   id: string;
@@ -111,6 +143,8 @@ export type Me = {
   sessions: Session[];
   /** The line this wallet puts in a model README to list it. Null for a visitor. */
   listing_proof_line: string | null;
+  /** Null when the gateway does not offer the always-awake model. */
+  hosted: HostedAccount | null;
 };
 
 export type Credit = { asset: string; amount: string; credited_usd_micro: number; already_credited: boolean };

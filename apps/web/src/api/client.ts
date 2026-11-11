@@ -2,7 +2,7 @@
 
 import { readSse } from "./sse";
 import { DEFAULT_CONFIG, TIERS } from "./types";
-import type { ApiKey, Awake, Config, Listing, Me, Model, NewKey, Perks, PublicReceipt, Session, StageEvent, Stats, Tier, Topup } from "./types";
+import type { ApiKey, Awake, Config, HostedAccount, HostedModel, Listing, Me, Model, NewKey, Perks, PublicReceipt, Session, StageEvent, Stats, Tier, Topup } from "./types";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -53,6 +53,7 @@ export type RawMe = {
   perks?: Perks;
   sessions?: Session[];
   listing_proof_line?: string;
+  hosted?: HostedAccount | null;
 };
 export function normalizeMe(raw: RawMe): Me {
   return {
@@ -65,6 +66,7 @@ export function normalizeMe(raw: RawMe): Me {
     perks: raw.perks ?? { enabled: false },
     sessions: (raw.sessions ?? []).map(normalizeSession),
     listing_proof_line: raw.listing_proof_line ?? null,
+    hosted: raw.hosted ? { ...raw.hosted, recent: (raw.hosted.recent ?? []).map((u) => ({ ...u, at: toMs(u.at) ?? 0 })) } : null,
   };
 }
 
@@ -141,6 +143,17 @@ export type ChatDelta = {
   finish?: string;
   usage?: Usage;
 };
+
+/** One event of a turn on the always-awake model, as `/api/hosted/chat` streams it. */
+export type HostedEvent =
+  | { event: "start"; free: boolean; free_left: number | null; tools: boolean }
+  | { event: "delta"; text: string }
+  | { event: "reasoning"; text: string }
+  | { event: "tool_call"; id: string; name: string; arguments: string }
+  | { event: "tool_result"; id: string; name: string; ok: boolean; summary: string }
+  | { event: "usage"; tokens_in: number; tokens_out: number; cost_usd_micro: number; free: boolean }
+  | { event: "done"; rounds: number };
+const HOSTED_EVENTS = new Set(["start", "delta", "reasoning", "tool_call", "tool_result", "usage", "done"]);
 
 type ChatChunk = {
   choices?: { delta?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: ChatDelta["tool_calls"] }; finish_reason?: string | null }[];
@@ -291,6 +304,47 @@ export function createClient(f: FetchLike) {
         yield out;
       }
       if (!finished) throw new ApiError("upstream_error", "The reply was cut off before it finished.", 200);
+    },
+
+    /** The always-awake model, or null when this gateway does not offer one. */
+    hosted: () => req<{ model?: HostedModel | null }>("GET", "/api/hosted").then((r) => r.model ?? null),
+
+    /**
+     * One turn of the site's chat on the always-awake model. The gateway runs the tool loop and streams what
+     * happens. A refusal before the stream and an `error` event inside it are both thrown.
+     */
+    async *hostedChat(body: { messages: ChatMessage[]; tools?: boolean; turnstile_token?: string }, signal: AbortSignal): AsyncGenerator<HostedEvent> {
+      let res: Response;
+      try {
+        res = await f("/api/hosted/chat", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json", accept: "text/event-stream" },
+          body: JSON.stringify(body),
+          signal,
+        });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") throw e;
+        throw new ApiError("network", "The connection dropped. Try again.", 0);
+      }
+      if (!res.ok || !res.body) {
+        await parse<never>(res);
+        throw new ApiError("error", "Empty response.", res.status);
+      }
+      for await (const m of readSse(res.body)) {
+        let data: Record<string, unknown>;
+        try {
+          data = JSON.parse(m.data) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+        if (m.event === "error") throw new ApiError(typeof data.code === "string" ? data.code : "error", typeof data.message === "string" ? data.message : "The model returned an error.", 200);
+        if (!HOSTED_EVENTS.has(m.event)) continue;
+        yield { ...data, event: m.event } as HostedEvent;
+        if (m.event === "done") return;
+      }
+      // A turn is whole when the gateway says so. A stream that just stops was cut.
+      throw new ApiError("upstream_error", "The reply was cut off before it finished.", 200);
     },
 
     /** One stateless JSON-RPC call to the toolkit's MCP endpoint. */

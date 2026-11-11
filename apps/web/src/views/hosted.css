@@ -1,0 +1,57 @@
+/* The always-awake model's room. The room itself is the session's (session.css); these are the few parts that
+   only this room has. */
+
+/* On a phone the bar above the chat already says "always awake". */
+.hc-state {
+  display: none;
+}
+@media (min-width: 1000px) {
+  .hc-state {
+    display: inline-flex;
+  }
+}
+/* One quiet line above the message box: what the next message costs the reader. */
+.hc-line {
+  flex: none;
+  padding-bottom: var(--s2);
+  color: var(--ink);
+}
+.hc-refused {
+  flex: none;
+  padding-bottom: var(--s3);
+}
+.hc-check:empty {
+  display: none;
+}
+.hc-check {
+  flex: none;
+  padding-bottom: var(--s4);
+}
+.hc-read {
+  margin-top: 0;
+}
+.hc-more {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hc-more:hover {
+  color: var(--ink);
+}
+.hc-recent li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--s3);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.hc-recent b {
+  font-weight: 500;
+  text-align: right;
+}
+.hc-when {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
