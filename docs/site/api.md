@@ -25,7 +25,7 @@ same code.
 - Times are Unix time in milliseconds, unless a field ends in `_s` (seconds) or `_ms` (a duration).
 - Wallet addresses are lowercase hex.
 - Ids have a prefix: `ses_` for sessions, `key_` for API keys, `lst_` for listings, `hst_` for requests to the
-  always-awake model. An API key itself starts with `fw_`.
+  always-awake model, `load_` for first loads. An API key itself starts with `fw_`.
 - A request body can be at most 1 MB.
 
 ## Authentication
@@ -99,6 +99,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | Status | Code | Meaning |
 | ------ | ---- | ------- |
 | 400 | `bad_request` | The body or a field is missing or malformed. |
+| 400 | `bad_repo` | What was pasted is not a Hugging Face model ID like `org/model`, nor the address of a model page. |
 | 400 | `model_mismatch` | `model` in the request is not the model of the session. |
 | 400 | `invalid_request` | A `/v1` field the gateway checks has a wrong value: `stream` that is not `true` or `false`, `n` outside 1 to 4, or `max_tokens` / `max_completion_tokens` that is not a whole number of zero or more. Nothing was sent to the model. On the always-awake model: `n` other than 1, a `max_tokens` below 1, message content that is not text, a tool that is not a function, another field with a value it does not allow, or a request the model refused as it was sent. |
 | 400 | `too_long` | The extension would take the session past 240 minutes. |
@@ -109,36 +110,46 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 401 | `invalid_api_key` | The API key is unknown or revoked. |
 | 401 | `invalid_signature` | The sign-in signature does not match the address. |
 | 401 | `sign_in_required` | A paid session was asked for without a wallet. Sign in and top up. |
-| 402 | `insufficient_balance` | The balance does not cover the minutes asked for, or one minute. On the always-awake model: it does not cover the highest price the request can have. |
+| 402 | `insufficient_balance` | The balance does not cover the minutes asked for, or one minute. On the always-awake model: it does not cover the highest price the request can have. For a first load: it does not cover the cap of the load, and the error carries `needed_usd_micro`. |
 | 403 | `bad_origin` | A cross-origin write without a bearer token. |
 | 403 | `cookie_required` | API keys are created and revoked from a signed-in browser only. |
 | 403 | `turnstile_failed` | The human check failed. |
 | 403 | `forbidden` | The treasury wallet cannot top up its own account. |
+| 403 | `not_yours` | Only the account that loaded a pasted model can keep it private. |
 | 403 | `trial_unavailable` | `free: true` was sent with an API key, or for a model that is not a Light model. |
 | 404 | `not_found` | No such route. |
-| 404 | `model_not_found`, `session_not_found`, `key_not_found`, `listing_not_found`, `repo_not_found`, `tx_not_found` | No such thing. A session you may not use also answers `session_not_found`. |
+| 404 | `model_not_found`, `session_not_found`, `key_not_found`, `listing_not_found`, `load_not_found`, `repo_not_found`, `tx_not_found` | No such thing. A session you may not use also answers `session_not_found`. A model or a load that another account keeps private answers `model_not_found` or `load_not_found`. |
 | 409 | `no_active_session` | A `/v1` request without a live session, from a key without `auto_session`. |
 | 409 | `session_ended` | The session has ended. Start a new one. |
 | 409 | `session_live` | A free try was asked for while another session of the same account is live. Carries `session_id`. |
 | 409 | `free_session_fixed` | A free session cannot be extended. |
+| 409 | `needs_load` | The weights of this pasted model were cleared. Start a first load of the repository in `hf_repo`, which the error carries. |
+| 409 | `already_loaded` | The pasted repository is in the catalog already. Carries `model_id`. |
+| 409 | `loaded_privately` | Another account loaded this repository and keeps it private. |
+| 409 | `model_id_taken` | The repository cannot get a model id of its own. Write to us. |
 | 409 | `too_many_keys` | The wallet already has 20 keys. |
 | 409 | `pending_confirmations`, `tx_already_used` | Top-up states. See below. |
 | 413 | `body_too_large` | The body is over 1 MB. |
 | 413 | `message_too_long` | A free message on the always-awake model is longer than a free message may be. |
+| 422 | `repo_not_found`, `disabled`, `gated`, `not_text_generation`, `no_safetensors`, `unsupported_architecture`, `custom_code`, `no_chat_template`, `too_big`, `blocked`, `removed` | A first load was asked for a repository that cannot be loaded. The codes are those of the check. See [pasted models](#pasted-models). |
 | 422 | `tx_failed`, `no_transfer`, `tx_too_old`, `amount_too_small`, `amount_too_large` | Top-up problems. See below. |
-| 429 | `rate_limited` | The model is busy with other requests. Carries `Retry-After`. The session is still live. On the always-awake model: the account sent more than 30 requests in a minute. |
+| 429 | `rate_limited` | The model is busy with other requests. Carries `Retry-After`. The session is still live. On the always-awake model: the account sent more than 30 requests in a minute. On `POST /api/models/check`: more than 20 checks in a minute. Carries `Retry-After: 60`. |
 | 429 | `too_many_in_flight` | The account already has 4 requests running on the always-awake model. Carries `Retry-After: 5`. |
 | 429 | `too_many_requests` | The session already has 4 requests in flight. Wait for one to finish. Carries `Retry-After: 1`. |
 | 429 | `wake_budget` | Too many paid sessions were stopped before the model was ready: more than 3 in an hour or 10 in a day. Carries `retry_after`, in seconds, in the error body, and a `Retry-After` header. A wake that failed on our side does not count. |
 | 429 | `free_used` | Today's free session is used, for this visitor or this network address. On the always-awake model: today's free messages are. |
 | 429 | `free_budget_spent` | Today's free sessions, or today's free messages on the always-awake model, are all taken. |
 | 429 | `too_many_listings` | More than 20 listing checks in a day. |
+| 429 | `daily_load_limit` | The account started its 5 first loads for today. |
+| 429 | `too_many_loads` | Too many models are being loaded right now. Carries `Retry-After: 120`. |
 | 500 | `internal_error` | A fault on our side. |
 | 502 | `upstream_error` | The model did not answer. Try again. |
-| 502 | `hf_unavailable` | Hugging Face could not be read for a listing check. |
+| 502 | `hf_unavailable` | Hugging Face could not be read for a check. |
 | 503 | `model_waking` | The model is still waking after a 5-minute wait, or is being woken again. Carries `Retry-After`. The session is still live. |
 | 503 | `model_unavailable` | The model cannot be woken or reached right now. |
 | 503 | `hosted_busy` | The always-awake model has reached what it may cost in a day, all callers together, or cannot take more requests right now. Carries `Retry-After`. Nothing was charged. |
+| 503 | `storage_full` | The storage for pasted models is full. Nothing was held. |
+| 503 | `loads_unavailable`, `load_not_started` | First loads are switched off, or the load could not be handed to a GPU machine. Nothing was charged. |
 | 503 | `misconfigured` | The service is not set up completely. Until it is, only the public reads answer: health, config, stats, receipts, the catalog and `/api/hosted`. `/mcp` answers 503 too, as a JSON-RPC error. |
 | 503 | `model_lost` | The model stopped while the session was live and could not be woken again. The session has ended, and time after the model stopped is not charged. Start a new one. |
 | 503 | `trial_unavailable`, `turnstile_unavailable` | The human check for the free try is not set up or could not be reached right now. |
@@ -181,7 +192,10 @@ A `Model`:
   "wake_high_s": 55,
   "tags": ["chat", "reasoning", "tools"],
   "blurb": "Fast general model with tool calling. The default pick.",
-  "tools_ok": true
+  "tools_ok": true,
+  "origin": "catalog",
+  "private": false,
+  "mine": false
 }
 ```
 
@@ -189,7 +203,12 @@ A `Model`:
 the model is used. `hf_repo`, `sha` and `quant` say exactly which
 weights are served. `context` is 16384 on every model in v0.1. `tools_ok` is `false` on `llama33-70b`: read it
 before you send `tools`. The [models](/docs/models) page explains every field. `state` is one of
-`asleep`, `waking`, `awake`, `cold`, `unavailable`.
+`asleep`, `waking`, `awake`, `cold`, `unavailable`, `needs_load`.
+
+`origin` is `catalog`, or `pasted` for a model that somebody [pasted](/docs/any-model). A pasted model carries
+the tag `untested`, has `tools_ok: false`, and is in the state `needs_load` when its weights were cleared.
+`private` and `mine` are about pasted models: `mine` is `true` for the account that loaded the model, and a
+model with `private: true` is returned to that account only.
 
 `GET /api/config` returns:
 
@@ -202,6 +221,7 @@ before you send `tools`. The [models](/docs/models) page explains every field. `
 | `topups` | `{ open, treasury, assets, confirmations }`. `open` is false until top-ups open. |
 | `perks` | `{ enabled, token, vault }`. Staker perks are planned and not live: `enabled` is `false` and both addresses are `null` in v0.1. |
 | `owner_share_bps` | The model owner's share of paid rent, in basis points. |
+| `paste` | `{ open, engine, engine_version, load_cap_minutes: { light, medium, heavy }, loads_per_day, clear_after_days }`: the rules for [pasted models](#pasted-models). `open` is `false` when no GPU source takes them. |
 | `tool_system_note` | The system note the server puts in front of a conversation when it runs the tools. If you run your own tool loop against `/mcp`, put the same text in front of yours. |
 
 ## Sessions
@@ -780,6 +800,155 @@ the transaction hash. The gateway reads the transaction from the chain and credi
 | `amount_too_small` | The amount rounds to nothing. |
 | `rpc_unavailable`, `price_unavailable`, `price_out_of_bounds` | The chain or the ETH price could not be read. Nothing was credited. Submit the same hash again later. |
 
+## Pasted models
+
+Anyone can paste the ID of a public text model on Hugging Face and have it loaded into the catalog. The check is
+free. The first load is paid by whoever starts it, with a cap. [Bring any model](/docs/any-model) explains the
+flow and what is accepted.
+
+| Endpoint | Does |
+| -------- | ---- |
+| `POST /api/models/check` | Checks a repository from `{ "repo": "org/model" }`. No authentication. |
+| `POST /api/loads` | Starts the first load from `{ "repo": "org/model", "private": false }`, or joins the load that is running. Needs a wallet: an API key or the browser sign-in. |
+| `GET /api/loads` | `{ loads: [Load] }`: the last 20 loads of the account. Needs a wallet. |
+| `GET /api/loads/{id}` | One `Load`. Public, unless the load is of a private model. |
+| `GET /api/loads/{id}/events` | The same load as an event stream. |
+| `GET /api/me/models` | `{ models: [...] }`: the pasted models the account loaded, private ones included. Needs a wallet. |
+| `PUT /api/models/{id}/private` | Keeps a pasted model private or shows it again, from `{ "private": true }`. Only the account that loaded it. Returns the `Model`. |
+
+### Check a repository
+
+```
+POST /api/models/check
+```
+
+```json
+{ "repo": "your-org/your-model" }
+```
+
+`repo` is a model ID or the address of a model page on Hugging Face. The answer has status 200 whether the model
+can be loaded or not. Read `ok`.
+
+A refusal is `{ ok: false, repo, code, reason }`. `code` is one of `repo_not_found`, `disabled`, `gated`,
+`not_text_generation`, `no_safetensors`, `unsupported_architecture`, `custom_code`, `no_chat_template`,
+`too_big`, `blocked`, `removed`. `reason` is one sentence for a person.
+
+An accepted model:
+
+| Field | Meaning |
+| ----- | ------- |
+| `ok` | `true` |
+| `repo` | The repository name as Hugging Face writes it. |
+| `sha` | The commit a load would fetch: the current one, or the pinned one when the model was loaded before. |
+| `name`, `license`, `params_b`, `architecture` | From the repository. `license` is what the model card states, or `""`. |
+| `tier` | The class the files fit: `light`, `medium` or `heavy`. |
+| `size_bytes` | The bytes a load fetches and stores. |
+| `context` | The context the model is served with: what its config states, up to 8192 tokens. |
+| `price_usd_micro_per_min` | The price of the class, for the load and for sessions. |
+| `load_cap_minutes`, `load_cap_usd_micro` | The most minutes a first load is charged for, and what they cost. This amount is held when a load starts. |
+| `load_estimate_s`, `wake_estimate_s` | Estimates from the size, in seconds. |
+| `state` | `new`, `needs_load`, `loading`, `loaded` or `taken`. |
+| `model_id` | The catalog id, when `state` is `loaded` or `needs_load`. Otherwise `null`. |
+| `load_id` | The running load, when `state` is `loading`. Otherwise `null`. |
+| `can_load` | `true` when `state` is `new` or `needs_load`. |
+
+`taken` means another account loaded the repository and keeps it private. A repository is read from Hugging Face
+at most once in two minutes, so a change there can take that long to show.
+
+The other answers are `400 bad_repo`, `429 rate_limited` and `502 hf_unavailable`.
+
+### Start a first load
+
+```
+POST /api/loads
+```
+
+```json
+{ "repo": "your-org/your-model", "private": false }
+```
+
+The repository is checked again. Then the cap of the load is held from the balance and the load starts. The
+answer is a `Load`, with status 201 for a new load and 200 when you joined one that was running. Whoever joins
+holds nothing and pays nothing.
+
+```json
+{
+  "id": "load_k3v7x2m4q7w5z6t5",
+  "model_id": "your-org_your-model",
+  "hf_repo": "your-org/your-model",
+  "sha": "0123456789abcdef0123456789abcdef01234567",
+  "tier": "light",
+  "state": "loading",
+  "stage": "downloading",
+  "bytes": 2147483648,
+  "size_bytes": 6442450944,
+  "mine": true,
+  "price_usd_micro_per_min": 30000,
+  "cap_minutes": 5,
+  "hold_usd_micro": 150000,
+  "charged_usd_micro": 0,
+  "created_at": 1794300000000,
+  "ended_at": null,
+  "now": 1794300042000
+}
+```
+
+| Field | Meaning |
+| ----- | ------- |
+| `state` | `loading`, `ready` or `failed`. |
+| `stage` | `queued`, `checking`, `downloading`, `validating`, `starting`, then `ready` or `failed`. |
+| `bytes`, `size_bytes` | Fetched so far, and the total. |
+| `mine` | `true` for the account that pays for the load. |
+| `hold_usd_micro`, `charged_usd_micro` | The hold and the charge. Both are 0 for anyone but the payer. |
+| `code`, `detail` | On a failed load: why, as a code and as one sentence. |
+| `created_at`, `ended_at`, `now` | When the load started, when it ended (`null` while it runs), and the server's clock. |
+
+A load that ends `ready` is charged the price per minute for the seconds from `created_at` to the end, at most
+`cap_minutes`. A load that ends `failed` is charged nothing. In both cases the rest of the hold returns. The
+model's commit is pinned by its first load: a load after the weights were cleared fetches the same `sha`.
+
+Refusals come before any money is held:
+
+| Status | Code | Meaning |
+| ------ | ---- | ------- |
+| 422 | a check code | The repository cannot be loaded. The codes and sentences are those of the check. |
+| 409 | `already_loaded` | The model is in the catalog. Carries `model_id`. |
+| 409 | `loaded_privately` | Another account loaded it and keeps it private. |
+| 402 | `insufficient_balance` | The balance does not cover the cap. Carries `needed_usd_micro`. |
+| 429 | `daily_load_limit` | 5 first loads per account per day. |
+| 429 | `too_many_loads` | Too many loads are running across the service. Carries `Retry-After: 120`. |
+| 503 | `storage_full` | The storage for pasted models is full. |
+| 503 | `loads_unavailable`, `load_not_started` | No GPU source takes pasted models right now, or the load could not be handed over. The hold was returned. |
+
+The `code` of a failed load is one of `insufficient_balance`, `too_big`, `unsupported_architecture`,
+`custom_code`, `no_chat_template`, `no_weights`, `unsupported_format`, `unsafe_files`, `no_config`,
+`download_failed`, `wake_failed`, `timeout`, `lane_unavailable`, `build_error`.
+
+### Follow a load
+
+`GET /api/loads/{id}` returns the `Load`. It needs no authentication unless the load is of a private model, which
+only its account can read: everyone else gets `404 load_not_found`.
+
+`GET /api/loads/{id}/events` is the same as server-sent events:
+
+| Event | When | Data |
+| ----- | ---- | ---- |
+| `load` | At once, and each time the stage or the byte count changes. | The `Load`. |
+| `tick` | Every 2 seconds while the load runs. | The `Load`. |
+| `ended` | Once, when the load is `ready` or `failed`. The stream closes after it. | The `Load`. |
+
+A load does not depend on the stream. Close it and open it again whenever you like.
+
+### Your pasted models
+
+`GET /api/me/models` lists the pasted models the account loaded. Each is a `Model` with three more fields:
+`size_bytes`, `last_woken_at`, and `clears_at`, the time the weights are due to be cleared (`null` when they are
+cleared already). Weights are cleared when nobody has woken the model for `paste.clear_after_days` days.
+
+`PUT /api/models/{id}/private` with `{ "private": true }` takes the model out of every public list. From then on
+only the loading account can read it or start a session on it. Everyone else gets `404 model_not_found`. Other
+answers: `403 not_yours` and `404 model_not_found`.
+
 ## Listings
 
 | Endpoint | Does |
@@ -842,6 +1011,8 @@ The fixed limits:
 | Free try | 5 minutes, one per visitor per UTC day, with limits per network address and a daily total |
 | API keys | 20 per wallet |
 | Listing checks | 20 per wallet per day |
+| Checks of a pasted repository | 20 per minute per network address, and per account |
+| First loads | 5 per account per day |
 | Request body | 1 MB on `/api` and `/v1`, 256 KiB on `/mcp` |
 | Chat messages | 200 per request on the chat routes |
 | Always-awake model | 4 requests at the same time and 30 a minute per account. 4,096 tokens of output per request. A daily ceiling for all callers together. |
@@ -857,6 +1028,9 @@ There is no idempotency-key header. These calls are safe to repeat:
   `already_credited: true`.
 - `POST /api/sessions/{id}/stop` on an ended session returns it unchanged.
 - `POST /api/listings` for a repository and commit that already has an open listing returns that listing.
+- `POST /api/loads` for a repository that is being loaded returns that load. It never starts a second one and
+  never holds twice.
+- `POST /api/models/check` changes nothing.
 
 These are not:
 

@@ -69,7 +69,20 @@ staging address with the same paths. `/api` has no version prefix and can still 
   `RedHatAI/Qwen3-32B-FP8-dynamic`, the FP8 quantisation of Qwen3 32B) and `llama33-70b` (Heavy, preview,
   `RedHatAI/Llama-3.3-70B-Instruct-quantized.w4a16`, a 4-bit weight quantisation). Each is pinned to a commit:
   see `hf_repo`, `sha` and `quant`. A larger catalog is planned for launch.
-- The context is 16384 tokens on every model in v0.1: prompt, thinking and answer together.
+- The context is 16384 tokens on each of those three models: prompt, thinking and answer together.
+- Any public text model on Hugging Face can be added by its ID. `POST /api/models/check` with
+  `{"repo": "org/model"}` is free and needs no key: it answers `ok: true` with `tier`, the price, the cap of the
+  first load and `state`, or `ok: false` with `code` and `reason`. Accepted: public and not gated,
+  text-generation, safetensors weights, one architecture the engine (vLLM) runs, no custom code, a chat template,
+  at most 68 GiB of files.
+- `POST /api/loads` with `{"repo": "org/model"}` and an API key starts the first load. It holds the cap (5, 10 or
+  15 minutes at the price of the class: $0.15, $0.60 or $1.50) and charges the time the load took, never more
+  than the cap. A failed load costs nothing. Poll `GET /api/loads/{id}` until `state` is `ready` or `failed`,
+  then start a session on its `model_id`. Repeating the call joins the running load and holds nothing more.
+- A pasted model has `origin: "pasted"`, the tag `untested`, `tools_ok: false` and a context of at most 8192
+  tokens. Its weights are cleared after 28 days without a wake: then `state` is `needs_load`, a session start
+  answers `409 needs_load`, and it needs a first load again. `"private": true` on the load keeps the model to
+  the loading account. An account starts 5 first loads a day.
 - Tool calling: read `tools_ok` for the model. It is `true` for `qwen3-8b` and `qwen3-32b`: parsed `tool_calls`
   and `finish_reason: "tool_calls"`, streamed or not. It is `false` for `llama33-70b`, which is not tested yet:
   do not send `tools` to it. A streamed tool call arrives in pieces: the first delta has `index`, `id` and
@@ -107,11 +120,12 @@ and the OpenAPI file, which is plain text.
 - [Agents](https://freeweight.xyz/docs/agents): keys that start sessions, waiting for a wake, budgets, MCP and a worked loop.
 - [Tools](https://freeweight.xyz/docs/tools): what each of the eleven tools returns, on which chains, and what it misses.
 - [Models](https://freeweight.xyz/docs/models): tiers, quantisation, context, states, how a wake works and how wake estimates are measured.
+- [Bring any model](https://freeweight.xyz/docs/any-model): paste a Hugging Face model ID, what is accepted, the capped first load, and the same flow from the API.
 - [Questions](https://freeweight.xyz/docs/faq): short answers about sessions, money, privacy and the API.
 
 ## API
 
-- [OpenAPI 3.1 description](https://freeweight.xyz/openapi.yaml): every route of `/api`, `/v1` and `/mcp`, with schemas for Model, Session, StageEvent, Receipt and errors.
+- [OpenAPI 3.1 description](https://freeweight.xyz/openapi.yaml): every route of `/api`, `/v1` and `/mcp`, with schemas for Model, Session, StageEvent, Receipt, RepoCheck, Load and errors.
 
 ## Optional
 

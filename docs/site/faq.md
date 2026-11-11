@@ -176,6 +176,12 @@ call them in the site's chat, and any agent can call them over MCP at `/mcp`. Se
 The live list is on the site under Models and in `GET /api/models`. The one always-awake model is not rented:
 it is in `GET /api/hosted`.
 
+### Can I rent a model that is not in the catalog?
+
+Yes, if it is a public text model on Hugging Face with safetensors weights that the engine can serve. Paste its
+ID, pay a capped first load ($0.15 at most for a Light model), and it is in the catalog, marked untested.
+See [bring any model](/docs/any-model).
+
 ### Can I add my own model?
 
 If you control its repository on Hugging Face and it passes the checks, yes. You earn 30% of the rent paid on it.

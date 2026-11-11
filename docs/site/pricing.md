@@ -85,6 +85,27 @@ The same holds when a model drops while your session is running. The session is 
 again, and your clock stands still until it is ready. If it cannot be woken again, the session ends and you pay
 only for the time before the model stopped. See [models](/docs/models#if-a-model-drops-during-a-session).
 
+## The first load of a pasted model
+
+You can [bring any model](/docs/any-model) by pasting its Hugging Face ID. Checking it is free. Loading it for the
+first time is not: the weights have to be fetched, stored, and started once on a GPU.
+
+| Class | Price during the load | Charged for at most | A first load costs at most |
+| ----- | --------------------- | ------------------- | -------------------------- |
+| Light | $0.03 per minute | 5 minutes | $0.15 |
+| Medium | $0.06 per minute | 10 minutes | $0.60 |
+| Heavy | $0.10 per minute | 15 minutes | $1.50 |
+
+- You pay for the time the load takes, by the second, and never past the cap. A load that takes longer still
+  finishes.
+- The cap is held when the load starts. What is not charged returns when it ends.
+- A load that fails costs nothing.
+- Somebody who joins a load that is already running pays nothing.
+- After the first load the model is rented like any other: the wake is free and the session is charged by the
+  minute.
+- Weights that nobody has woken for 28 days are cleared. The model then needs a first load again, at the same
+  terms.
+
 ## One instance, many clocks
 
 An awake model runs as one instance. Everyone who rents it at that moment shares that instance. Each session has

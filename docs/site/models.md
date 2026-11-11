@@ -52,6 +52,8 @@ This page explains how to read the catalog. The catalog itself is live:
 | `wake_low_s`, `wake_high_s` | The range most wakes fall in, in seconds. 0 until the model has been woken. |
 | `tools_ok` | Whether tool calling is switched on for this model and has passed our test. See below. |
 | `tags`, `blurb` | Short labels and one line of description. |
+| `origin` | `catalog`, or `pasted` for a model somebody [brought by its Hugging Face ID](/docs/any-model). |
+| `private`, `mine` | For pasted models: whether the account that loaded the model keeps it private, and whether that account is yours. |
 
 ## Tiers
 
@@ -148,6 +150,7 @@ you rented. In the API these are the fields `hf_repo`, `sha` and `quant` of the 
 | `asleep` | The model is not on a GPU. Starting a session wakes it. |
 | `cold` | Asleep, and never woken on this deployment. Its wake estimate is a default, not a measurement. |
 | `unavailable` | The model cannot be woken right now. |
+| `needs_load` | A pasted model whose stored weights were cleared. It needs a [first load](/docs/any-model#when-the-weights-are-cleared) before it can be woken. |
 
 A model goes back to sleep when its last session ends. Nobody pays for a sleeping model.
 
@@ -239,3 +242,10 @@ thrown away:
 
 Anyone who controls a model repository can ask to list it. Such models carry the tag `community` and name their
 owner's wallet in `owner`. See [listing a model](/docs/listing).
+
+## Pasted models
+
+Anyone can paste the ID of a public text model on Hugging Face and pay for its first load. Such models carry the
+tag `untested` and have `origin: "pasted"`. They are served exactly as published, at the commit of their first
+load, with a context of at most 8192 tokens and without tool calling. Freeweight has checked that the engine
+starts them and nothing else. See [bring any model](/docs/any-model).
