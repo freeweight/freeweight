@@ -53,10 +53,11 @@ export type RepoCheck =
       load_cap_usd_micro: number;
       load_estimate_s: number;
       wake_estimate_s: number;
-      /** `taken`: another account loaded it and keeps it private. */
-      state: "new" | "loading" | "loaded" | "needs_load" | "taken";
+      state: "new" | "loading" | "loaded" | "needs_load";
       model_id: string | null;
       load_id: string | null;
+      /** The state is that of the caller's own private copy. Nobody else's private copy is ever named. */
+      private: boolean;
       can_load: boolean;
     };
 

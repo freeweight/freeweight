@@ -33,12 +33,11 @@ const REFUSED: Record<string, string> = {
 };
 const LOAD_ERR: Record<string, string> = {
   sign_in_required: "Sign in with a wallet to load a model.",
-  daily_load_limit: "This account has used today's first loads. Try again tomorrow.",
-  too_many_loads: "You have other loads running. Start this one when one of them is done.",
+  daily_load_limit: "This account has used its first loads for the last 24 hours.",
+  too_many_loads: "Too many models are being loaded right now. Try again in a few minutes.",
   storage_full: "The storage for pasted models is full right now. Try again later.",
   load_not_started: "The load could not be started, and nothing was charged. Try again.",
   loads_unavailable: "Pasted models cannot be loaded right now.",
-  loaded_privately: "Another account loaded this model and keeps it private.",
   model_id_taken: "A different model in the catalog already has this name, so this one cannot be loaded.",
   network: "The request did not get through. Nothing was charged. Try again.",
 };
@@ -63,7 +62,11 @@ export function PasteBox({ config, id = "paste", initial = "" }: { config: Confi
     setError(null);
     try {
       const r = await api.checkRepo(repo);
-      if (turn === asked.current) setCheck(r);
+      if (turn === asked.current) {
+        setCheck(r);
+        // (a load again of the caller's own private copy stays private)
+        setKeep(r.ok && r.private);
+      }
     } catch (e) {
       const err = toApiError(e);
       if (turn === asked.current) setError({ code: err.code, message: CHECK_ERR[err.code] ?? err.message });
@@ -240,7 +243,6 @@ function Verdict({ check, signedIn, busy, keep, setKeep, onLoad }: { check: Pass
         <span className="pb-fine">Somebody is loading this model right now. Watching is free, and you can rent it as soon as it is ready.</span>
       </div>
     );
-  if (check.state === "taken") return <Notice>Another account loaded this model and keeps it private.</Notice>;
   if (!check.can_load) return <Notice>This model passed the check, but pasted models cannot be loaded right now.</Notice>;
   return (
     <>

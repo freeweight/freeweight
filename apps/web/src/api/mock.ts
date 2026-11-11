@@ -26,7 +26,7 @@
 //
 // A pasted repo is checked by its name: "missing" is not found, "gated" is gated, "gguf" has no safetensors, "embed"
 // is not a text model, "custom" needs its own code, "notemplate" has no chat template, "405b" is too big, "blocked" is
-// blocked, "busy" is rate-limited, "hfdown" cannot be checked, "vault" is loaded privately by somebody else, and
+// blocked, "busy" is rate-limited, "hfdown" cannot be checked, and
 // "crowd" is being loaded by somebody else right now. Any load address that starts with "demo" creates its own load
 // (/load/demo); "demo-watch" is somebody else's load, "demo-ready" one that finished and "demo-failed" one that did not.
 //
@@ -879,12 +879,12 @@ function checkPasted(repo: string): RepoCheck {
   const lower = repo.toLowerCase();
   const refusal = REFUSALS.find((r) => r.match.test(lower));
   if (refusal) return { ok: false, repo, code: refusal.code, reason: refusal.reason };
-  const known = models.find((m) => m.hf_repo.toLowerCase() === lower);
+  // (a private copy of somebody else is never found: for this caller it does not exist)
+  const known = models.find((m) => m.hf_repo.toLowerCase() === lower && visible(m));
   const { tier, params, bytes } = sizeOf(repo);
   const est = estimates(bytes);
   const running = runningLoad(repo);
-  const taken = /vault/.test(lower) || (known !== undefined && !visible(known));
-  const state = taken ? "taken" : running || /crowd/.test(lower) ? "loading" : !known ? "new" : known.state === "needs_load" ? "needs_load" : "loaded";
+  const state = running || /crowd/.test(lower) ? "loading" : !known ? "new" : known.state === "needs_load" ? "needs_load" : "loaded";
   return {
     ok: true,
     repo: known?.hf_repo ?? repo,
@@ -902,8 +902,9 @@ function checkPasted(repo: string): RepoCheck {
     load_estimate_s: est.load_s,
     wake_estimate_s: known?.wake_estimate_s || est.wake_s,
     state,
-    model_id: state === "new" || state === "taken" ? null : (known?.id ?? pastedId(repo)),
+    model_id: state === "new" ? null : (known?.id ?? pastedId(repo)),
     load_id: state !== "loading" ? null : (running?.l.id ?? "demo-watch"),
+    private: !!known?.private,
     can_load: (state === "new" || state === "needs_load") && opts.paste !== "closed",
   };
 }
@@ -1281,10 +1282,9 @@ export async function mockFetch(input: string, init: RequestInit = {}): Promise<
     const chk = checkPasted(repo);
     if (!chk.ok) return err(422, chk.code, chk.reason);
     if (chk.state === "loaded") return err(409, "already_loaded", "This model is in the catalog already.", { model_id: chk.model_id });
-    if (chk.state === "taken") return err(409, "loaded_privately", "Another account loaded this model and keeps it private.");
     if (chk.state === "loading") return json(viewOf(loads.get(chk.load_id!) ?? demoLoad(chk.load_id!)));
     if (opts.paste === "closed") return err(503, "loads_unavailable", "Pasted models cannot be loaded right now.");
-    if (opts.loads === "limit") return err(429, "daily_load_limit", "This account started 5 loads today. Try again tomorrow.");
+    if (opts.loads === "limit") return err(429, "daily_load_limit", "An account starts 5 first load(s) in 24 hours. Try again when the oldest of them is 24 hours old.");
     if (balance < chk.load_cap_usd_micro) return err(402, "insufficient_balance", "The balance does not cover the most this load can cost.", { needed_usd_micro: chk.load_cap_usd_micro });
     return json(viewOf(startLoad(chk.repo, body.private === true, `load_${Math.random().toString(36).slice(2, 12)}`, true)), 201);
   }

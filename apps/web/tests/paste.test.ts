@@ -60,10 +60,10 @@ describe("mock gateway: pasted models", () => {
     expect(await refused(api.checkRepo("acme/hfdown-7b"))).toMatchObject({ code: "hf_unavailable", status: 502 });
   });
 
-  it("knows a model that is in the catalog, one that needs its load again, and one somebody keeps private", async () => {
+  it("knows a model that is in the catalog, one that needs its load again, and never one somebody else keeps private", async () => {
     expect(await passed("smallworks/fable-3b")).toMatchObject({ state: "loaded", model_id: "smallworks_fable-3b", can_load: false });
     expect(await passed("northfield/ledger-12b")).toMatchObject({ state: "needs_load", model_id: "northfield_ledger-12b", can_load: true });
-    expect(await passed("acme/vault-7b")).toMatchObject({ state: "taken", model_id: null, can_load: false });
+    expect(await passed("acme/vault-7b")).toMatchObject({ state: "new", model_id: null, private: false, can_load: true });
     expect(await passed("acme/crowd-7b")).toMatchObject({ state: "loading", load_id: "demo-watch", can_load: false });
   });
 
@@ -112,7 +112,6 @@ describe("mock gateway: pasted models", () => {
     const loaded = await refused(api.startLoad("smallworks/fable-3b", false));
     expect(loaded).toMatchObject({ code: "already_loaded", status: 409 });
     expect(loaded.extra.model_id).toBe("smallworks_fable-3b");
-    expect(await refused(api.startLoad("acme/vault-7b", false))).toMatchObject({ code: "loaded_privately", status: 409 });
 
     const l = await after(api.startLoad("acme/tiny-1b", false), 200);
     expect(l).toMatchObject({ hf_repo: "acme/tiny-1b", model_id: "acme_tiny-1b", state: "loading", tier: "light", mine: true, cap_minutes: 5, hold_usd_micro: 150_000, charged_usd_micro: 0 });
