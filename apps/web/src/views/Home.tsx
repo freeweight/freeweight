@@ -156,7 +156,7 @@ function AwakeBoard({ awake, models, down }: { awake: Awake[] | null; models: Mo
                 <span className="board-name">{m.name}</span>
                 <span className="board-meta">
                   <TierMark tier={m.tier} plain />
-                  <span className="mono">asleep · {typicalWake(m.wake_estimate_s) ? `typical wake ${typicalWake(m.wake_estimate_s)}` : "wake not measured yet"}</span>
+                  <span className="mono">asleep · {typicalWake(m) ? `wake ${typicalWake(m)!.text}` : "wake not measured yet"}</span>
                 </span>
                 <Icon name="arrow" size={14} />
               </Link>

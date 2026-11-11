@@ -13,9 +13,9 @@ function wakeLine(m: Model): string {
   if (m.state === "awake") return "Awake now. Joining takes a few seconds.";
   if (m.state === "waking") return "Waking for someone else. You can join as soon as it is ready.";
   if (m.state === "unavailable") return "Not available right now.";
-  const est = typicalWake(m.wake_estimate_s);
+  const est = typicalWake(m)?.text;
   if (!est) return "Typical wake: not measured yet.";
-  return m.state === "cold" ? `Typical wake: ${est}. Cold: the weights are not cached near a GPU yet, so the first one takes longer.` : `Typical wake: ${est}.`;
+  return m.state === "cold" ? `Wake: ${est}. Cold: the weights are not cached near a GPU yet, so the first one takes longer.` : `Wake: ${est}.`;
 }
 
 function snippet(m: Model): string {

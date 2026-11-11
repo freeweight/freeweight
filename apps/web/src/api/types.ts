@@ -18,6 +18,9 @@ export type Model = {
   state: ModelState;
   /** Seconds a wake typically takes. Null (or 0) until one has been measured. */
   wake_estimate_s: number | null;
+  /** The quick and the slow end of recent wakes, in seconds, from a gateway that measures them. Absent or 0: not measured. */
+  wake_low_s?: number | null;
+  wake_high_s?: number | null;
   tags: string[];
   blurb: string;
   tools_ok: boolean;

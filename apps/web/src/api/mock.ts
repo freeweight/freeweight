@@ -103,6 +103,9 @@ const models: Model[] = [
     tier: "light",
     context: 40960,
     wake_estimate_s: 104,
+    // This one's wakes vary, so the catalog carries the quick and the slow end too.
+    wake_low_s: 64,
+    wake_high_s: 131,
     tags: ["general", "tools", "roleplay"],
     blurb: "Follows instructions closely and rarely refuses a legal request.",
   }),

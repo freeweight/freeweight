@@ -64,9 +64,39 @@ export function about(seconds: number): string {
   return `about ${m} min`;
 }
 
-/** A typical wake in words, or null when none has been measured: the page then says so and never makes one up. */
-export function typicalWake(seconds: number | null | undefined): string | null {
-  return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? about(seconds) : null;
+/** What the catalog says about how long a model takes to wake. The low and high ends come only from a gateway that measures them. */
+export type WakeFigures = { wake_estimate_s?: number | null; wake_low_s?: number | null; wake_high_s?: number | null };
+/** A typical wake: the words for it, and the seconds they stand for (low and high are the same for a single figure). */
+export type TypicalWake = { text: string; lowS: number; highS: number; range: boolean };
+
+// Wake times are said in plain steps: 5 s under half a minute, 10 s up to a minute, 30 s up to three minutes,
+// whole minutes above. A wake that took 26 s once and 41 s the next time is not "35 s".
+const wakeStep = (s: number): number => (s < 30 ? 5 : s < 60 ? 10 : s < 180 ? 30 : 60);
+const measured = (v: number | null | undefined): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+const minutes = (s: number): string => String(s / 60);
+
+/**
+ * A model's typical wake, or null when none has been measured: the page then says so and never makes one up.
+ * With a low and a high end that differ once rounded it is a range, "usually 30 to 60 s". Otherwise it is one
+ * rounded figure, "about 30 s".
+ */
+export function typicalWake(m: WakeFigures | null | undefined): TypicalWake | null {
+  if (!m) return null;
+  if (measured(m.wake_low_s) && measured(m.wake_high_s) && m.wake_high_s >= m.wake_low_s) {
+    const lowS = Math.max(5, Math.floor(m.wake_low_s / wakeStep(m.wake_low_s)) * wakeStep(m.wake_low_s));
+    // A high end just under a boundary rounds up onto it, and the step above takes over from there.
+    const up = Math.ceil(m.wake_high_s / wakeStep(m.wake_high_s)) * wakeStep(m.wake_high_s);
+    const highS = Math.ceil(up / wakeStep(up)) * wakeStep(up);
+    if (highS > lowS) {
+      const text = highS <= 60 ? `${lowS} to ${highS} s` : lowS >= 60 ? `${minutes(lowS)} to ${minutes(highS)} min` : `${lowS} s to ${minutes(highS)} min`;
+      return { text: `usually ${text}`, lowS, highS, range: true };
+    }
+  }
+  const from = measured(m.wake_estimate_s) ? m.wake_estimate_s : measured(m.wake_low_s) && measured(m.wake_high_s) ? m.wake_low_s : null;
+  if (from === null) return null;
+  const near = Math.max(5, Math.round(from / wakeStep(from)) * wakeStep(from));
+  const s = Math.max(5, Math.round(near / wakeStep(near)) * wakeStep(near));
+  return { text: s < 60 ? `about ${s} s` : `about ${minutes(s)} min`, lowS: s, highS: s, range: false };
 }
 
 /** The gateway's answer to too many wakes stopped before they finished, with how long to wait when it says. */

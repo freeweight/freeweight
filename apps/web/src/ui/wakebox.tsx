@@ -156,7 +156,7 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
   const short = signedIn && !free && (me?.balance_usd_micro ?? 0) < cost;
   const verb = model.state === "awake" ? "Join" : "Wake it";
   const freeMin = config?.free_minutes ?? DEFAULT_CONFIG.free_minutes;
-  const est = typicalWake(model.wake_estimate_s);
+  const est = typicalWake(model)?.text;
 
   async function go(): Promise<void> {
     if (!model || busy) return;
@@ -258,7 +258,7 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
             <>Waking now. You join when it is ready.</>
           ) : (
             <>
-              Typical wake: {est ?? "not measured yet"}
+              {est ? `Wake: ${est}` : "Typical wake: not measured yet"}
               {est && model.state === "cold" ? ", longer from cold" : ""}. The wake is free.
             </>
           )}

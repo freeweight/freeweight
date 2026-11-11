@@ -84,9 +84,11 @@ describe("time", () => {
   it("keeps estimates coarse", () => {
     expect(about(2)).toBe("about 5 s");
     // A model nobody has timed has no typical wake, and the page never makes one up.
-    expect(typicalWake(30)).toBe("about 30 s");
+    expect(typicalWake({ wake_estimate_s: 30 })?.text).toBe("about 30 s");
     expect(typicalWake(null)).toBeNull();
-    expect(typicalWake(0)).toBeNull();
+    expect(typicalWake({ wake_estimate_s: 0 })).toBeNull();
+    expect(typicalWake({ wake_estimate_s: null })).toBeNull();
+    expect(typicalWake({})).toBeNull();
     expect(typicalWake(undefined)).toBeNull();
     expect(wakeBudget(1380)).toBe("You stopped several wakes before they finished. Try again in 23 min.");
     expect(wakeBudget(20)).toBe("You stopped several wakes before they finished. Try again in 1 min.");
@@ -104,6 +106,51 @@ describe("time", () => {
     expect(ago(7_200_000)).toBe("2 h");
     expect(ago(172_800_000)).toBe("2 d");
     expect(day(Date.UTC(2026, 10, 10, 12))).toBe("2026-11-10");
+  });
+});
+
+describe("typical wake", () => {
+  const one = (s: number) => typicalWake({ wake_estimate_s: s })?.text;
+  const span = (est: number, low: number, high: number) => typicalWake({ wake_estimate_s: est, wake_low_s: low, wake_high_s: high })?.text;
+
+  it("says one figure in plain steps, never 26 or 35", () => {
+    expect(one(3)).toBe("about 5 s");
+    expect(one(14.1)).toBe("about 15 s");
+    expect(one(26)).toBe("about 25 s");
+    expect(one(28)).toBe("about 30 s");
+    expect(one(35)).toBe("about 40 s");
+    expect(one(44)).toBe("about 40 s");
+    expect(one(57)).toBe("about 1 min");
+    expect(one(70)).toBe("about 1 min");
+    expect(one(80)).toBe("about 1.5 min");
+    expect(one(135)).toBe("about 2.5 min");
+    expect(one(170)).toBe("about 3 min");
+    expect(one(200)).toBe("about 3 min");
+    expect(one(260)).toBe("about 4 min");
+  });
+
+  it("says a range when the low and the high end differ: low down, high up", () => {
+    expect(span(35, 31, 58)).toBe("usually 30 to 60 s");
+    expect(span(26, 14.1, 45.7)).toBe("usually 10 to 50 s");
+    expect(span(26, 24, 31)).toBe("usually 20 to 40 s");
+    expect(span(90, 62, 115)).toBe("usually 1 to 2 min");
+    expect(span(90, 95, 170)).toBe("usually 1.5 to 3 min");
+    expect(span(60, 34, 135)).toBe("usually 30 s to 2.5 min");
+    expect(span(200, 150, 185)).toBe("usually 2.5 to 4 min");
+  });
+
+  it("carries the seconds the words stand for", () => {
+    expect(typicalWake({ wake_estimate_s: 35, wake_low_s: 31, wake_high_s: 58 })).toEqual({ text: "usually 30 to 60 s", lowS: 30, highS: 60, range: true });
+    expect(typicalWake({ wake_estimate_s: 26 })).toEqual({ text: "about 25 s", lowS: 25, highS: 25, range: false });
+  });
+
+  it("falls back to one figure when the ends are missing, zero, the same step, or the wrong way round", () => {
+    expect(span(35, 0, 0)).toBe("about 40 s");
+    expect(span(35, 31, 0)).toBe("about 40 s");
+    expect(span(35, 60, 30)).toBe("about 40 s");
+    expect(span(40, 40, 40)).toBe("about 40 s");
+    expect(span(2, 2, 4)).toBe("about 5 s"); // nothing wakes in "0 to 5 s"
+    expect(typicalWake({ wake_estimate_s: 26, wake_low_s: null, wake_high_s: undefined })?.text).toBe("about 25 s");
   });
 });
 

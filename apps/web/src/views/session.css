@@ -143,6 +143,12 @@
   left: var(--est);
   border-left: 1px dashed var(--line-2);
 }
+/* when wakes vary it is a band, from the quick end to the slow end */
+.rack.band .rk-t::before {
+  right: calc(100% - var(--est-to));
+  border-right: 1px dashed var(--line-2);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
 /* now, a brass line through every row */
 ol .rk-t::after {
   content: "";

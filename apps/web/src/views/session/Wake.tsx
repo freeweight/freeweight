@@ -127,9 +127,9 @@ export function Wake({ live, session: s, model }: { live: Live; session: Session
   const degraded = running && Boolean(s.degraded);
   const shown = r.readyAt ?? r.failedAt ?? r.elapsed;
   // A model nobody has timed yet has no typical wake: the scale still needs a width, the page shows no figure.
-  const est = typicalWake(model?.wake_estimate_s);
-  const estS = est ? (model?.wake_estimate_s ?? 100) : 100;
-  // The typical time is the catalog's figure for this model, a mark on the scale and never a promise. It is only
+  const est = typicalWake(model);
+  const estS = est?.highS ?? 100;
+  // The typical time is the catalog's figure for this model, a mark on the scale (a band when wakes vary) and never a promise. It is only
   // worth showing against a first, healthy try: after a failure, a retry or a gap in the detail it goes.
   const typical = Boolean(model) && est !== null && !failed && !degraded && attempt === 1;
   const max = scaleMax(estS, shown);
@@ -222,7 +222,7 @@ export function Wake({ live, session: s, model }: { live: Live; session: Session
                           : "Still working. One stage can take a couple of minutes on its own. The wake is not billed."
                         : model
                           ? est
-                            ? `Typical wake: ${est}${model.state === "cold" ? ", longer from cold storage" : ""}. It can take longer. The wake is not billed.`
+                            ? `Wake: ${est.text}${model.state === "cold" ? ", longer from cold storage" : ""}. It can take longer. The wake is not billed.`
                             : "Typical wake: not measured yet for this model. The wake is not billed."
                           : "The wake is not billed."}
                 </span>
@@ -233,15 +233,15 @@ export function Wake({ live, session: s, model }: { live: Live; session: Session
         <Facts model={model} session={s} />
       </div>
 
-      <div className={`rack${typical ? "" : " no-est"}`} style={{ "--now": pct(shown), "--est": pct(estS * 1000) } as CSSProperties}>
+      <div className={`rack${typical ? (est?.range ? " band" : "") : " no-est"}`} style={{ "--now": pct(shown), "--est": pct((est?.lowS ?? estS) * 1000), "--est-to": pct(estS * 1000) } as CSSProperties}>
         <div className="rk rk-head">
           <div className="rk-l micro" aria-hidden="true">
             Stage
           </div>
           <div className="rk-t">
             {typical ? (
-              <span className={`rk-est micro${estS * 1000 > max / 2 ? " left" : ""}`} aria-hidden="true">
-                typical {clock(estS * 1000)}
+              <span className={`rk-est micro${(est?.lowS ?? estS) * 1000 > max / 2 ? " left" : ""}`} aria-hidden="true">
+                {est?.text}
               </span>
             ) : degraded ? (
               <span className="rk-hint micro">live detail unavailable</span>
