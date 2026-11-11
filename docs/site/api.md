@@ -921,7 +921,7 @@ Refusals come before any money is held:
 | 503 | `loads_unavailable`, `load_not_started` | No GPU source takes pasted models right now, or the load could not be handed over. The hold was returned. |
 
 The `code` of a failed load is one of `insufficient_balance`, `too_big`, `unsupported_architecture`,
-`custom_code`, `no_chat_template`, `no_weights`, `unsupported_format`, `unsafe_files`, `no_config`,
+`custom_code`, `no_chat_template`, `no_weights`, `unsupported_format`, `unsafe_files`, `too_many_files`, `no_config`,
 `download_failed`, `wake_failed`, `timeout`, `lane_unavailable`, `build_error`.
 
 ### Follow a load
