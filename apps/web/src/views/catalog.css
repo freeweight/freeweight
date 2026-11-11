@@ -340,7 +340,7 @@
 
 /* ---------- model page ---------- */
 
-.model {
+.model-page {
   display: grid;
   gap: var(--s6);
 }
@@ -419,7 +419,7 @@
   color: var(--ink-3);
 }
 @media (min-width: 1000px) {
-  .model {
+  .model-page {
     grid-template-columns: minmax(0, 1fr) 380px;
     gap: var(--s8);
   }

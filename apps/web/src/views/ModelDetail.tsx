@@ -57,7 +57,7 @@ export default function ModelDetail({ params }: { params: Record<string, string>
             </button>
           </Notice>
         ) : (
-          <div className="model" aria-busy="true">
+          <div className="model-page" aria-busy="true">
             <div className="model-main">
               <span className="skel" style={{ width: "60%", height: 48 }} />
               <div className="box box-skel" />
@@ -65,7 +65,7 @@ export default function ModelDetail({ params }: { params: Record<string, string>
           </div>
         )
       ) : (
-        <div className="model">
+        <div className="model-page">
           <div className="model-main">
             <header>
               <h1 className={`model-name tw-${model.tier}`}>{model.name}</h1>
