@@ -82,7 +82,7 @@ staging address with the same paths. `/api` has no version prefix and can still 
 - A pasted model has `origin: "pasted"`, the tag `untested`, `tools_ok: false` and a context of at most 8192
   tokens. Its weights are cleared after 28 days without a wake: then `state` is `needs_load`, a session start
   answers `409 needs_load`, and it needs a first load again. `"private": true` on the load keeps the model to
-  the loading account. An account starts 5 first loads a day.
+  the loading account. An account starts 5 first loads in any 24 hours.
 - Tool calling: read `tools_ok` for the model. It is `true` for `qwen3-8b` and `qwen3-32b`: parsed `tool_calls`
   and `finish_reason: "tool_calls"`, streamed or not. It is `false` for `llama33-70b`, which is not tested yet:
   do not send `tools` to it. A streamed tool call arrives in pieces: the first delta has `index`, `id` and

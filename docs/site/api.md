@@ -140,7 +140,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 429 | `free_used` | Today's free session is used, for this visitor or this network address. On the always-awake model: today's free messages are. |
 | 429 | `free_budget_spent` | Today's free sessions, or today's free messages on the always-awake model, are all taken. |
 | 429 | `too_many_listings` | More than 20 listing checks in a day. |
-| 429 | `daily_load_limit` | The account started its 5 first loads for today. |
+| 429 | `daily_load_limit` | The account started its 5 first loads in the last 24 hours. |
 | 429 | `too_many_loads` | Too many models are being loaded right now. Carries `Retry-After: 120`. |
 | 500 | `internal_error` | A fault on our side. |
 | 502 | `upstream_error` | The model did not answer. Try again. |
@@ -915,7 +915,7 @@ Refusals come before any money is held:
 | 409 | `already_loaded` | The model is in the catalog. Carries `model_id`. |
 | 409 | `loaded_privately` | Another account loaded it and keeps it private. |
 | 402 | `insufficient_balance` | The balance does not cover the cap. Carries `needed_usd_micro`. |
-| 429 | `daily_load_limit` | 5 first loads per account per day. |
+| 429 | `daily_load_limit` | 5 first loads per account in a rolling 24 hours. |
 | 429 | `too_many_loads` | Too many loads are running across the service. Carries `Retry-After: 120`. |
 | 503 | `storage_full` | The storage for pasted models is full. |
 | 503 | `loads_unavailable`, `load_not_started` | No GPU source takes pasted models right now, or the load could not be handed over. The hold was returned. |
@@ -1012,7 +1012,7 @@ The fixed limits:
 | API keys | 20 per wallet |
 | Listing checks | 20 per wallet per day |
 | Checks of a pasted repository | 20 per minute per network address, and per account |
-| First loads | 5 per account per day |
+| First loads | 5 per account in a rolling 24 hours |
 | Request body | 1 MB on `/api` and `/v1`, 256 KiB on `/mcp` |
 | Chat messages | 200 per request on the chat routes |
 | Always-awake model | 4 requests at the same time and 30 a minute per account. 4,096 tokens of output per request. A daily ceiling for all callers together. |

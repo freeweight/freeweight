@@ -125,7 +125,7 @@ date 28 days ahead.
 | Limit | Value |
 | ----- | ----- |
 | Checks | 20 per minute per network address, and per account |
-| First loads | 5 per account per day. Joining a load is not counted. |
+| First loads | 5 per account in any 24 hours (a rolling window, not a calendar day). Joining a load is not counted. |
 | Loads at the same time | A small number across the whole service. One more answers `429 too_many_loads`: try again in a few minutes. |
 | Storage | Pasted models share one storage budget. When it is full, a load answers `503 storage_full`. |
 
