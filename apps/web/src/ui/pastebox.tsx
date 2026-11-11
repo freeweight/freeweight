@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Config, type RepoCheck } from "../api";
-import { about, context, params, perMin, shortSha, size, TIER_NAME, usd } from "../lib/format";
+import { about, context, licence, params, perMin, shortSha, size, TIER_NAME, usd } from "../lib/format";
 import { refreshMe, toApiError, useMe } from "../lib/hooks";
 import { firstLoadShown, loadedNote, parseRepo } from "../lib/repo";
 import { Link, navigate } from "../router";
@@ -213,7 +213,7 @@ export function PasteBox({ config, id = "paste", initial = "" }: { config: Confi
             <div>
               <dt>Licence</dt>
               <dd>
-                <span className="mono">{check.license || "not stated"}</span>
+                <span className="mono">{licence(check.license)}</span>
                 <span className="pb-note">as the repo states it. Whether your use fits it is yours to check.</span>
               </dd>
             </div>

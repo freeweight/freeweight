@@ -55,7 +55,8 @@ The class follows from the size of the files that are fetched:
 The live numbers are in `GET /api/config`: `prices_usd_micro_per_min` and `paste.load_cap_minutes`.
 
 The check also shows the licence the model card states. It is shown as stated and is not judged: whether you may
-use the model for your purpose is for you to read.
+use the model for your purpose is for you to read. A repository whose card states no licence is not refused: the
+check and the model's page say "No licence stated by the publisher", and `license` is `""`.
 
 ## The first load
 

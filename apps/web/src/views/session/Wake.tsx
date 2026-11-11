@@ -2,7 +2,7 @@
 
 import { useRef, useState, type CSSProperties } from "react";
 import { api, DEFAULT_CONFIG, type Model, type Session, type Stage } from "../../api";
-import { clock, clockTenths, context, perMin, shortSha, TIER_CLASS, took, typicalWake } from "../../lib/format";
+import { clock, clockTenths, context, licence, perMin, shortSha, TIER_CLASS, took, typicalWake } from "../../lib/format";
 import { useConfig, useFrame } from "../../lib/hooks";
 import { turnstileToken } from "../../lib/turnstile";
 import type { Live } from "../../lib/session";
@@ -82,7 +82,7 @@ export function Facts({ model, session }: { model: Model | null; session: Sessio
       </div>
       <div>
         <dt>Licence</dt>
-        <dd className="mono small">{model.license}</dd>
+        <dd className="mono small">{licence(model.license)}</dd>
       </div>
       {session && (
         <div>

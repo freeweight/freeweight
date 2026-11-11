@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api, type Model } from "../api";
-import { context, params as fmtParams, perMin, shortAddr, shortSha, TIER_CLASS, typicalWake } from "../lib/format";
+import { context, licence, params as fmtParams, perMin, shortAddr, shortSha, TIER_CLASS, typicalWake } from "../lib/format";
 import { useEffect } from "react";
 import { loadFailed, refreshLive, toApiError, useHosted, useLive, useLoad, useTitle } from "../lib/hooks";
 import { HOSTED_PATH } from "../lib/hosted";
@@ -197,7 +197,7 @@ export default function ModelDetail({ params }: { params: Record<string, string>
               </div>
               <div>
                 <dt>Licence</dt>
-                <dd className="mono small">{model.license}</dd>
+                <dd className="mono small">{licence(model.license)}</dd>
               </div>
               {model.owner && (
                 <div>

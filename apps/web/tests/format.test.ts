@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, params, perMin, plainCode, shortAddr, shortSha, size, took, usd, typicalWake, wakeBudget } from "../src/lib/format";
+import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, licence, params, perMin, plainCode, shortAddr, shortSha, size, took, usd, typicalWake, wakeBudget } from "../src/lib/format";
 
 describe("money", () => {
   it("prints dollars with two decimals", () => {
@@ -212,5 +212,12 @@ describe("numbers at the edge of a unit", () => {
     expect(usd(-1_250_000)).toBe("-$1.25");
     expect(usd(40)).toBe("<$0.0001");
     expect(usd(999_990)).toBe("$1.00");
+  });
+});
+
+describe("licence", () => {
+  it("shows the licence as stated, or says plainly that there is none", () => {
+    expect(licence("apache-2.0")).toBe("apache-2.0");
+    expect(licence("")).toBe("No licence stated by the publisher");
   });
 });

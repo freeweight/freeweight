@@ -57,6 +57,9 @@ export function took(ms: number): string {
   return `${Math.floor(total / 60)} min ${total % 60} s`;
 }
 
+/** The licence a model card states, or plainly that it states none. */
+export const licence = (stated: string): string => stated || "No licence stated by the publisher";
+
 /** An estimate, deliberately coarse: "about 40 s", "about 1.5 min". */
 export function about(seconds: number): string {
   if (seconds < 90) return `about ${Math.max(5, Math.round(seconds / 5) * 5)} s`;
