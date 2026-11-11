@@ -8,7 +8,7 @@ import { loadConfig, toApiError } from "./hooks";
 
 export type Item =
   | { kind: "user"; id: number; text: string }
-  | { kind: "assistant"; id: number; text: string; thinking?: string; state: "streaming" | "done" | "stopped" | "error"; error?: string; usage?: Usage; ms?: number }
+  | { kind: "assistant"; id: number; text: string; thinking?: string; thinkMs?: number; state: "streaming" | "done" | "stopped" | "error"; error?: string; usage?: Usage; ms?: number }
   | { kind: "tool"; id: number; name: string; args: string; state: "running" | "ok" | "error" | "stopped"; ms?: number; result?: string };
 
 /** Reasoning models wrap their scratch work in <think> tags. Split it from the answer; tolerate a half-streamed tag. */
@@ -82,7 +82,7 @@ export type ToolOutcome = { text: string; ok: boolean };
 /** Where the loop shows what happens. `stream` may be shown late (it is a running text), the others at once. */
 export type Sink = {
   add: (items: Item[]) => void;
-  stream: (id: number, p: { text: string; thinking: string }) => void;
+  stream: (id: number, p: { text: string; thinking: string; thinkMs?: number }) => void;
   patch: (id: number, p: Partial<Item>) => void;
   remove: (id: number) => void;
 };
@@ -116,20 +116,31 @@ export async function converse(t: Turn): Promise<void> {
     const tools = t.tools?.length && round < MAX_ROUNDS - 1 ? t.tools : undefined;
     const sent = t.tools?.length ? withToolNote(messages, t.note) : messages;
     let r = newReply();
+    // How long the model has been thinking: from the request to the first word of its answer. A round that ends
+    // in tool calls with no answer was thinking until its end.
+    let thinkMs: number | undefined;
+    let answering = false;
     for (let attempt = 0; ; attempt++) {
       r = newReply();
+      thinkMs = undefined;
+      answering = false;
       let heard = false;
       try {
         for await (const d of t.chat(sent, tools, signal)) {
           heard = true;
           addDelta(r, d);
-          sink.stream(id, { text: r.text, thinking: r.thinking });
+          if (!answering) {
+            const s = splitThinking(r.text);
+            answering = Boolean(s.answer.trim());
+            if (!answering && (r.thinking || s.thinking)) thinkMs = performance.now() - t0;
+          }
+          sink.stream(id, { text: r.text, thinking: r.thinking, thinkMs });
         }
         break;
       } catch (e) {
         if (signal.aborted) {
           if (r.text) messages.push({ role: "assistant", content: r.text });
-          sink.patch(id, { text: r.text, thinking: r.thinking, state: "stopped" });
+          sink.patch(id, { text: r.text, thinking: r.thinking, thinkMs, state: "stopped" });
           return;
         }
         const err = toApiError(e);
@@ -139,14 +150,14 @@ export async function converse(t: Turn): Promise<void> {
           sink.patch(id, { state: "stopped" });
           return;
         }
-        sink.patch(id, { text: r.text, thinking: r.thinking, state: "error", error: err.code === "too_many_requests" ? "Wait for the current answers to finish." : err.message });
+        sink.patch(id, { text: r.text, thinking: r.thinking, thinkMs, state: "error", error: err.code === "too_many_requests" ? "Wait for the current answers to finish." : err.message });
         return;
       }
     }
     const calls = r.calls.filter((c) => c?.function.name);
     if (!calls.length || !tools) {
       messages.push({ role: "assistant", content: r.text });
-      sink.patch(id, { text: r.text, thinking: r.thinking, state: "done", usage: r.usage, ms: performance.now() - t0 });
+      sink.patch(id, { text: r.text, thinking: r.thinking, thinkMs, state: "done", usage: r.usage, ms: performance.now() - t0 });
       return;
     }
 
@@ -154,7 +165,7 @@ export async function converse(t: Turn): Promise<void> {
     // The history carries arguments the engine can read back: what the model wrote when it parses, else an empty object.
     const kept = calls.map((c, i) => ({ ...c, function: { name: c.function.name, arguments: parsed[i] && c.function.arguments.trim() ? c.function.arguments : "{}" } }));
     messages.push({ role: "assistant", content: r.text || null, tool_calls: kept });
-    if (r.text || r.thinking) sink.patch(id, { text: r.text, thinking: r.thinking, state: "done", usage: r.usage });
+    if (r.text || r.thinking) sink.patch(id, { text: r.text, thinking: r.thinking, thinkMs, state: "done", usage: r.usage });
     else sink.remove(id);
 
     const rows = calls.map((c) => ({ kind: "tool" as const, id: t.nextId(), name: c.function.name, args: c.function.arguments, state: "running" as const }));

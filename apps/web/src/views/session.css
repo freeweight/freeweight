@@ -522,7 +522,11 @@ ol .rk-t::after {
   margin: 4px 0 5px;
 }
 
+/* Reasoning. While the model thinks: a block of fixed height, so nothing below it moves, with a head line and
+   the last three steps, the newest at the bottom. After that: one row that opens the steps, and under them the
+   text as the model wrote it. */
 .think {
+  min-width: 0;
   border-left: 2px solid var(--line-2);
   padding-left: var(--s3);
   color: var(--ink-3);
@@ -538,7 +542,8 @@ ol .rk-t::after {
 .tool summary::-webkit-details-marker {
   display: none;
 }
-.think summary {
+.think summary,
+.think-head {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -554,13 +559,109 @@ ol .rk-t::after {
   transition: transform var(--fast);
   transform: rotate(-90deg);
 }
-.think[open] summary svg,
+.think[open] > summary svg,
+.think-raw[open] > summary svg,
 .tool[open] summary svg {
   transform: none;
 }
-.think > div {
-  white-space: pre-wrap;
+.think-head {
+  display: flex;
+  gap: var(--s2);
+  color: var(--ink-2);
+}
+.think-meta {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.think-mark,
+.tool-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--ink-3);
+}
+.think-mark,
+.tool.running .tool-mark {
+  background: linear-gradient(to right, var(--accent) 50%, transparent 50%);
+  box-shadow: inset 0 0 0 1px var(--accent-ink);
+  animation: tick 1s steps(2, jump-none) infinite;
+}
+.think-tape {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 60px;
   margin-top: var(--s1);
+  overflow: hidden;
+  list-style: none;
+  /* Older steps fade out upward. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 62%);
+  mask-image: linear-gradient(to bottom, transparent, #000 62%);
+}
+.think-tape li {
+  flex: none;
+  height: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* A new step comes in from below and pushes the others up one line. */
+  animation: think-up var(--slow) var(--ease);
+}
+.think-tape li:only-child {
+  animation-name: think-in;
+}
+/* The step being written keeps its newest words in view. */
+.think-tape li.now {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--ink-2);
+}
+.think-tape li.now > span {
+  flex: none;
+  min-width: 100%;
+}
+.think-tape li.now[data-over] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px);
+  mask-image: linear-gradient(to right, transparent, #000 32px);
+}
+@keyframes think-up {
+  from {
+    transform: translateY(20px);
+  }
+}
+@keyframes think-in {
+  from {
+    opacity: 0;
+  }
+}
+.think-steps {
+  display: grid;
+  gap: 2px;
+  margin-top: var(--s1);
+  list-style: none;
+  counter-reset: step;
+  color: var(--ink-2);
+}
+.think-steps li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  counter-increment: step;
+}
+.think-steps li::before {
+  content: counter(step, decimal-leading-zero);
+  font: 400 11px/20px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.think-raw {
+  margin-top: var(--s2);
+}
+.think-raw > div {
+  max-height: 320px;
+  margin-top: var(--s1);
+  overflow: auto;
+  white-space: pre-wrap;
 }
 
 .tool {
@@ -578,18 +679,6 @@ ol .rk-t::after {
   font-size: 12px;
   line-height: 16px;
   color: var(--ink-3);
-}
-.tool-mark {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 1px;
-  background: var(--ink-3);
-}
-.tool.running .tool-mark {
-  background: linear-gradient(to right, var(--accent) 50%, transparent 50%);
-  box-shadow: inset 0 0 0 1px var(--accent-ink);
-  animation: tick 1s steps(2, jump-none) infinite;
 }
 .tool.error .tool-mark {
   background: var(--danger);

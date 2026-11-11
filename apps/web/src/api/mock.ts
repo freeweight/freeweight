@@ -18,6 +18,7 @@
 //   slow:1         slow answers   down:1   the gateway is not answering
 //   model:<id>     the model demo addresses use     min:N     minutes a signed-in demo session runs
 //   tools:hostile  the demo token's name tries to pass for markup, instructions and a badge
+//   think:long     every model reasons at length before it answers or calls a tool      think:hold   ...and never gets past it
 //
 // Any session address that starts with "demo" creates its own session (/s/demo, /s/demo-2), and
 // "demo-ended" opens one that has already finished, so every screen has a direct address.
@@ -577,6 +578,17 @@ function sseResponse(start: (send: (event: string | null, data: string) => void,
 }
 
 type Msg = { role: string; content?: string | null; tool_call_id?: string };
+const THOUGHT = "The question is short, so the answer should be too. I will say what this session is and what it costs, then stop.";
+// Reasoning the way models write it: sentences, a blank line, a short list.
+const LONG_THOUGHT = `Okay. The user is asking about this session, so start from what is on the page. The clock in the corner counts GPU time, not wall time, and it started when the model was ready.
+
+What do they need first? Probably the price, e.g. what one minute costs and whether the wake was charged. The wake is free, so say that early.
+
+1. State what the session is: one model, rented by the minute.
+2. Give the cost per minute and the one-minute minimum.
+3. Mention that stopping early returns the rest of the hold.
+
+Check the numbers against the rate card before writing them down. A Light model is the cheapest class, and the figure should carry two decimals. Keep it short, then stop.`;
 function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessionId: string | null, signal?: AbortSignal | null): Response {
   const x = sessionId ? sessions.get(sessionId) : [...sessions.values()].find((o) => o.s.model_id === body.model && o.s.state === "active");
   if (!x || x.s.state !== "active") return err(409, "no_session", "No active session on this model.");
@@ -587,10 +599,14 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
   const tokensIn = Math.round(body.messages.reduce((n, mm) => n + (mm.content?.length ?? 0), 0) / 4) + 12;
 
   return sseResponse((send, close, sig) => {
+    // A model tagged for reasoning thinks first, in its own field, then leaves blank lines before the answer.
+    const thinks = last?.role === "user" && Boolean(opts.think || models.find((mm) => mm.id === body.model)?.tags.includes("reasoning"));
+    const thought = thinks ? (opts.think ? LONG_THOUGHT : THOUGHT).match(/\s*\S+/g)! : [];
+    const pace = opts.think ? 60 : 28;
     const addr = /0x[0-9a-fA-F]{40}/.exec(user)?.[0];
     if (body.tools?.length && last?.role === "user" && (addr || /token|contract|holder|safe/i.test(user))) {
       const args = JSON.stringify({ chain: "robinhood", token: addr ?? "0x4e1f0a6c2b8d9e3f5a7c1b0d2e4f6a8c0b1d3e5f" });
-      setTimeout(() => {
+      const call = (): void => {
         // The shape an engine streams: an opening delta, blank lines, then each call's name and its arguments in pieces.
         const cut = Math.ceil(args.length / 3);
         const pieces = [args.slice(0, cut), args.slice(cut, 2 * cut), args.slice(2 * cut)];
@@ -605,7 +621,19 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
         x.s.tokens_in += tokensIn;
         x.s.tokens_out += 38;
         close();
-      }, 500);
+      };
+      if (!opts.think) {
+        setTimeout(call, 500);
+        return;
+      }
+      // With tools on, a model that reasons does it before it asks for a tool.
+      let k = 0;
+      const tv = setInterval(() => {
+        if (sig?.aborted) return clearInterval(tv);
+        if (k < thought.length) return send(null, chunk(k === 0 ? { role: "assistant", reasoning: thought[k++] } : { reasoning: thought[k++] }));
+        clearInterval(tv);
+        if (opts.think !== "hold") call();
+      }, pace);
       return;
     }
     const text =
@@ -614,9 +642,6 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
         : last?.role === "tool"
         ? "Both tools answered.\n\n- **Overview**: PLATE trades on one main pool with about $182k of liquidity. The market cap is unknown, because the circulating supply could not be read.\n- **Sell test**: buying and selling 0.3 WETH from a fresh wallet lost 0.7%. The owner is renounced and the source is verified.\n\nThe sell test ran from one wallet at one small size, so it is not a guarantee. It is what the chain says right now."
         : REPLIES.find((r) => r.match.test(user))!.text;
-    // A model tagged for reasoning thinks first, in its own field, then leaves blank lines before the answer.
-    const thinks = last?.role === "user" && models.find((mm) => mm.id === body.model)?.tags.includes("reasoning");
-    const thought = thinks ? "The question is short, so the answer should be too. I will say what this session is and what it costs, then stop.".match(/\s*\S+/g)! : [];
     const parts = [...thought.map((p) => ({ reasoning: p })), ...(thinks ? [{ content: "\n\n" }] : []), ...(text.match(/\s*\S+|\s+$/g) ?? [text]).map((p) => ({ content: p }))];
     let i = 0;
     const iv = setInterval(() => {
@@ -626,6 +651,7 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
         x.s.tokens_out += i;
         return;
       }
+      if (opts.think === "hold" && i >= thought.length) return clearInterval(iv);
       if (i >= parts.length) {
         clearInterval(iv);
         send(null, chunk({}, "stop", { prompt_tokens: tokensIn, completion_tokens: parts.length }));
@@ -637,7 +663,7 @@ function chat(body: { model: string; messages: Msg[]; tools?: unknown[] }, sessi
       }
       send(null, chunk(i === 0 ? { role: "assistant", ...parts[i] } : parts[i]!));
       i++;
-    }, 28);
+    }, pace);
   }, signal);
 }
 

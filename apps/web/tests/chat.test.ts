@@ -114,6 +114,27 @@ describe("a turn with tools", () => {
     expect(s.items[0]).toMatchObject({ text: "", thinking: "A price is asked.", state: "done" });
   });
 
+  it("times the thinking of a reply, and only of one that thought", async () => {
+    const s = stage([[{ reasoning: "A price is asked." }, ...asks(["{}"])], [{ content: "Done." }]]);
+    await converse(s.turn);
+    expect((s.items[0] as { thinkMs?: number }).thinkMs).toBeGreaterThanOrEqual(0);
+    expect((s.items[2] as { thinkMs?: number }).thinkMs).toBeUndefined();
+  });
+
+  it("stops the thinking time at the first word of the answer", async () => {
+    const seen: (number | undefined)[] = [];
+    const s = stage([[{ content: "<think>Short question." }, { content: " Short answer.</think>" }, { content: "\n\nYes." }, { content: " It is." }]], { tools: false });
+    const stream = s.turn.sink.stream;
+    s.turn.sink.stream = (id, p) => (seen.push(p.thinkMs), stream(id, p));
+    await converse(s.turn);
+    expect(seen).toHaveLength(4);
+    expect(seen[0]).toBeTypeOf("number");
+    expect(seen[1]).toBeGreaterThanOrEqual(seen[0]!);
+    expect(seen[2]).toBe(seen[1]);
+    expect(seen[3]).toBe(seen[1]);
+    expect(s.items[0]).toMatchObject({ state: "done", thinkMs: seen[1] });
+  });
+
   it("never runs a tool on arguments it cannot read", async () => {
     const s = stage([asks(['{"address": 0xabc']), [{ content: "I could not look that up." }]]);
     await converse(s.turn);

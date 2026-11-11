@@ -6,6 +6,7 @@ import { splitThinking, useChat, type Item } from "../../lib/chat";
 import { clock, grouped, perMin, took, usd } from "../../lib/format";
 import { useConfig, useEvery, useMe } from "../../lib/hooks";
 import { showHidden, toolSummary, visible } from "../../lib/inert";
+import { steps, thoughtFor } from "../../lib/steps";
 import { Markdown } from "../../lib/markdown";
 import type { Live } from "../../lib/session";
 import { callsWithKey, snippets, type Lang } from "../../lib/snippets";
@@ -44,6 +45,70 @@ type TurnProps = {
   /** Set on replies that follow a tool call. They may repeat text a stranger wrote, so their links stay text. */
   plainLinks: boolean;
 };
+
+/**
+ * A model's reasoning, shown as the steps it went through. The steps are its own words, cut at each sentence.
+ * While it thinks, a block of fixed height shows the step being written and the two before it. After that it is
+ * one row that opens the list of steps, and under the list the text exactly as the model wrote it.
+ */
+function Thought({ text, ms, live }: { text: string; ms?: number; live: boolean }) {
+  const all = steps(text);
+  const n = all.length;
+  const now = useRef<HTMLLIElement>(null);
+  // A step longer than its line shows its newest words. Only then does the line fade out at its start.
+  useLayoutEffect(() => {
+    const el = now.current;
+    if (el) el.toggleAttribute("data-over", el.scrollWidth > el.clientWidth);
+  });
+  if (live) {
+    const shown = all.slice(-4);
+    return (
+      <div className="think live">
+        <div className="think-head">
+          <span className="think-mark" aria-hidden="true" />
+          Thinking
+          <span className="think-meta">
+            · {ms != null && `${clock(ms)} · `}step {Math.max(1, n)}
+          </span>
+        </div>
+        {/* Keyed by the count, so each new step moves the lines up by one. */}
+        <ol className="think-tape" key={n} aria-hidden="true">
+          {shown.map((step, i) => {
+            const last = i === shown.length - 1;
+            return (
+              <li key={n - shown.length + i} ref={last ? now : undefined} className={last ? "now" : undefined}>
+                <span>{step}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    );
+  }
+  return (
+    <details className="think">
+      <summary>
+        <Icon name="chevron" size={14} />
+        Thought{ms != null && ` for ${thoughtFor(ms)}`}
+        {n > 0 && ` · ${n} ${n === 1 ? "step" : "steps"}`}
+      </summary>
+      {n > 0 && (
+        <ol className="think-steps">
+          {all.map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ol>
+      )}
+      <details className="think-raw">
+        <summary>
+          <Icon name="chevron" size={14} />
+          As written
+        </summary>
+        <div tabIndex={0}>{text}</div>
+      </details>
+    </details>
+  );
+}
 
 const Turn = memo(function Turn({ item, last, canAct, onRegenerate, plainLinks }: TurnProps) {
   if (item.kind === "user") {
@@ -95,21 +160,16 @@ const Turn = memo(function Turn({ item, last, canAct, onRegenerate, plainLinks }
   const thinking = visible([item.thinking, split.thinking].filter(Boolean).join("\n\n"));
   const answer = visible(split.answer);
   const streaming = item.state === "streaming";
-  const open = split.open || (Boolean(item.thinking) && !item.text);
+  // The model is still thinking until the first word of its answer, also while it writes out a tool call.
+  const pondering = streaming && Boolean(thinking) && !answer;
+  // A reply that only thought and then called tools has no answer to count or copy.
+  const aside = item.state === "done" && !answer && !last;
   const rate = item.usage && item.ms ? item.usage.completion_tokens / (item.ms / 1000) : null;
   return (
     <div className="turn model">
       <div className="who micro">Model</div>
       <div className="said">
-        {thinking && (
-          <details className="think" open={open && streaming}>
-            <summary>
-              <Icon name="chevron" size={14} />
-              {open && streaming ? "Thinking" : `Thought for ${thinking.split(/\s+/).length} words`}
-            </summary>
-            <div>{thinking}</div>
-          </details>
-        )}
+        {thinking && <Thought text={thinking} ms={item.thinkMs} live={pondering} />}
         {answer ? (
           <div className={`md md-chat${streaming ? " live" : ""}`}>
             <Markdown text={answer} plainLinks={plainLinks} clean />
@@ -127,7 +187,7 @@ const Turn = memo(function Turn({ item, last, canAct, onRegenerate, plainLinks }
             )}
           </Notice>
         )}
-        {!streaming && item.state !== "error" && (
+        {!streaming && !aside && item.state !== "error" && (
           <div className="turn-foot">
             <span className="mono">
               {item.state === "stopped"

@@ -25,7 +25,14 @@ const say = async (page, text) => {
   const box = page.getByRole("textbox", { name: "Message" });
   await box.fill(text);
   await box.press("Enter");
-  await page.locator(".turn.model .turn-foot").last().waitFor({ timeout: 20_000 });
+  await page.locator(".turn.model .turn-foot").last().waitFor({ timeout: 40_000 });
+};
+/** Ask, and stop at the moment the model has written the last word of its reasoning and not yet answered. */
+const pondering = async (page, text) => {
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill(text);
+  await box.press("Enter");
+  await page.locator(".think-tape li.now", { hasText: "then stop." }).waitFor({ timeout: 30_000 });
 };
 const room = async (page) => {
   await page.getByRole("textbox", { name: "Message" }).waitFor({ timeout: 30_000 });
@@ -84,7 +91,14 @@ const SHOTS = [
   { name: "room-paid", url: "/s/demo?mock=speed:60,active:400,user:1", act: room, view: true },
   { name: "room-low", url: "/s/demo?mock=speed:60,active:262", act: room, view: true },
   { name: "room-stop", url: "/s/demo?mock=speed:60,active:95", view: true, act: async (p) => (await room(p), await rail(p), await p.getByRole("button", { name: "Stop", exact: true }).click()) },
+  { name: "room-thinking", url: "/s/demo?mock=speed:60,active:95,think:hold", view: true, act: async (p) => (await room(p), await pondering(p, "What should I know about this session?")) },
+  {
+    name: "room-thought",
+    url: "/s/demo?mock=speed:60,active:95,think:long",
+    act: async (p) => (await room(p), await say(p, "What should I know about this session?"), await p.locator(".think > summary").click(), await p.locator(".think-raw > summary").click()),
+  },
   { name: "room-tools", url: "/s/demo?mock=speed:60,active:95", act: (p) => tools(p) },
+  { name: "room-tools-thought", url: "/s/demo?mock=speed:60,active:95,think:long", act: (p) => tools(p) },
   { name: "room-tools-hostile", url: "/s/demo?mock=speed:60,active:95,tools:hostile", act: (p) => tools(p, true) },
   { name: "room-paused", url: "/s/demo?mock=speed:60,active:95,paused:1", wait: ".room", settle: 1200, view: true },
   { name: "room-session", url: "/s/demo?mock=speed:60,active:95", narrow: true, act: async (p) => (await room(p), await rail(p)) },
