@@ -88,8 +88,10 @@ can pass the check and still fail its load, for example when the engine cannot s
 
 ## After the first load
 
-The model is in the catalog under an id made from the repository name: `org/model` becomes `org_model`, in lower
-case. It carries the tag `untested` and has `origin: "pasted"` in the API.
+The model is in the catalog under an id made from the repository name: `Org/Model-1.5` becomes `org_model-1-5`.
+The id is in lower case, and anything but a letter or a digit becomes a hyphen. Read the id from `model_id` of the
+load: a long name is cut, and a name that is taken gets a short suffix. The model carries the tag `untested`
+and has `origin: "pasted"` in the API.
 
 - Anyone can rent it, at the price of its class. A session wakes it, and the wake is free, as for every model.
   The [free try](/docs/pricing#the-free-try) works on a Light one.
