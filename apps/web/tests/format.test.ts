@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, params, perMin, plainCode, shortAddr, shortSha, took, usd, typicalWake, wakeBudget } from "../src/lib/format";
+import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, params, perMin, plainCode, shortAddr, shortSha, size, took, usd, typicalWake, wakeBudget } from "../src/lib/format";
 
 describe("money", () => {
   it("prints dollars with two decimals", () => {
@@ -189,6 +189,15 @@ describe("numbers at the edge of a unit", () => {
     expect(compact(999.6)).toBe("1k");
     expect(compact(999_950)).toBe("1M");
     expect(compact(999_499)).toBe("999k");
+  });
+
+  it("prints stored bytes in the units Hugging Face uses", () => {
+    expect(size(0)).toBe("1 MB");
+    expect(size(840_000_000)).toBe("840 MB");
+    expect(size(999_400_000)).toBe("999 MB");
+    expect(size(999_600_000)).toBe("1 GB");
+    expect(size(16_600_000_000)).toBe("16.6 GB");
+    expect(size(143_000_000_000)).toBe("143 GB");
   });
 
   it("reads a context size in thousands, however it is counted", () => {

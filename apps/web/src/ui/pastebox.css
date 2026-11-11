@@ -1,0 +1,142 @@
+/* The paste box: a field, and under it what the free check found. */
+.pb {
+  display: grid;
+  gap: var(--s3);
+  min-width: 0;
+}
+.pb-form {
+  display: grid;
+  gap: 6px;
+}
+.pb-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2);
+}
+.pb-row .input {
+  height: 44px;
+  font-size: 14px;
+}
+.pb-row .btn {
+  height: 44px;
+}
+.pb-fine {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-3);
+}
+.pb-card {
+  display: grid;
+  gap: var(--s4);
+  padding: var(--s4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  min-width: 0;
+}
+.pb-card.no {
+  gap: var(--s2);
+  border-style: dashed;
+}
+.pb-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s1) var(--s3);
+  min-width: 0;
+}
+.pb-name {
+  font-size: 20px;
+  line-height: 28px;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.pb-repo {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.pb-why {
+  font-size: 15px;
+  line-height: 24px;
+  max-width: 60ch;
+}
+.pb-facts {
+  display: grid;
+  border-top: 1px solid var(--line-2);
+}
+.pb-facts > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: var(--s4);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 20px;
+}
+.pb-facts dt {
+  font: 500 11px/20px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.pb-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--s2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pb-facts dd.mono,
+.pb-facts dd .mono {
+  font-size: 13px;
+}
+.pb-note {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.pb-keep {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.pb-keep input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--ink);
+}
+.pb-go {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3) var(--s4);
+}
+.pb-go .btn {
+  flex: 1 1 100%;
+}
+.pb-go .pb-fine {
+  flex: 1 1 260px;
+}
+.pb-cost {
+  font-size: 13px;
+  font-weight: 500;
+  padding-left: var(--s3);
+  margin-left: var(--s1);
+  border-left: 1px solid color-mix(in srgb, var(--on-accent) 35%, transparent);
+}
+@media (min-width: 600px) {
+  .pb-card {
+    padding: var(--s5);
+  }
+  .pb-go .btn {
+    flex: 0 0 auto;
+  }
+}

@@ -608,3 +608,43 @@
     text-align: left;
   }
 }
+
+/* ---------- pasted models ---------- */
+
+.mym {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--s3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 20px;
+}
+.mym-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s2);
+  font-weight: 500;
+  min-width: 0;
+}
+.mym-name .tag {
+  vertical-align: 0;
+}
+.mym-repo,
+.mym-meta {
+  grid-column: 1;
+  font-size: 13px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.mym-state {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--s2) var(--s4);
+}

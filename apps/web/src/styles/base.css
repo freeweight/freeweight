@@ -434,6 +434,11 @@ table {
 .state.cold::before {
   background: repeating-linear-gradient(135deg, var(--ink-3) 0 1px, transparent 1px 3px);
 }
+/* stored weights cleared: a dashed outline, like everything that is not there yet */
+.state.needs_load::before {
+  box-shadow: none;
+  border: 1px dashed var(--ink-3);
+}
 .state.unavailable {
   text-decoration: line-through;
 }

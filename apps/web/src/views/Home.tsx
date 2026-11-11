@@ -5,6 +5,7 @@ import { loadFailed, refreshMe, useEvery, useHosted, useLive, useLoad, useMe, us
 import { HOSTED_PATH, leaveOpening, tokenPrices } from "../lib/hosted";
 import { Link, navigate } from "../router";
 import { Icon, Notice, Rule, TierMark } from "../ui/bits";
+import { PasteBox } from "../ui/pastebox";
 import { WakeBox } from "../ui/wakebox";
 import { ROADMAP } from "./roadmap-data";
 import "./home.css";
@@ -44,6 +45,10 @@ export function Home() {
               </Notice>
             </div>
           )}
+          <div className="hero-paste">
+            <PasteBox config={config.data} />
+          </div>
+          <p className="micro hero-or">Or wake one from the catalog</p>
           {models ? (
             <WakeBox models={models} config={config.data} />
           ) : error ? (

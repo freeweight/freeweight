@@ -1,13 +1,14 @@
 // The catalog: a dense table, never cards. Filters live in the URL so a filtered view can be shared.
 
 import { useEffect, useMemo, useState } from "react";
-import { TIERS, type Model, type Tier } from "../api";
+import { api, TIERS, type Model, type Tier } from "../api";
 import { filterModels, isFiltered, NO_FILTERS, readFilters, tagsOf, toQuery, type Filters, type SortKey, type StateFilter } from "../lib/catalog";
 import { context, params as fmtParams, perMin, TIER_NAME } from "../lib/format";
-import { loadFailed, refreshLive, useHosted, useLive, useTitle } from "../lib/hooks";
+import { loadFailed, refreshLive, useHosted, useLive, useLoad, useTitle } from "../lib/hooks";
 import { HOSTED_PATH, inCatalog, tokenPrices } from "../lib/hosted";
 import { Link, navigate } from "../router";
 import { Icon, Notice, Segmented, StateTag, TierMark } from "../ui/bits";
+import { PasteBox } from "../ui/pastebox";
 import "./catalog.css";
 
 const STATE_OPTIONS: readonly { value: StateFilter; label: string }[] = [
@@ -33,6 +34,7 @@ export default function Catalog() {
   useTitle("Models");
   const { models, error } = useLive();
   const hosted = useHosted();
+  const config = useLoad(() => api.config(), []);
   const [f, setF] = useState<Filters>(() => readFilters(location.search));
   const patch = (p: Partial<Filters>): void => setF((cur) => ({ ...cur, ...p }));
 
@@ -83,6 +85,10 @@ export default function Catalog() {
           </Link>
         )
       )}
+
+      <div className="cat-paste">
+        <PasteBox config={config.data} id="cat-paste" />
+      </div>
 
       <div className="cat-bar">
         <div className="cat-bar-row">
@@ -175,7 +181,7 @@ export default function Catalog() {
       )}
 
       <p className="cat-foot small dimmer">
-        Cold means the weights are not cached near a GPU yet, so the first wake takes longer. Have a model of your own?{" "}
+        Cold means the weights are not cached near a GPU yet, so the first wake takes longer. Untested means somebody pasted the model from Hugging Face and nobody here has tried it. Have a model of your own?{" "}
         <Link className="link" href="/list">
           List it
         </Link>
@@ -193,6 +199,8 @@ function Row({ m }: { m: Model }) {
             {m.name}
           </Link>
           {m.owner && <span className="tag">owner-listed</span>}
+          {m.origin === "pasted" && <span className="tag cat-untested">untested</span>}
+          {m.private && <span className="tag">private</span>}
         </span>
         <span className="cat-repo mono">{m.hf_repo}</span>
       </div>

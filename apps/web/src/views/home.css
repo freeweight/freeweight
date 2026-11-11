@@ -98,8 +98,12 @@
   font-size: 12px;
 }
 .hero-main .box,
-.hero-main > .notice {
+.hero-main > .notice,
+.hero-paste {
   max-width: 640px;
+}
+.hero-or {
+  margin-block: var(--s6) var(--s3);
 }
 .hero-side {
   display: grid;

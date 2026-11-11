@@ -116,6 +116,12 @@ function trim(v: number): string {
   return v >= 100 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, "");
 }
 
+/** Stored bytes in decimal units, as Hugging Face shows them: 840 MB, 16.6 GB. */
+export function size(bytes: number): string {
+  if (bytes < 999_500_000) return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+  return `${trim(bytes / 1e9)} GB`;
+}
+
 export function grouped(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }

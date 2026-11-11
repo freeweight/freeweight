@@ -19,6 +19,16 @@
 //   model:<id>     the model demo addresses use     min:N     minutes a signed-in demo session runs
 //   tools:hostile  the demo token's name tries to pass for markup, instructions and a badge
 //   think:long     every model reasons at length before it answers or calls a tool      think:hold   ...and never gets past it
+//   load:<stage>   stop a first load part-way through that stage, with time frozen (queued, checking, downloading, validating, starting)
+//   loadfail:<stage>  the first load fails during that stage, and nothing is charged
+//   loads:limit    a first load is refused: today's loads are used        paste:closed   no lane takes pasted models
+//   balance:<usd>  the signed-in balance in dollars (balance:0.05 is too little for any first load)
+//
+// A pasted repo is checked by its name: "missing" is not found, "gated" is gated, "gguf" has no safetensors, "embed"
+// is not a text model, "custom" needs its own code, "notemplate" has no chat template, "405b" is too big, "blocked" is
+// blocked, "busy" is rate-limited, "hfdown" cannot be checked, "vault" is loaded privately by somebody else, and
+// "crowd" is being loaded by somebody else right now. Any load address that starts with "demo" creates its own load
+// (/load/demo); "demo-watch" is somebody else's load, "demo-ready" one that finished and "demo-failed" one that did not.
 //
 //   hosted:off     the always-awake model is not offered     hosted:used   today's free messages are spent
 //   hosted:few     three free messages are left              hosted:busy   it refuses: the day's ceiling is reached
@@ -29,7 +39,7 @@
 import { tokenCost } from "../lib/hosted";
 import { setTimeRate } from "../lib/time";
 import type { RawConfig, RawMe } from "./client";
-import type { ApiKey, Awake, Check, HostedAccount, HostedModel, HostedUse, Listing, Model, PublicReceipt, Session, Stage, StageEvent, Stats, Tier } from "./types";
+import type { ApiKey, Awake, Check, HostedAccount, HostedModel, HostedUse, Listing, Load, LoadStage, Model, MyModel, PublicReceipt, RepoCheck, Session, Stage, StageEvent, Stats, Tier } from "./types";
 
 type Opts = Record<string, string>;
 function readOpts(): Opts {
@@ -204,7 +214,16 @@ const models: Model[] = [
     blurb: "Compact and careful. Good at structured output.",
     state: "unavailable",
   }),
+  // Pasted models: nobody wrote a blurb, and the only tag says nobody tested them.
+  pasted({ id: "smallworks_fable-3b", name: "fable-3b", hf_repo: "smallworks/fable-3b", sha: "a41c09d2e7f35b6c8d1e0f2a3b4c5d6e7f8091a2", license: "apache-2.0", params_b: 3.1, tier: "light", context: 8192, wake_estimate_s: 71 }),
+  pasted({ id: "northfield_ledger-12b", name: "ledger-12b", hf_repo: "northfield/ledger-12b", sha: "7be2d4f6a8c0e1b3d5f7a9c1e3b5d7f9a1c3e5b7", license: "mit", params_b: 12.2, tier: "medium", context: 32768, wake_estimate_s: null, state: "needs_load" }),
+  pasted({ id: "you_scratch-7b", name: "scratch-7b", hf_repo: "you/scratch-7b", sha: "c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1", license: "other", params_b: 7.2, tier: "light", context: 16384, wake_estimate_s: 88, private: true, mine: true }),
 ];
+function pasted(m: Pick<Model, "id" | "name" | "hf_repo" | "sha" | "license" | "params_b" | "tier" | "context" | "wake_estimate_s"> & Partial<Model>): Model {
+  return model({ quant: "bf16", tags: ["untested"], blurb: "", origin: "pasted", private: false, mine: false, tools_ok: false, ...m });
+}
+/** What this visitor sees of the catalog: a private model is its loader's alone. */
+const visible = (m: Model): boolean => !m.private || (signedIn && m.mine === true);
 function empty(): boolean {
   return opts.empty === "1";
 }
@@ -227,7 +246,7 @@ const hostedStats = empty() ? { hosted_requests: 0, hosted_tokens: 0 } : { hoste
 
 const ADDRESS = "0x52a1c0ffee9d3b7a8e6f4c2b0a9d8e7f6c5b4a3e";
 let signedIn = opts.user === "1";
-let balance = 4_180_000;
+let balance = opts.balance === undefined ? 4_180_000 : Math.round(Number(opts.balance) * 1e6);
 let freeToday = opts.free !== "used";
 let keys: ApiKey[] = [
   { id: "key_1", name: "laptop", prefix: "fw_7Hq2", created_at: vnow() - 3 * 86_400_000, last_used_at: vnow() - 3_600_000, auto_session: true },
@@ -824,6 +843,205 @@ function checkListing(repo: string): Listing {
   return l;
 }
 
+// ---------- pasted models ----------
+
+const GIB = 2 ** 30;
+const LOAD_CAP_MIN: Record<Tier, number> = { light: 5, medium: 10, heavy: 15 };
+const CLEAR_AFTER_DAYS = 28;
+const REFUSALS: { match: RegExp; code: string; reason: string }[] = [
+  { match: /missing|nope/, code: "repo_not_found", reason: "No public model repo with that name on Hugging Face." },
+  { match: /gated/, code: "gated", reason: "The repo is gated: its weights need an approval on Hugging Face, so they cannot be loaded here." },
+  { match: /gguf/, code: "no_safetensors", reason: "The repo holds GGUF weights. Only safetensors weights can be loaded." },
+  { match: /embed|bert/, code: "not_text_generation", reason: "Not a text-generation model (feature-extraction). Only chat models that write text can be loaded." },
+  { match: /custom/, code: "custom_code", reason: "The model needs its own Python code to load. Code from a repo is never run here." },
+  { match: /notemplate/, code: "no_chat_template", reason: "The tokenizer has no chat template, so the model cannot be used for chat." },
+  { match: /405b|120b/, code: "too_big", reason: "810.4 GiB is more than the largest class holds. Models are served as they are, without shrinking them." },
+  { match: /blocked/, code: "blocked", reason: "This repo cannot be loaded here." },
+];
+type Ld = { l: Load; subs: Set<(event: string, data: Load) => void>; payer: boolean; timer?: ReturnType<typeof setInterval> };
+const loads = new Map<string, Ld>();
+const TIER_MAX_GIB: [Tier, number][] = [["light", 19], ["medium", 40], ["heavy", 68]];
+/** A repo's size from the number in its name ("coder-8b"), and the smallest class that holds it. */
+const sizeOf = (repo: string): { tier: Tier; params: number; bytes: number } => {
+  const known = models.find((m) => m.hf_repo.toLowerCase() === repo.toLowerCase());
+  const named = /(\d+)b\b/.exec(repo.toLowerCase());
+  const params = known?.params_b ?? (named ? Math.round(Number(named[1]) * 10.25) / 10 : 8.2);
+  const bytes = Math.round(params * 2.03e9);
+  return { tier: known?.tier ?? TIER_MAX_GIB.find(([, max]) => bytes <= max * GIB)?.[0] ?? "heavy", params, bytes };
+};
+const estimates = (bytes: number): { load_s: number; wake_s: number } => ({ load_s: Math.round(150 + (bytes / GIB) * 9), wake_s: Math.round(60 + (bytes / GIB) * 3) });
+const viewOf = (x: Ld): Load => ({ ...x.l, mine: x.payer && signedIn, hold_usd_micro: x.payer && signedIn ? x.l.hold_usd_micro : 0, charged_usd_micro: x.payer && signedIn ? x.l.charged_usd_micro : 0, now: vnow() });
+const runningLoad = (repo: string): Ld | undefined => [...loads.values()].find((x) => x.l.state === "loading" && x.l.hf_repo.toLowerCase() === repo.toLowerCase());
+const pastedId = (repo: string): string => repo.toLowerCase().replace("/", "_");
+
+/** The free check, with the gateway's codes and shapes. */
+function checkPasted(repo: string): RepoCheck {
+  const lower = repo.toLowerCase();
+  const refusal = REFUSALS.find((r) => r.match.test(lower));
+  if (refusal) return { ok: false, repo, code: refusal.code, reason: refusal.reason };
+  const known = models.find((m) => m.hf_repo.toLowerCase() === lower);
+  const { tier, params, bytes } = sizeOf(repo);
+  const est = estimates(bytes);
+  const running = runningLoad(repo);
+  const taken = /vault/.test(lower) || (known !== undefined && !visible(known));
+  const state = taken ? "taken" : running || /crowd/.test(lower) ? "loading" : !known ? "new" : known.state === "needs_load" ? "needs_load" : "loaded";
+  return {
+    ok: true,
+    repo: known?.hf_repo ?? repo,
+    sha: known?.sha ?? "3f9a1c2e7b5d4f6a8c0e1b2d3f4a5c6e7b8d9f0a",
+    name: known?.name ?? repo.split("/")[1]!,
+    license: known?.license ?? (/falcon|command/.test(lower) ? "other" : "apache-2.0"),
+    tier,
+    size_bytes: bytes,
+    params_b: params,
+    context: known?.context ?? 32768,
+    architecture: "qwen2",
+    price_usd_micro_per_min: PRICE[tier],
+    load_cap_minutes: LOAD_CAP_MIN[tier],
+    load_cap_usd_micro: LOAD_CAP_MIN[tier] * PRICE[tier],
+    load_estimate_s: est.load_s,
+    wake_estimate_s: known?.wake_estimate_s || est.wake_s,
+    state,
+    model_id: state === "new" || state === "taken" ? null : (known?.id ?? pastedId(repo)),
+    load_id: state !== "loading" ? null : (running?.l.id ?? "demo-watch"),
+    can_load: (state === "new" || state === "needs_load") && opts.paste !== "closed",
+  };
+}
+
+const LOAD_FAILS: Partial<Record<LoadStage, [string, string]>> = {
+  checking: ["repo_changed", "The repo changed between the check and the load: its config no longer names a supported architecture."],
+  downloading: ["download_failed", "The download stopped: model-00002-of-00002.safetensors answered 404 at the pinned commit."],
+  validating: ["bad_weights", "A weight file does not match the checksum the repo publishes for it."],
+  starting: ["engine_failed", "The engine did not start with these weights: the tokenizer has no chat template the engine can use."],
+};
+/** Start a load and play it through its stages in model time. A load that ends ready puts the model in the catalog. */
+function startLoad(repo: string, keepPrivate: boolean, id: string, payer: boolean): Ld {
+  const { tier, params, bytes } = sizeOf(repo);
+  const known = models.find((m) => m.hf_repo.toLowerCase() === repo.toLowerCase());
+  const hold = LOAD_CAP_MIN[tier] * PRICE[tier];
+  const x: Ld = {
+    payer,
+    subs: new Set(),
+    l: {
+      id,
+      model_id: known?.id ?? pastedId(repo),
+      hf_repo: repo,
+      sha: known?.sha ?? "3f9a1c2e7b5d4f6a8c0e1b2d3f4a5c6e7b8d9f0a",
+      tier,
+      state: "loading",
+      stage: "queued",
+      bytes: 0,
+      size_bytes: bytes,
+      mine: payer,
+      price_usd_micro_per_min: PRICE[tier],
+      cap_minutes: LOAD_CAP_MIN[tier],
+      hold_usd_micro: hold,
+      charged_usd_micro: 0,
+      created_at: vnow(),
+      ended_at: null,
+      now: vnow(),
+    },
+  };
+  loads.set(id, x);
+  const tell = (event: string): void => {
+    const v = viewOf(x);
+    for (const s of [...x.subs]) s(event, v);
+  };
+  const dl = Math.max(20_000, (bytes / GIB) * 7_000);
+  const plan: [LoadStage, number][] = [
+    ["queued", 5_000],
+    ["checking", 6_000],
+    ["downloading", dl],
+    ["validating", 9_000],
+    ["starting", 48_000],
+  ];
+  const finish = (state: "ready" | "failed", code?: string, detail?: string): void => {
+    if (x.timer) clearInterval(x.timer);
+    const seconds = Math.min((vnow() - x.l.created_at) / 1000, x.l.cap_minutes * 60);
+    x.l = { ...x.l, state, stage: state, ended_at: vnow(), charged_usd_micro: state === "ready" ? priceOf(seconds, x.l.price_usd_micro_per_min) : 0, code, detail };
+    if (state === "ready") {
+      x.l.bytes = bytes;
+      if (payer) balance -= x.l.charged_usd_micro;
+      if (known) known.state = "asleep";
+      else models.push(pasted({ id: x.l.model_id, name: repo.split("/")[1]!, hf_repo: repo, sha: x.l.sha, license: "apache-2.0", params_b: params, tier, context: 32768, wake_estimate_s: null, private: keepPrivate, mine: payer }));
+    }
+    tell("load");
+    tell("ended");
+    x.subs.clear();
+  };
+  let at = 0;
+  for (const [stage, span] of plan) {
+    const from = at;
+    later(from, () => {
+      if (x.l.state !== "loading") return;
+      x.l.stage = stage;
+      if (stage === "validating") x.l.bytes = bytes;
+      tell("load");
+      if (opts.loadfail === stage) return later(span * 0.6, () => x.l.state === "loading" && finish("failed", ...(LOAD_FAILS[stage] ?? ["load_failed", "The load did not finish."])));
+      if (opts.load === stage) later(span * 0.45, () => setSpeed(0));
+    });
+    at += span;
+    if (opts.loadfail === stage || opts.load === stage) return watch(x, plan, dl, tell);
+  }
+  later(at, () => x.l.state === "loading" && finish("ready"));
+  return watch(x, plan, dl, tell);
+}
+/** While the weights come down, the bytes move at a steady beat, like the lane reports them. */
+function watch(x: Ld, plan: [LoadStage, number][], dl: number, tell: (event: string) => void): Ld {
+  const before = plan[0]![1] + plan[1]![1];
+  x.timer = setInterval(() => {
+    if (x.l.state !== "loading") return;
+    if (x.l.stage === "downloading") {
+      x.l.bytes = Math.min(x.l.size_bytes, Math.round((x.l.size_bytes * Math.max(0, vnow() - x.l.created_at - before)) / dl));
+      tell("load");
+    } else tell("tick");
+  }, 1000);
+  return x;
+}
+/** Loads that exist only as an address, so every load screen has one. */
+function demoLoad(id: string): Ld {
+  if (id.startsWith("demo-ready") || id.startsWith("demo-failed")) {
+    const ready = id.startsWith("demo-ready");
+    const repo = ready ? "smallworks/fable-3b" : "acme/broken-8b";
+    const { tier, bytes } = sizeOf(repo);
+    const t = vnow() - 26 * 60_000;
+    const x: Ld = {
+      payer: true,
+      subs: new Set(),
+      l: {
+        id,
+        model_id: pastedId(repo),
+        hf_repo: repo,
+        sha: "a41c09d2e7f35b6c8d1e0f2a3b4c5d6e7f8091a2",
+        tier,
+        state: ready ? "ready" : "failed",
+        stage: ready ? "ready" : "failed",
+        bytes: ready ? bytes : Math.round(bytes * 0.61),
+        size_bytes: bytes,
+        mine: true,
+        price_usd_micro_per_min: PRICE[tier],
+        cap_minutes: LOAD_CAP_MIN[tier],
+        hold_usd_micro: LOAD_CAP_MIN[tier] * PRICE[tier],
+        charged_usd_micro: ready ? priceOf(214, PRICE[tier]) : 0,
+        created_at: t,
+        ended_at: t + (ready ? 214_000 : 97_000),
+        now: vnow(),
+        ...(ready ? {} : { code: LOAD_FAILS.downloading![0], detail: LOAD_FAILS.downloading![1] }),
+      },
+    };
+    loads.set(id, x);
+    return x;
+  }
+  return startLoad(id.startsWith("demo-heavy") ? "bigiron/atlas-30b" : "acme/coder-8b", false, id, !id.startsWith("demo-watch"));
+}
+const myModels = (): MyModel[] =>
+  models
+    .filter((m) => m.origin === "pasted" && m.mine)
+    .map((m) => {
+      const woken = vnow() - (m.state === "needs_load" ? 31 : 6) * 86_400_000;
+      return { ...m, size_bytes: sizeOf(m.hf_repo).bytes, last_woken_at: woken, clears_at: m.state === "needs_load" ? null : woken + CLEAR_AFTER_DAYS * 86_400_000 };
+    });
+
 // ---------- router ----------
 
 function json(data: unknown, status = 200): Response {
@@ -995,6 +1213,7 @@ function config(): RawConfig {
     perks: { enabled: opts.perks === "1" },
     owner_share_bps: 3000,
     tool_system_note: TOOL_NOTE,
+    paste: { open: opts.paste !== "closed", engine: "vllm", engine_version: "0.11.0", load_cap_minutes: LOAD_CAP_MIN, loads_per_day: 5, clear_after_days: CLEAR_AFTER_DAYS },
   };
 }
 /** The public board: what recent sessions used, and nothing about whose they were. */
@@ -1031,10 +1250,66 @@ export async function mockFetch(input: string, init: RequestInit = {}): Promise<
   if (seg[2] === undefined || seg[3] !== "events") await wait(opts.slow ? 1500 : 60 + Math.random() * 90);
   if (opts.down === "1" && path !== "/api/config") return err(503, "unavailable", "The gateway is not answering.");
 
-  if (method === "GET" && path === "/api/models") return json({ models });
+  if (method === "GET" && path === "/api/models") return json({ models: models.filter(visible).map((m) => ({ ...m, mine: signedIn && m.mine === true })) });
   if (method === "GET" && seg[1] === "models" && seg[2]) {
     const m = models.find((mm) => mm.id === decodeURIComponent(seg[2]!));
-    return m ? json(m) : err(404, "model_not_found", "No such model.");
+    return m && visible(m) ? json({ ...m, mine: signedIn && m.mine === true }) : err(404, "model_not_found", "No such model.");
+  }
+  if (method === "POST" && path === "/api/models/check") {
+    const raw = String(body.repo ?? "").trim();
+    const repo = raw.replace(/^https?:\/\/(www\.)?huggingface\.co\//, "").replace(/\/(tree|blob)\/.*$/, "");
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return err(400, "bad_repo", "That is not a Hugging Face model ID. It looks like org/model.");
+    await wait(700);
+    if (/busy/.test(repo)) return err(429, "rate_limited", "Too many checks. Try again in a minute.");
+    if (/hfdown/.test(repo)) return err(502, "hf_unavailable", "Hugging Face did not answer. Try again in a moment.");
+    return json(checkPasted(repo));
+  }
+  if (method === "PUT" && seg[1] === "models" && seg[2] && seg[3] === "private") {
+    if (!signedIn) return err(401, "sign_in_required", "Sign in with a wallet first.");
+    if (typeof body.private !== "boolean") return err(400, "bad_request", "private must be true or false.");
+    const m = models.find((mm) => mm.id === decodeURIComponent(seg[2]!));
+    if (!m || !visible(m)) return err(404, "model_not_found", "No such model.");
+    if (m.origin !== "pasted" || !m.mine) return err(403, "not_yours", "Only the account that loaded a pasted model can keep it private.");
+    m.private = body.private;
+    return json(m);
+  }
+  if (method === "GET" && path === "/api/me/models") return signedIn ? json({ models: myModels() }) : err(401, "sign_in_required", "Sign in with a wallet first.");
+  if (method === "POST" && path === "/api/loads") {
+    if (!signedIn) return err(401, "sign_in_required", "Sign in with a wallet first.");
+    const repo = String(body.repo ?? "").trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return err(400, "bad_repo", "That is not a Hugging Face model ID. It looks like org/model.");
+    const chk = checkPasted(repo);
+    if (!chk.ok) return err(422, chk.code, chk.reason);
+    if (chk.state === "loaded") return err(409, "already_loaded", "This model is in the catalog already.", { model_id: chk.model_id });
+    if (chk.state === "taken") return err(409, "loaded_privately", "Another account loaded this model and keeps it private.");
+    if (chk.state === "loading") return json(viewOf(loads.get(chk.load_id!) ?? demoLoad(chk.load_id!)));
+    if (opts.paste === "closed") return err(503, "loads_unavailable", "Pasted models cannot be loaded right now.");
+    if (opts.loads === "limit") return err(429, "daily_load_limit", "This account started 5 loads today. Try again tomorrow.");
+    if (balance < chk.load_cap_usd_micro) return err(402, "insufficient_balance", "The balance does not cover the most this load can cost.", { needed_usd_micro: chk.load_cap_usd_micro });
+    return json(viewOf(startLoad(chk.repo, body.private === true, `load_${Math.random().toString(36).slice(2, 12)}`, true)), 201);
+  }
+  if (method === "GET" && path === "/api/loads") {
+    return signedIn ? json({ loads: [...loads.values()].filter((x) => x.payer).map(viewOf) }) : err(401, "sign_in_required", "Sign in with a wallet first.");
+  }
+  if (method === "GET" && seg[1] === "loads" && seg[2]) {
+    const x = loads.get(seg[2]) ?? (seg[2].startsWith("demo") ? demoLoad(seg[2]) : undefined);
+    if (!x) return err(404, "load_not_found", "No such load.");
+    if (!seg[3]) return json(viewOf(x));
+    if (seg[3] === "events") {
+      return sseResponse((send, close, sig) => {
+        send("load", JSON.stringify(viewOf(x)));
+        if (x.l.state !== "loading") {
+          send("ended", JSON.stringify(viewOf(x)));
+          return close();
+        }
+        const sub = (event: string, data: Load): void => {
+          send(event, JSON.stringify(data));
+          if (event === "ended") close();
+        };
+        x.subs.add(sub);
+        sig?.addEventListener("abort", () => x.subs.delete(sub));
+      }, init.signal);
+    }
   }
   if (method === "GET" && path === "/api/awake") {
     const awake: Awake[] = [...awakeSince.entries()]
@@ -1056,7 +1331,8 @@ export async function mockFetch(input: string, init: RequestInit = {}): Promise<
   if (method === "POST" && path === "/api/sessions") {
     // The same decisions, in the same order and with the same codes, as the gateway makes.
     const m = models.find((mm) => mm.id === body.model_id);
-    if (!m) return err(404, "model_not_found", "No such model.");
+    if (!m || !visible(m)) return err(404, "model_not_found", "No such model.");
+    if (m.state === "needs_load") return err(409, "needs_load", "This model's stored weights were cleared. Load it again first.", { hf_repo: m.hf_repo });
     if (m.state === "unavailable") return err(503, "model_unavailable", "This model cannot be woken right now.");
     const minutes = body.minutes == null ? null : Number(body.minutes);
     if (minutes !== null && (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > MAX_MINUTES)) return err(400, "bad_request", `minutes must be a whole number from 1 to ${MAX_MINUTES}.`);

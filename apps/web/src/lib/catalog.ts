@@ -9,7 +9,7 @@ export type Filters = { tier: Tier | "all"; state: StateFilter; tag: string; q: 
 export const NO_FILTERS: Filters = { tier: "all", state: "all", tag: "", q: "", sort: "", desc: false };
 
 const SORTS: readonly SortKey[] = ["name", "tier", "price", "params", "context", "state"];
-const STATE_RANK: Record<ModelState, number> = { awake: 0, waking: 1, asleep: 2, cold: 3, unavailable: 4 };
+const STATE_RANK: Record<ModelState, number> = { awake: 0, waking: 1, asleep: 2, cold: 3, needs_load: 4, unavailable: 5 };
 
 export function readFilters(search: string): Filters {
   const p = new URLSearchParams(search);

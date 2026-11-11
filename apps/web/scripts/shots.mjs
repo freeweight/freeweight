@@ -61,6 +61,19 @@ const checkRepo = async (page, repo) => {
   await page.locator(".list-form button[type=submit]").click();
   await page.locator(".list-verdict").waitFor({ timeout: 15_000 });
 };
+/** Paste a repo into the box on the page and wait for what the check says. */
+const paste = async (page, repo, shows = ".pb-card") => {
+  await page.locator(".pb-form input").fill(repo);
+  await page.locator(".pb-form button[type=submit]").click();
+  await page.locator(shows).first().waitFor({ timeout: 15_000 });
+  await page.locator(".pb").evaluate((el) => el.scrollIntoView({ block: "end" }));
+};
+const pasteAndLoad = async (page, repo) => {
+  await paste(page, repo);
+  await page.locator(".pb-go .btn.primary").click();
+  await page.locator(".pb .notice").waitFor({ timeout: 15_000 });
+  await page.locator(".pb").evaluate((el) => el.scrollIntoView({ block: "end" }));
+};
 
 /** name, address, then optionally: what to wait for, what to do, whether to shoot only the viewport, and which widths apply. */
 const SHOTS = [
@@ -135,6 +148,46 @@ const SHOTS = [
   { name: "model", url: "/models/hermes-4-14b", wait: ".box" },
   { name: "model-long-name", url: "/models/dolphin-3-r1-mistral-24b-abliterated-extended", wait: ".box" },
   { name: "model-missing", url: "/models/no-such-model", settle: 1200, view: true },
+
+  { name: "paste-new", url: "/?mock=user:1", wait: ".pb", view: true, act: (p) => paste(p, "acme/coder-8b") },
+  { name: "paste-new-out", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "https://huggingface.co/acme/coder-8b") },
+  { name: "paste-new-heavy", url: "/?mock=user:1", wait: ".pb", view: true, act: (p) => paste(p, "bigiron/atlas-30b") },
+  { name: "paste-page", url: "/?mock=user:1", wait: ".pb", act: (p) => paste(p, "acme/coder-8b") },
+  { name: "paste-checking", url: "/?mock=slow:1", wait: ".pb", view: true, settle: 200, act: async (p) => (await p.locator(".pb-form input").fill("acme/coder-8b"), await p.locator(".pb-form button[type=submit]").click()) },
+  { name: "paste-refused", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "acme/coder-gguf") },
+  { name: "paste-refused-big", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "acme/giant-405b") },
+  { name: "paste-loaded", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "smallworks/fable-3b") },
+  { name: "paste-loading", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "acme/crowd-7b") },
+  { name: "paste-taken", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "acme/vault-7b") },
+  { name: "paste-again", url: "/?mock=user:1", wait: ".pb", view: true, act: (p) => paste(p, "northfield/ledger-12b") },
+  { name: "paste-bad", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "not a repo", ".pb .notice") },
+  { name: "paste-busy", url: "/", wait: ".pb", view: true, act: (p) => paste(p, "acme/busy-7b", ".pb .notice") },
+  { name: "paste-balance", url: "/?mock=user:1,balance:0.05", wait: ".pb", view: true, act: (p) => pasteAndLoad(p, "acme/coder-8b") },
+  { name: "paste-limit", url: "/?mock=user:1,loads:limit", wait: ".pb", view: true, act: (p) => pasteAndLoad(p, "acme/coder-8b") },
+  { name: "paste-closed", url: "/?mock=paste:closed", wait: ".pb", view: true },
+  { name: "paste-catalog", url: "/models?mock=user:1", wait: ".cat-row a", view: true, act: (p) => paste(p, "acme/coder-8b") },
+
+  { name: "load-queued", url: "/load/demo?mock=user:1,speed:40,load:queued", wait: ".ld-rack", settle: 1500, view: true },
+  { name: "load-checking", url: "/load/demo?mock=user:1,speed:40,load:checking", wait: ".ld-rack", settle: 1800, view: true },
+  { name: "load-downloading", url: "/load/demo?mock=user:1,speed:40,load:downloading", wait: ".ld-rack", settle: 2500, view: true },
+  { name: "load-validating", url: "/load/demo?mock=user:1,speed:40,load:validating", wait: ".ld-rack", settle: 3000, view: true },
+  { name: "load-starting", url: "/load/demo?mock=user:1,speed:40,load:starting", wait: ".ld-rack", settle: 4000, view: true },
+  { name: "load-heavy", url: "/load/demo-heavy?mock=user:1,speed:400,load:downloading", wait: ".ld-rack", settle: 3000, view: true },
+  { name: "load-capped", url: "/load/demo-heavy?mock=user:1,speed:400,load:starting", wait: ".ld-rack", settle: 5000, view: true },
+  { name: "load-watching", url: "/load/demo-watch?mock=speed:40,load:downloading", wait: ".ld-rack", settle: 2500, view: true },
+  { name: "load-ready", url: "/load/demo-ready?mock=user:1", wait: ".ld-next .box-min", settle: 900 },
+  { name: "load-ready-out", url: "/load/demo-ready", wait: ".ld-next .box", settle: 900, view: true },
+  { name: "load-failed", url: "/load/demo?mock=user:1,speed:40,loadfail:downloading", wait: ".load.is-failed", settle: 600, view: true },
+  { name: "load-failed-late", url: "/load/demo?mock=user:1,speed:40,loadfail:starting", wait: ".load.is-failed", settle: 600, view: true },
+  { name: "load-failed-past", url: "/load/demo-failed?mock=user:1", wait: ".load.is-failed", settle: 600, view: true },
+  { name: "load-missing", url: "/load/load_nope", wait: ".ld-gone", view: true },
+  { name: "load-loading", url: "/load/demo?mock=slow:1", settle: 300, view: true },
+
+  { name: "pasted-catalog", url: "/models?tag=untested&mock=user:1", wait: ".cat-row a" },
+  { name: "pasted-model", url: "/models/smallworks_fable-3b", wait: ".box" },
+  { name: "pasted-model-mine", url: "/models/you_scratch-7b?mock=user:1", wait: ".model-mine" },
+  { name: "pasted-model-cleared", url: "/models/northfield_ledger-12b?mock=user:1", wait: ".pb-card" },
+  { name: "pasted-account", url: "/account?mock=user:1", wait: ".mym", view: true, act: (p) => p.locator("#models").scrollIntoViewIfNeeded() },
 
   { name: "account-out", url: "/account", settle: 900 },
   { name: "account-in", url: "/account?mock=user:1", settle: 900 },

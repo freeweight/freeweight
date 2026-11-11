@@ -1,0 +1,161 @@
+/* The first load of a pasted model. */
+
+.load {
+  padding-block: var(--s6) var(--s8);
+  display: grid;
+  gap: var(--s6);
+  align-content: start;
+  max-width: 880px;
+}
+.ld-main {
+  display: grid;
+  gap: var(--s4);
+  min-width: 0;
+}
+.ld-kick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s4);
+  min-height: 28px;
+}
+.ld-name {
+  font-size: 15px;
+  line-height: 28px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.ld-timer {
+  font-family: var(--sans);
+  font-size: clamp(72px, 19vw, 168px);
+  line-height: 0.86;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum";
+  margin-left: -0.04em;
+  user-select: none;
+}
+.load.is-failed .ld-timer {
+  color: var(--ink-3);
+}
+.ld-status {
+  font-size: 18px;
+  line-height: 28px;
+  max-width: 60ch;
+  min-height: 56px;
+}
+.ld-bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* one row per stage, in the order the load goes through them */
+.ld-rack {
+  border-top: 1px solid var(--line-2);
+}
+.ld-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--s3);
+  min-height: 40px;
+  padding-block: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.ld-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--ink-2);
+}
+.ld-row.pending .ld-mark::before,
+.ld-row.skipped .ld-mark::before,
+.ld-row.active .ld-mark::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  border: 1px dashed var(--ink-3);
+}
+.ld-row.active .ld-mark::before {
+  border: 0;
+  background: var(--accent);
+  animation: tick 1s steps(2, jump-none) infinite;
+}
+.ld-label {
+  font: 500 14px/20px var(--sans);
+}
+.ld-row.pending .ld-label,
+.ld-row.skipped .ld-label {
+  color: var(--ink-3);
+}
+.ld-row.active .ld-label {
+  font-weight: 700;
+}
+.ld-val {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ld-row.active .ld-val {
+  color: var(--accent-ink);
+}
+.ld-row.failed .ld-label,
+.ld-row.failed .ld-val,
+.ld-row.failed .ld-mark {
+  color: var(--danger);
+}
+/* the weights as they arrive: a plate on a scale from nothing to the whole size */
+.ld-bar {
+  grid-column: 2 / -1;
+  position: relative;
+  height: 8px;
+  margin-block: 6px 4px;
+  background:
+    linear-gradient(to right, var(--line-2) 1px, transparent 1px) 0 0 / 25% 100%,
+    var(--line);
+  border-right: 1px solid var(--line-2);
+  border-radius: 1px;
+}
+.ld-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+.ld-row.failed .ld-bar i {
+  background: repeating-linear-gradient(135deg, var(--danger) 0 2px, transparent 2px 5px);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+.ld-code {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.ld-facts > div {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+.ld-fine {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ink-2);
+  max-width: 60ch;
+}
+.ld-next {
+  display: grid;
+  gap: var(--s3);
+  max-width: 640px;
+}
+.ld-gone {
+  display: grid;
+  gap: var(--s3);
+  align-content: start;
+  max-width: 640px;
+}
+.ld-gone .row {
+  margin-top: var(--s3);
+}

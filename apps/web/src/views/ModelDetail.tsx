@@ -1,12 +1,14 @@
 // One model: what it is, wake it here, call it from code.
 
+import { useState } from "react";
 import { api, type Model } from "../api";
 import { context, params as fmtParams, perMin, shortAddr, shortSha, TIER_CLASS, typicalWake } from "../lib/format";
 import { useEffect } from "react";
-import { loadFailed, refreshLive, useHosted, useLive, useLoad, useTitle } from "../lib/hooks";
+import { loadFailed, refreshLive, toApiError, useHosted, useLive, useLoad, useTitle } from "../lib/hooks";
 import { HOSTED_PATH } from "../lib/hosted";
 import { Link, navigate } from "../router";
 import { Code, Icon, Notice, StateTag, TierMark } from "../ui/bits";
+import { PasteBox } from "../ui/pastebox";
 import { WakeBox } from "../ui/wakebox";
 import NotFound from "./NotFound";
 import "./catalog.css";
@@ -15,6 +17,7 @@ function wakeLine(m: Model): string {
   if (m.state === "awake") return "Awake now. Joining takes a few seconds.";
   if (m.state === "waking") return "Waking for someone else. You can join as soon as it is ready.";
   if (m.state === "unavailable") return "Not available right now.";
+  if (m.state === "needs_load") return "Not until it is loaded again: the stored weights were cleared.";
   const est = typicalWake(m)?.text;
   if (!est) return "Typical wake: not measured yet.";
   return m.state === "cold" ? `Wake: ${est}. Cold: the weights are not cached near a GPU yet, so the first one takes longer.` : `Wake: ${est}.`;
@@ -31,6 +34,34 @@ function snippet(m: Model): string {
     `    "messages": [{"role": "user", "content": "Hello"}]`,
     `  }'`,
   ].join("\n");
+}
+
+/** The account that paid for the first load decides who sees the model. */
+function Mine({ model }: { model: Model }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function set(keep: boolean): Promise<void> {
+    setBusy(true);
+    setError("");
+    try {
+      await api.setPrivate(model.id, keep);
+      refreshLive();
+    } catch (e) {
+      setError(toApiError(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="model-mine">
+      <p className="micro">You loaded this model</p>
+      <label className="pb-keep">
+        <input type="checkbox" checked={Boolean(model.private)} disabled={busy} onChange={(e) => void set(e.target.checked)} />
+        <span>Keep it private. Only this account sees it and wakes it. Unticked, it is in the catalog for everyone.</span>
+      </label>
+      {error && <Notice kind="err">{error}</Notice>}
+    </div>
+  );
 }
 
 export default function ModelDetail({ params }: { params: Record<string, string> }) {
@@ -83,9 +114,21 @@ export default function ModelDetail({ params }: { params: Record<string, string>
                 <TierMark tier={model.tier} />
                 <span className="mono">{perMin(model.price_usd_micro_per_min)}</span>
                 {model.owner && <span className="tag">owner-listed</span>}
+                {model.origin === "pasted" && <span className="tag cat-untested">untested</span>}
+                {model.private && <span className="tag">private</span>}
               </p>
             </header>
-            <WakeBox models={models ?? [model]} initial={model.id} fixed config={config.data} />
+            {model.state === "needs_load" ? (
+              <>
+                <Notice>
+                  The stored weights of this model were cleared, because nobody woke it for {config.data?.paste.clear_after_days ?? 28} days. It needs a first load again before it can be woken. Anyone can start it.
+                </Notice>
+                <PasteBox config={config.data} id="model-paste" initial={model.hf_repo} />
+              </>
+            ) : (
+              <WakeBox models={models ?? [model]} initial={model.id} fixed config={config.data} />
+            )}
+            {model.mine && <Mine model={model} />}
             <section className="model-call" aria-labelledby="model-call-h">
               <h2 className="h3" id="model-call-h">
                 Call it from code
@@ -176,6 +219,14 @@ export default function ModelDetail({ params }: { params: Record<string, string>
               )}
             </dl>
             <p className="model-fine">The commit is pinned: every wake loads exactly these weights. Wake time is never billed.</p>
+            {model.origin === "pasted" && (
+              <p className="model-fine">
+                Pasted from Hugging Face and loaded as it is. Nobody here has tested it. Stored weights that are not woken for {config.data?.paste.clear_after_days ?? 28} days are cleared, and the model then needs a first load again.{" "}
+                <Link className="link" href="/docs/any-model">
+                  How pasted models work
+                </Link>
+              </p>
+            )}
           </aside>
         </div>
       )}

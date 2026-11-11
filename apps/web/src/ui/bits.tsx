@@ -37,7 +37,7 @@ export function TierMark({ tier, plain = false }: { tier: Tier; plain?: boolean 
   );
 }
 
-const STATE_LABEL: Record<ModelState, string> = { asleep: "asleep", waking: "waking", awake: "awake", cold: "cold", unavailable: "unavailable" };
+const STATE_LABEL: Record<ModelState, string> = { asleep: "asleep", waking: "waking", awake: "awake", cold: "cold", unavailable: "unavailable", needs_load: "needs load" };
 export function StateTag({ state }: { state: ModelState }) {
   return <span className={`state ${state}`}>{STATE_LABEL[state]}</span>;
 }

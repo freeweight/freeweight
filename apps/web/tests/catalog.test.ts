@@ -62,6 +62,11 @@ describe("catalog filters", () => {
     expect(ids(filterModels(models, { ...NO_FILTERS, sort: "state" }))).toEqual(["qwen3-8b", "coder-32b", "tiny-1b", "big-70b"]);
     expect(ids(filterModels(models, { ...NO_FILTERS, sort: "name" }))).toEqual(["big-70b", "coder-32b", "qwen3-8b", "tiny-1b"]);
   });
+  it("sorts a model that needs its load again after the ones that can be woken, and finds pasted models by their tag", () => {
+    const more = [...models, model({ id: "acme_old-7b", name: "old-7b", hf_repo: "acme/old-7b", tags: ["untested"], state: "needs_load", origin: "pasted" }), model({ id: "gone-7b", name: "Gone 7B", hf_repo: "acme/gone-7b", tags: [], state: "unavailable" })];
+    expect(ids(filterModels(more, { ...NO_FILTERS, sort: "state" })).slice(-3)).toEqual(["big-70b", "acme_old-7b", "gone-7b"]);
+    expect(ids(filterModels(more, { ...NO_FILTERS, tag: "untested" }))).toEqual(["acme_old-7b"]);
+  });
   it("lists tags, most used first", () => {
     expect(tagsOf(models).slice(0, 2).sort()).toEqual(["chat", "tools"]);
     expect(tagsOf(models)).toHaveLength(3);

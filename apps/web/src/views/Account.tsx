@@ -1,13 +1,13 @@
 // Account: wallet sign-in, balance and top-up, API keys, what the always-awake model was used for, perks.
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, TIERS, type ApiKey, type Config, type Me, type Model, type NewKey, type Tier, type Topup } from "../api";
-import { ago, day, grouped, TIER_NAME, usd } from "../lib/format";
+import { api, TIERS, type ApiKey, type Config, type Me, type Model, type MyModel, type NewKey, type Tier, type Topup } from "../api";
+import { ago, day, grouped, size, TIER_NAME, usd } from "../lib/format";
 import { HOSTED_PATH } from "../lib/hosted";
 import { refreshMe, toApiError, useLive, useLoad, useMe, useTitle } from "../lib/hooks";
 import { discover, signIn, WalletError, type Step, type Wallet } from "../lib/wallet";
 import { Link } from "../router";
-import { Code, Copy, Icon, Notice } from "../ui/bits";
+import { Code, Copy, Icon, Notice, StateTag, TierMark } from "../ui/bits";
 import "./account.css";
 
 export default function Account() {
@@ -46,6 +46,7 @@ export default function Account() {
           <BalanceSection me={me} config={config.data} models={models} />
           <KeysSection me={me} />
           {me?.hosted && <HostedSection me={me} />}
+          <ModelsSection me={me} config={config.data} />
           <PerksSection me={me} />
         </>
       )}
@@ -563,6 +564,75 @@ function HostedSection({ me }: { me: Me }) {
 }
 
 // ---------- perks ----------
+
+// ---------- pasted models ----------
+
+function storedLine(m: MyModel): string {
+  if (m.clears_at === null) return "weights cleared · needs a first load again";
+  const woken = m.last_woken_at ? `last woken ${ago(Date.now() - m.last_woken_at)} ago` : "never woken";
+  return `${size(m.size_bytes)} stored · ${woken} · cleared ${day(m.clears_at)} unless it is woken`;
+}
+
+function ModelsSection({ me, config }: { me: Me | null; config: Config | null }) {
+  const signedIn = Boolean(me?.address);
+  const mine = useLoad(() => (signedIn ? api.myModels() : Promise.resolve([])), [signedIn]);
+  const days = config?.paste.clear_after_days ?? 28;
+  return (
+    <section className="sec" id="models" aria-labelledby="acct-models">
+      <div className="sec-h">
+        <h2 className="h3" id="acct-models">
+          Your models
+        </h2>
+        <p>
+          Models you pasted from Hugging Face and paid the first load for. Storing them is free. Weights nobody wakes for {days} days are cleared.{" "}
+          <Link className="link" href="/docs/any-model">
+            How it works
+          </Link>
+        </p>
+      </div>
+      <div className="sec-b">
+        {me === null || (signedIn && !mine.data && !mine.error) ? (
+          <span className="skel" style={{ width: "100%", height: 40 }} />
+        ) : !signedIn ? (
+          <p className="small dim">Sign in with a wallet to see the models you loaded.</p>
+        ) : mine.error && !mine.data ? (
+          <Notice kind="err">
+            Your models did not load: {mine.error.message}{" "}
+            <button type="button" className="link" onClick={mine.reload}>
+              Try again
+            </button>
+          </Notice>
+        ) : (mine.data ?? []).length === 0 ? (
+          <p className="keys-none">
+            None yet.{" "}
+            <Link className="link" href="/models">
+              Paste a model
+            </Link>
+          </p>
+        ) : (
+          <ul className="keys">
+            {(mine.data ?? []).map((m) => (
+              <li key={m.id} className="mym">
+                <span className="mym-name">
+                  <Link className="link" href={`/models/${encodeURIComponent(m.id)}`}>
+                    {m.name}
+                  </Link>
+                  {m.private && <span className="tag">private</span>}
+                </span>
+                <span className="mym-repo mono">{m.hf_repo}</span>
+                <span className="mym-meta">{storedLine(m)}</span>
+                <span className="mym-state">
+                  <TierMark tier={m.tier} plain />
+                  <StateTag state={m.state} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function PerksSection({ me }: { me: Me | null }) {
   const p = me?.perks;

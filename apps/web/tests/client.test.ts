@@ -117,6 +117,13 @@ describe("normalizeConfig", () => {
     expect(off.turnstile_sitekey).toBeNull();
     expect(off.treasury).toBeNull();
   });
+  it("opens the paste box only when the gateway says so, and reads its caps", () => {
+    expect(normalizeConfig(raw).paste).toEqual(DEFAULT_CONFIG.paste);
+    expect(normalizeConfig(raw).paste.open).toBe(false);
+    const on = normalizeConfig({ ...raw, paste: { open: true, engine: "vllm", engine_version: "0.11", load_cap_minutes: { light: 4, heavy: 20 }, loads_per_day: 3, clear_after_days: 14 } });
+    expect(on.paste).toEqual({ open: true, engine: "vllm", engine_version: "0.11", load_cap_minutes: { light: 4, medium: 10, heavy: 20 }, loads_per_day: 3, clear_after_days: 14 });
+    expect(normalizeConfig({ paste: { open: "yes" as unknown as boolean } }).paste.open).toBe(false);
+  });
   it("falls back to the defaults for whatever is missing", () => {
     expect(normalizeConfig(null)).toEqual(DEFAULT_CONFIG);
     expect(normalizeConfig({ free_minutes: 0 }).free_minutes).toBe(DEFAULT_CONFIG.free_minutes);
@@ -278,6 +285,32 @@ describe("client", () => {
     expect(sent.path).toBe("/v1/chat/completions");
     expect(new Headers(sent.init?.headers).get("x-freeweight-session")).toBe("s1");
     expect(JSON.parse(sent.init?.body as string)).toMatchObject({ stream: true, model: "qwen3-8b" });
+  });
+
+  it("checks, loads and switches a pasted model on the gateway's paths", async () => {
+    const { f, calls } = fake((path) => (path === "/api/me/models" ? json({ models: [{ id: "acme_tiny-1b" }] }) : json({ id: "load_1", ok: true })));
+    const api = createClient(f);
+    await api.checkRepo("acme/tiny-1b");
+    await api.startLoad("acme/tiny-1b", true);
+    await api.load("load_1");
+    await api.setPrivate("acme_tiny-1b", false);
+    expect((await api.myModels()).map((m) => m.id)).toEqual(["acme_tiny-1b"]);
+    expect(calls.map((c) => `${c.init?.method ?? "GET"} ${c.path}`)).toEqual(["POST /api/models/check", "POST /api/loads", "GET /api/loads/load_1", "PUT /api/models/acme_tiny-1b/private", "GET /api/me/models"]);
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({ repo: "acme/tiny-1b" });
+    expect(JSON.parse(calls[1]!.init?.body as string)).toEqual({ repo: "acme/tiny-1b", private: true });
+    expect(JSON.parse(calls[3]!.init?.body as string)).toEqual({ private: false });
+  });
+
+  it("relays load events with the load each one carries, and raises a stream that was refused", async () => {
+    const body = 'retry: 2000\n\nevent: load\ndata: {"id":"load_1","stage":"downloading"}\n\nevent: tick\ndata: {"id":"load_1","stage":"downloading"}\n\nevent: load\ndata: not json\n\nevent: ended\ndata: {"id":"load_1","stage":"ready"}\n\n';
+    const { f, calls } = fake(() => sse(body));
+    const seen: [string, unknown][] = [];
+    await createClient(f).loadEvents("load_1", (event, data) => void seen.push([event, data]), new AbortController().signal);
+    expect(calls[0]!.path).toBe("/api/loads/load_1/events");
+    expect(seen.map(([e]) => e)).toEqual(["load", "tick", "ended"]);
+    expect(seen.at(-1)![1]).toEqual({ id: "load_1", stage: "ready" });
+    const refused = createClient(fake(() => json({ error: { code: "load_not_found", message: "No such load." } }, 404)).f);
+    await expect(refused.loadEvents("load_x", () => undefined, new AbortController().signal)).rejects.toMatchObject({ code: "load_not_found", status: 404 });
   });
 
   it("raises an error sent inside a chat stream", async () => {

@@ -14,6 +14,7 @@ export const ROADMAP: RoadmapGroup[] = [
       { title: "Sessions by the minute", text: "A clock, extend, stop, and a receipt in GPU-seconds." },
       { title: "Session endpoint", text: "OpenAI-compatible chat and completions, with keys per wallet." },
       { title: "Chain toolkit", text: "Eleven read-only tools for tokens on EVM chains, in chat and over MCP." },
+      { title: "Any model", text: "Paste a Hugging Face model ID, pay a capped first load, and rent it by the minute. Marked untested." },
       { title: "List a model", text: "Automatic checks on a Hugging Face repo. Listings are approved by hand for now." },
     ],
   },

@@ -125,6 +125,7 @@ const FRIENDLY: Record<string, string> = {
   insufficient_balance: "Your balance does not cover this session.",
   model_unavailable: "This model is not available right now. Pick another.",
   model_not_found: "This model is no longer in the catalog. Pick another.",
+  needs_load: "This model's stored weights were cleared. It needs its first load again.",
   trial_unavailable: "The free try is not available right now. Sign in to rent by the minute.",
   turnstile_required: "The human check did not run. Try again.",
   turnstile_failed: "The human check did not pass. Try again.",
@@ -151,6 +152,7 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
   const freeOk = model.tier === "light" && me?.free_today !== false;
   const free = freeOk && (!signedIn || preferFree);
   const unavailable = model.state === "unavailable";
+  const cleared = model.state === "needs_load";
   const needWallet = !free && !signedIn;
   const cost = minutes * model.price_usd_micro_per_min;
   const short = signedIn && !free && (me?.balance_usd_micro ?? 0) < cost;
@@ -214,9 +216,9 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
           />
         </div>
       )}
-      <p className="box-blurb">{model.blurb}</p>
+      <p className="box-blurb">{model.blurb || (model.origin === "pasted" ? "Pasted from Hugging Face and loaded as it is. Nobody here has tested it, so it may answer badly, or not at all." : "")}</p>
 
-      {signedIn && !unavailable && (
+      {signedIn && !unavailable && !cleared && (
         <div className="box-min">
           <span className="micro">Session</span>
           <Segmented
@@ -239,6 +241,11 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
           <button type="button" className="btn primary lg" disabled>
             Not available right now
           </button>
+        ) : cleared ? (
+          <Link href={`/models/${encodeURIComponent(model.id)}`} className="btn primary lg">
+            Load it again first
+            <Icon name="arrow" />
+          </Link>
         ) : needWallet ? (
           <Link href="/account" className="btn primary lg">
             Sign in to rent it
@@ -252,7 +259,9 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
           </button>
         )}
         <span className="box-est">
-          {model.state === "awake" ? (
+          {cleared ? (
+            <>Its stored weights were cleared after weeks without a wake. A first load brings it back.</>
+          ) : model.state === "awake" ? (
             <>Awake now. Joining is instant.</>
           ) : model.state === "waking" ? (
             <>Waking now. You join when it is ready.</>

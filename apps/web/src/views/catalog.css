@@ -1,5 +1,13 @@
 /* Catalog and model page. */
 
+.cat-paste {
+  max-width: 640px;
+  margin-bottom: var(--s6);
+}
+/* not vouched for yet: the dashed outline of everything that is not there yet */
+.cat-untested {
+  border-style: dashed;
+}
 .cat-bar {
   display: grid;
   gap: var(--s3);
@@ -475,8 +483,17 @@ a.cat-hosted:hover .cat-hosted-go svg {
 .model-sub .mono {
   font-size: 13px;
 }
-.model-main .box {
+.model-main .box,
+.model-main .pb,
+.model-main > .notice,
+.model-mine {
   max-width: 640px;
+}
+.model-mine {
+  display: grid;
+  gap: var(--s2);
+  padding-block: var(--s4);
+  border-block: 1px solid var(--line);
 }
 .model-call {
   display: grid;

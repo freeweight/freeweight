@@ -11,6 +11,7 @@ const loadSession = () => import("./views/Session");
 const SessionView = lazy(loadSession);
 const Catalog = lazy(() => import("./views/Catalog"));
 const ModelDetail = lazy(() => import("./views/ModelDetail"));
+const LoadView = lazy(() => import("./views/Load"));
 const Account = lazy(() => import("./views/Account"));
 const ListModel = lazy(() => import("./views/ListModel"));
 const Docs = lazy(() => import("./views/Docs"));
@@ -25,6 +26,7 @@ const ROUTES: [string, ComponentType<{ params: Params }>][] = [
   [HOSTED_PATH, Hosted],
   ["/models", Catalog],
   ["/models/:id", ModelDetail],
+  ["/load/:id", LoadView],
   ["/account", Account],
   ["/list", ListModel],
   ["/docs", Docs],

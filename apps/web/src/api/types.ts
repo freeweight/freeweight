@@ -1,7 +1,8 @@
 // Contract 1: the gateway's public API, as the web app consumes it.
 
 export type Tier = "light" | "medium" | "heavy";
-export type ModelState = "asleep" | "waking" | "awake" | "cold" | "unavailable";
+/** `needs_load`: a pasted model whose stored weights were cleared. It wakes again after a first load. */
+export type ModelState = "asleep" | "waking" | "awake" | "cold" | "unavailable" | "needs_load";
 
 export type Model = {
   id: string;
@@ -24,6 +25,80 @@ export type Model = {
   tags: string[];
   blurb: string;
   tools_ok: boolean;
+  /** `pasted`: somebody pasted its repo and paid for its first load. Nobody at Freeweight tested it. */
+  origin?: "catalog" | "pasted";
+  /** Only the account that loaded it sees it. */
+  private?: boolean;
+  /** This account loaded it. */
+  mine?: boolean;
+};
+
+/** The free check of a pasted repo. A repo that cannot be served comes back with a code and a plain reason. */
+export type RepoCheck =
+  | { ok: false; repo: string; code: string; reason: string }
+  | {
+      ok: true;
+      repo: string;
+      sha: string;
+      name: string;
+      license: string;
+      tier: Tier;
+      size_bytes: number;
+      params_b: number;
+      context: number;
+      architecture: string;
+      price_usd_micro_per_min: number;
+      load_cap_minutes: number;
+      /** The most a first load costs. */
+      load_cap_usd_micro: number;
+      load_estimate_s: number;
+      wake_estimate_s: number;
+      /** `taken`: another account loaded it and keeps it private. */
+      state: "new" | "loading" | "loaded" | "needs_load" | "taken";
+      model_id: string | null;
+      load_id: string | null;
+      can_load: boolean;
+    };
+
+export type LoadStage = "queued" | "checking" | "downloading" | "validating" | "starting" | "ready" | "failed";
+/** The stages a first load goes through, in order. */
+export const LOAD_STAGES: readonly LoadStage[] = ["queued", "checking", "downloading", "validating", "starting"];
+
+/** The first load of a pasted model. The money fields are zero for everyone but the account that pays. */
+export type Load = {
+  id: string;
+  model_id: string;
+  hf_repo: string;
+  sha: string;
+  tier: Tier;
+  state: "loading" | "ready" | "failed";
+  stage: LoadStage;
+  bytes: number;
+  size_bytes: number;
+  mine: boolean;
+  price_usd_micro_per_min: number;
+  cap_minutes: number;
+  hold_usd_micro: number;
+  charged_usd_micro: number;
+  code?: string;
+  detail?: string;
+  created_at: number;
+  ended_at: number | null;
+  /** The gateway's clock when it wrote this, so elapsed time does not depend on this device's clock. */
+  now: number;
+};
+
+/** A pasted model its loader sees in the account area. `clears_at` is null once the weights were cleared. */
+export type MyModel = Model & { size_bytes: number; last_woken_at: number; clears_at: number | null };
+
+export type PasteConfig = {
+  /** False while no lane takes pasted models: the paste box says so and offers nothing. */
+  open: boolean;
+  engine: string;
+  engine_version: string;
+  load_cap_minutes: Record<Tier, number>;
+  loads_per_day: number;
+  clear_after_days: number;
 };
 
 export type Stage = "queued" | "gpu" | "container" | "weights" | "engine" | "ready" | "failed";
@@ -203,6 +278,7 @@ export type Config = {
   owner_share_bps: number;
   /** The system note a client that runs its own tool loop puts in front of the conversation. */
   tool_system_note: string | null;
+  paste: PasteConfig;
 };
 export const DEFAULT_CONFIG: Config = {
   prices_usd_micro_per_min: { light: 30_000, medium: 60_000, heavy: 100_000 },
@@ -219,6 +295,7 @@ export const DEFAULT_CONFIG: Config = {
   perks_enabled: false,
   owner_share_bps: 3000,
   tool_system_note: null,
+  paste: { open: false, engine: "", engine_version: "", load_cap_minutes: { light: 5, medium: 10, heavy: 15 }, loads_per_day: 5, clear_after_days: 28 },
 };
 
 export const TIERS: readonly Tier[] = ["light", "medium", "heavy"];

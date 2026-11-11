@@ -2,7 +2,7 @@
 
 import { readSse } from "./sse";
 import { DEFAULT_CONFIG, TIERS } from "./types";
-import type { ApiKey, Awake, Config, HostedAccount, HostedModel, Listing, Me, Model, NewKey, Perks, PublicReceipt, Session, StageEvent, Stats, Tier, Topup } from "./types";
+import type { ApiKey, Awake, Config, HostedAccount, HostedModel, Listing, Load, Me, Model, MyModel, NewKey, PasteConfig, Perks, PublicReceipt, RepoCheck, Session, StageEvent, Stats, Tier, Topup } from "./types";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -83,13 +83,18 @@ export type RawConfig = {
   perks?: { enabled?: boolean };
   owner_share_bps?: number;
   tool_system_note?: string;
+  paste?: Partial<Omit<PasteConfig, "load_cap_minutes">> & { load_cap_minutes?: Partial<Record<Tier, number>> };
 };
 export function normalizeConfig(raw: RawConfig | null | undefined): Config {
   const r = raw ?? {};
   const d = DEFAULT_CONFIG;
   const num = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback);
   const prices = { ...d.prices_usd_micro_per_min };
-  for (const t of TIERS) prices[t] = num(r.prices_usd_micro_per_min?.[t], prices[t]);
+  const caps = { ...d.paste.load_cap_minutes };
+  for (const t of TIERS) {
+    prices[t] = num(r.prices_usd_micro_per_min?.[t], prices[t]);
+    caps[t] = num(r.paste?.load_cap_minutes?.[t], caps[t]);
+  }
   return {
     prices_usd_micro_per_min: prices,
     free_minutes: num(r.free_minutes, d.free_minutes),
@@ -107,6 +112,14 @@ export function normalizeConfig(raw: RawConfig | null | undefined): Config {
     perks_enabled: r.perks?.enabled === true,
     owner_share_bps: typeof r.owner_share_bps === "number" ? r.owner_share_bps : d.owner_share_bps,
     tool_system_note: r.tool_system_note || null,
+    paste: {
+      open: r.paste?.open === true,
+      engine: r.paste?.engine || "",
+      engine_version: r.paste?.engine_version || "",
+      load_cap_minutes: caps,
+      loads_per_day: num(r.paste?.loads_per_day, d.paste.loads_per_day),
+      clear_after_days: num(r.paste?.clear_after_days, d.paste.clear_after_days),
+    },
   };
 }
 
@@ -255,6 +268,28 @@ export function createClient(f: FetchLike) {
     topup: (tx_hash: string) => req<Topup>("POST", "/api/topups", { tx_hash }),
     createListing: (hf_repo: string) => req<Listing>("POST", "/api/listings", { hf_repo }),
     listing: (id: string) => req<Listing>("GET", `/api/listings/${encodeURIComponent(id)}`),
+
+    /** The free check of a pasted Hugging Face repo: whether it can be served, its class, and what its first load costs at most. */
+    checkRepo: (repo: string, signal?: AbortSignal) => req<RepoCheck>("POST", "/api/models/check", { repo }, signal),
+    /** Start the paid first load of a pasted repo, or join the one that is already running (nothing is charged then). */
+    startLoad: (repo: string, keepPrivate: boolean) => req<Load>("POST", "/api/loads", { repo, private: keepPrivate }),
+    load: (id: string, signal?: AbortSignal) => req<Load>("GET", `/api/loads/${encodeURIComponent(id)}`, undefined, signal),
+    /** Load event stream: `load` at every step, `tick` while nothing moves, one `ended`. Resolves when the stream closes. */
+    async loadEvents(id: string, on: (event: string, data: unknown) => void, signal: AbortSignal): Promise<void> {
+      const res = await f(`/api/loads/${encodeURIComponent(id)}/events`, { headers: { accept: "text/event-stream" }, credentials: "same-origin", signal });
+      if (!res.ok || !res.body) throw await parse<never>(res).catch((e: unknown) => e);
+      for await (const m of readSse(res.body)) {
+        let data: unknown;
+        try {
+          data = JSON.parse(m.data);
+        } catch {
+          continue;
+        }
+        on(m.event, data);
+      }
+    },
+    myModels: () => req<{ models: MyModel[] }>("GET", "/api/me/models").then((r) => r.models ?? []),
+    setPrivate: (id: string, keepPrivate: boolean) => req<Model>("PUT", `/api/models/${encodeURIComponent(id)}/private`, { private: keepPrivate }),
 
     /** OpenAI-compatible streaming chat on a session. */
     async *chat(
