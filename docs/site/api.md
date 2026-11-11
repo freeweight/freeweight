@@ -210,7 +210,8 @@ before you send `tools`. The [models](/docs/models) page explains every field. `
 `asleep`, `waking`, `awake`, `cold`, `unavailable`, `needs_load`.
 
 `origin` is `catalog`, or `pasted` for a model that somebody [pasted](/docs/any-model). A pasted model carries
-the tag `untested`, has `tools_ok: false`, and is in the state `needs_load` when its weights were cleared.
+the tag `untested`, has `tools_ok: false`, and is in the state `needs_load` when its weights were cleared. Its
+`quant` says how the weights are stored: `bf16` or `fp16`, or a quantisation such as `AWQ 4-bit`, `GPTQ 8-bit` or `FP8`.
 `private` and `mine` are about pasted models: `mine` is `true` for the account that loaded the model, and a
 model with `private: true` is returned to that account only.
 

@@ -181,10 +181,12 @@ export default function ModelDetail({ params }: { params: Record<string, string>
                 <dt>Params</dt>
                 <dd className="mono small">{fmtParams(model.params_b)}</dd>
               </div>
-              <div>
-                <dt>Quant</dt>
-                <dd className="mono small">{model.quant}</dd>
-              </div>
+              {model.quant && (
+                <div>
+                  <dt>Quant</dt>
+                  <dd className="mono small">{model.quant}</dd>
+                </div>
+              )}
               <div>
                 <dt>Context</dt>
                 <dd className="mono small">{context(model.context)} tokens</dd>
