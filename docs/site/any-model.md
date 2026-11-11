@@ -59,8 +59,9 @@ use the model for your purpose is for you to read.
 ## The first load
 
 A first load needs an account with a balance. You pay the class price per minute for the time the load takes,
-and never for more minutes than the cap of the class. A load that takes longer than the cap still finishes: the
-minutes past the cap are on Freeweight.
+and never for more minutes than the cap of the class. A download that takes longer than the cap still finishes:
+those minutes are on Freeweight. The start on a GPU is not: it may use the GPU for the cap of the class, plus up
+to two minutes of waiting for a GPU. A model that is not ready by then fails its load, and costs nothing.
 
 - The cap is held from your balance when the load starts. When the load ends, you are charged for the time it
   took and the rest of the hold returns.
@@ -79,7 +80,7 @@ The stages of a load:
 | `checking` | The files of the repository are listed at the pinned commit. |
 | `downloading` | The weights are fetched. `bytes` of `size_bytes` says how far. |
 | `validating` | The fetched files are checked again: format, architecture, chat template, size. |
-| `starting` | The model is started once on a GPU and asked one question. |
+| `starting` | The model is started once on a GPU and asked one question, within the cap of its class. |
 | `ready` | The model is in the catalog. |
 | `failed` | The load ended without a model. Nothing was charged. |
 
@@ -103,10 +104,20 @@ and has `origin: "pasted"` in the API.
 
 ### Keep it private
 
-The account that paid for the first load can keep the model private: tick the box before the load, or switch it
-later on the model's page or on your account page. A private model is in no public list, and only your account,
-with the browser sign-in or one of your API keys, can read it or start a session on it. For everyone else the
-model does not exist. If they paste the same repository, the check tells them that it is taken, and nothing more.
+Tick the box before the load to load a private copy. It gets an id of its own, the public id with `_p` and six
+more characters, and only your account, with the browser sign-in or one of your API keys, can read it or start a
+session on it. It is in no public list. For everyone else it does not exist: if they paste the same repository,
+the check answers as if you had not loaded it, and they can load the public model as usual.
+
+A private copy is a second set of weights. Its load counts toward your limits, and its weights are cleared like
+any other's.
+
+You can switch later, on the model's page or on your account page:
+
+- A private copy becomes public, under its id, only while the repository has no public model. Otherwise it stays
+  private, and the answer names the public model.
+- A public model you loaded can be made private only until another account pays for a load of it. From then on
+  it stays public.
 
 Privacy covers the catalog entry. It does not make the weights private: they are a public repository on Hugging
 Face.
@@ -124,8 +135,10 @@ date 28 days ahead.
 
 | Limit | Value |
 | ----- | ----- |
-| Checks | 20 per minute per network address, and per account |
+| Checks | 20 per minute per network address, and per account. Starting a load counts as a check. |
 | First loads | 5 per account in any 24 hours (a rolling window, not a calendar day). Joining a load is not counted. |
+| Loads of one account at the same time | One. Another answers `429 load_running`. |
+| Failed loads | After 2 loads of an account failed on a GPU in 24 hours, the next answers `429 failed_load_limit` until the older of them is 24 hours old. |
 | Loads at the same time | A small number across the whole service. One more answers `429 too_many_loads`: try again in a few minutes. |
 | Storage | Pasted models share one storage budget. When it is full, a load answers `503 storage_full`. |
 
@@ -164,6 +177,7 @@ curl -X POST https://freeweight.xyz/api/models/check \
   "state": "new",
   "model_id": null,
   "load_id": null,
+  "private": false,
   "can_load": true
 }
 ```
@@ -187,9 +201,9 @@ A model that cannot be loaded also answers with status 200:
 | `needs_load` | It is in the catalog as `model_id`, and its weights were cleared. | Start a load. |
 | `loading` | A load is running: `load_id`. | Follow that load, or start one to join it. |
 | `loaded` | It is in the catalog as `model_id`. | Start a session on `model_id`. |
-| `taken` | Another account loaded it and keeps it private. | Nothing. It cannot be loaded a second time. |
 
-`can_load` is `true` for `new` and `needs_load`.
+`can_load` is `true` for `new` and `needs_load`. When you have a private copy of the repository, the answer is
+about that copy and `private` is `true`. Another account's private copy is never part of the answer.
 
 **2. Load.**
 
@@ -200,8 +214,8 @@ curl -X POST https://freeweight.xyz/api/loads \
   -d '{"repo": "your-org/your-model"}'
 ```
 
-Add `"private": true` to keep the model private. The answer is the load: status 201 when you started it, 200
-when you joined one that was running.
+Add `"private": true` to load a private copy, under an id of its own. The answer is the load: status 201 when
+you started it, 200 when you joined one that was running.
 
 ```json
 {

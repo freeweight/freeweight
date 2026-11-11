@@ -96,8 +96,8 @@ first time is not: the weights have to be fetched, stored, and started once on a
 | Medium | $0.06 per minute | 10 minutes | $0.60 |
 | Heavy | $0.10 per minute | 15 minutes | $1.50 |
 
-- You pay for the time the load takes, by the second, and never past the cap. A load that takes longer still
-  finishes.
+- You pay for the time the load takes, by the second, and never past the cap. A download that takes longer still
+  finishes. The start on a GPU is stopped at the cap, and a model that is not ready by then fails its load.
 - The cap is held when the load starts. What is not charged returns when it ends.
 - A load that fails costs nothing.
 - Somebody who joins a load that is already running pays nothing.
