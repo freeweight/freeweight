@@ -233,20 +233,20 @@ function HowItWorks() {
   return (
     <figure className="how">
       <div className="how-plot" aria-hidden="true">
-        <div className="how-seg sleep">
+        <div className="how-seg how-sleep">
           <span className="micro">$0</span>
         </div>
-        <div className="how-seg wake">
+        <div className="how-seg how-wake">
           {[18, 34, 50, 70, 100].map((h) => (
             <i key={h} style={{ height: `${h}%` }} />
           ))}
         </div>
-        <div className="how-seg awake">
+        <div className="how-seg how-awake">
           {Array.from({ length: 12 }, (_, i) => (
             <i key={i} />
           ))}
         </div>
-        <div className="how-seg sleep">
+        <div className="how-seg how-sleep">
           <span className="micro">$0</span>
         </div>
       </div>
