@@ -817,10 +817,13 @@ ol .rk-t::after {
   border-bottom: 1px solid var(--line-2);
   margin-bottom: var(--s3);
 }
+/* The plates below are the main read of the time left. The figure is the exact value, set small and in the
+   second ink so a number that changes every second does not pull the eye. */
 .meter-left {
-  font: 500 56px/56px var(--mono);
-  letter-spacing: -0.04em;
+  font: 400 28px/32px var(--mono);
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
 }
 .meter-left b {
   font-weight: inherit;
@@ -831,9 +834,9 @@ ol .rk-t::after {
 .meter-left.low {
   color: var(--accent-ink);
 }
-/* A stopped clock holds its reading, or says "paused" when it has none, in the quieter ink. */
+/* A stopped clock holds its reading, or says "paused" when it has none, in the quietest ink. */
 .meter-left.held {
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 .meter-paused {
   margin-top: var(--s3);
