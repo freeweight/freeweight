@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Config, type RepoCheck } from "../api";
 import { about, context, licence, params, perMin, shortSha, size, TIER_NAME, usd } from "../lib/format";
 import { refreshMe, toApiError, useMe } from "../lib/hooks";
-import { firstLoadShown, loadedNote, parseRepo } from "../lib/repo";
+import { cannotLoad, firstLoadShown, loadedNote, parseRepo } from "../lib/repo";
 import { Link, navigate } from "../router";
 import { Icon, Notice, TierMark } from "./bits";
 import "./pastebox.css";
@@ -33,7 +33,6 @@ const REFUSED: Record<string, string> = {
 };
 const LOAD_ERR: Record<string, string> = {
   sign_in_required: "Sign in with a wallet to load a model.",
-  daily_load_limit: "This account has used its first loads for the last 24 hours.",
   too_many_loads: "Too many models are being loaded right now. Try again in a few minutes.",
   storage_full: "The storage for pasted models is full right now. Try again later.",
   load_not_started: "The load could not be started, and nothing was charged. Try again.",
@@ -247,7 +246,17 @@ function Verdict({ check, signedIn, busy, keep, setKeep, onLoad }: { check: Pass
         <span className="pb-fine">Somebody is loading this model right now. Watching is free, and you can rent it as soon as it is ready.</span>
       </div>
     );
-  if (!check.can_load) return <Notice>This model passed the check, but pasted models cannot be loaded right now.</Notice>;
+  if (!check.can_load)
+    return (
+      <Notice>
+        {cannotLoad(check.limit)}{" "}
+        {check.limit?.load_id && (
+          <Link className="link" href={`/load/${check.limit.load_id}`}>
+            Watch it
+          </Link>
+        )}
+      </Notice>
+    );
   return (
     <>
       {signedIn && (

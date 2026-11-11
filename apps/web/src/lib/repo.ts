@@ -7,6 +7,9 @@ export const loadedNote = (own: boolean): string =>
 /** The cap of a first load and its estimate are shown only for a model that would get one, never for a loaded one. */
 export const firstLoadShown = (state: string): boolean => state !== "loaded";
 
+/** Why a model that passed the check cannot be loaded now: the account's own limit, or loads are closed. */
+export const cannotLoad = (limit: { reason: string } | undefined): string => limit?.reason ?? "This model passed the check, but pasted models cannot be loaded right now.";
+
 const NAME = /^[\w.-]+\/[\w.-]+$/;
 
 /** "owner/name" from pasted text, or null when it is not a repo. */

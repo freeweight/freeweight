@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Model } from "../src/api/types";
 import { filterModels, isFiltered, NO_FILTERS, readFilters, tagsOf, toQuery } from "../src/lib/catalog";
-import { firstLoadShown, loadedNote, parseRepo } from "../src/lib/repo";
+import { cannotLoad, firstLoadShown, loadedNote, parseRepo } from "../src/lib/repo";
 
 const model = (over: Partial<Model>): Model => ({
   id: "m",
@@ -80,6 +80,11 @@ describe("loadedNote", () => {
     expect(loadedNote(true)).not.toMatch(/catalog/);
     expect(loadedNote(false)).toMatch(/^This model is in the catalog already\./);
     for (const own of [true, false]) expect(loadedNote(own)).toMatch(/It wakes like any other, with no first load\.$/);
+  });
+  it("says why the account cannot load a model now, in the gateway's words", () => {
+    const reason = "An account starts 5 first load(s) in 24 hours. This one can start another after 2026-11-12 21:48 UTC.";
+    expect(cannotLoad({ reason })).toBe(reason);
+    expect(cannotLoad(undefined)).toMatch(/cannot be loaded right now/);
   });
   it("shows the cost and the time of a first load only for a model that is not loaded", () => {
     expect(firstLoadShown("loaded")).toBe(false);

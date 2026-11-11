@@ -59,6 +59,8 @@ export type RepoCheck =
       /** The state is that of the caller's own private copy. Nobody else's private copy is ever named. */
       private: boolean;
       can_load: boolean;
+      /** Why the signed-in account cannot start this load now: the code a load would be refused with. */
+      limit?: { code: string; reason: string; retry_at?: number; load_id?: string };
     };
 
 export type LoadStage = "queued" | "checking" | "downloading" | "validating" | "starting" | "ready" | "failed";

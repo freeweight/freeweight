@@ -141,7 +141,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 429 | `free_used` | Today's free session is used, for this visitor or this network address. On the always-awake model: today's free messages are. |
 | 429 | `free_budget_spent` | Today's free sessions, or today's free messages on the always-awake model, are all taken. |
 | 429 | `too_many_listings` | More than 20 listing checks in a day. |
-| 429 | `daily_load_limit` | The account started its 5 first loads in the last 24 hours. |
+| 429 | `daily_load_limit` | The account started its 5 first loads in the last 24 hours. Carries `retry_at` (ms) and a `Retry-After` header. |
 | 429 | `failed_load_limit` | 2 loads of the account failed on a GPU in the last 24 hours. Carries `retry_at` (ms) and a `Retry-After` header. |
 | 429 | `load_running` | The account has a load running. Carries `load_id`. |
 | 429 | `too_many_loads` | Too many models are being loaded right now. Carries `Retry-After: 120`. |
@@ -856,7 +856,8 @@ An accepted model:
 | `model_id` | The catalog id, when `state` is `loaded` or `needs_load`. Otherwise `null`. |
 | `load_id` | The running load, when `state` is `loading`. Otherwise `null`. |
 | `private` | `true` when `state` is about your own private copy. |
-| `can_load` | `true` when `state` is `new` or `needs_load`. |
+| `can_load` | `true` when `state` is `new` or `needs_load` and, if you are signed in, your account can start a load now. |
+| `limit` | Only when you are signed in and your account cannot start this load now: `code` (`failed_load_limit`, `daily_load_limit` or `load_running`, as `POST /api/loads` would answer), `reason`, and `retry_at` (ms) when the limit frees up, or `load_id` of your running load. |
 
 The answer is about your own private copy of the repository when you have one, and else about its public model.
 Another account's private copy is never named or counted: for you it does not exist. A repository is read from
@@ -926,7 +927,7 @@ Refusals come before any money is held:
 | 402 | `insufficient_balance` | The balance does not cover the cap. Carries `needed_usd_micro`. |
 | 429 | `rate_limited` | More than 20 checks and loads in a minute, from one network address or one account. |
 | 429 | `failed_load_limit` | 2 loads of the account failed on a GPU in the last 24 hours. Carries `retry_at`, when the next load is taken. |
-| 429 | `daily_load_limit` | 5 first loads per account in a rolling 24 hours. |
+| 429 | `daily_load_limit` | 5 first loads per account in a rolling 24 hours. Carries `retry_at`, when the next load is taken, and a `Retry-After` header. |
 | 429 | `load_running` | The account has a load running, in `load_id`. One at a time. |
 | 429 | `too_many_loads` | Too many loads are running across the service. Carries `Retry-After: 120`. |
 | 503 | `storage_full` | The storage for pasted models is full. |
