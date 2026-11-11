@@ -20,8 +20,8 @@ Examples use `https://freeweight.xyz`. Before launch the service runs on a stagi
 | The always-awake model (DeepSeek V4.1 Flash, an uncensored build) | An API run by NanoGPT | NanoGPT |
 | Top-ups | Robinhood Chain: a transfer from your wallet to a public treasury address | Nobody signs for you. The service reads the chain. |
 | The research tools | Public sources: the chain itself, DexScreener, GeckoTerminal, GoPlus, Sourcify, block explorers and the Pons launch list | See [Tools](tools.md) |
-| The staking vault | Not deployed | |
-| The token | Does not exist | |
+| The staking vault | Not deployed | Nobody yet |
+| The token | Does not exist | Nobody yet |
 
 The service holds no user private keys and signs no transaction for a user.
 
