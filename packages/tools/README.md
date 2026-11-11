@@ -1,11 +1,15 @@
 # @freeweight/tools
 
 Read-only token research tools for EVM chains, built to run inside a Cloudflare Worker (only `fetch`, no Node APIs).
-The same ten tools are served three ways:
+The same eleven tools are served three ways:
 
 - **MCP**: `handleMcp(request, ctx)` is a stateless Streamable-HTTP MCP endpoint (JSON responses, no sessions).
-- **Chat tool calling**: `openAiToolSpecs()` returns OpenAI-style function specs; `runTool(name, args, ctx)` runs one.
+- **Chat tool calling**: `openAiToolSpecs(env)` returns OpenAI-style function specs; `runTool(name, args, ctx)` runs one.
 - **Direct**: `tools` is the list of definitions (name, title, description, JSON-schema input, handler).
+
+A tool that cannot work with the given `env` is not offered: `tools/list` and `openAiToolSpecs(env)` both go through
+`availableTools(env)`, which today leaves out `web_search` when there is no `EXA_KEY`. Calling such a tool by name still
+answers, with `not_configured`.
 
 Nothing here signs or sends a transaction. Simulations use `eth_call`, which changes no state.
 
@@ -26,7 +30,7 @@ Connect an MCP client (Claude, Codex, the MCP Inspector) to the `/mcp` URL with 
 | key | effect |
 |---|---|
 | `RPC_URLS` | Per-chain RPC override, keyed by chain id or name (`"4663"`, `"base"`); an https URL or a comma-separated list tried in order (`http://` entries are ignored). **Set a keyed Robinhood Chain RPC in production**: from Workers' shared egress IPs the public RPC answers 429. The RPC must support `eth_call` state overrides (code and balance) for the fresh-wallet sell test. |
-| `EXA_KEY` | Enables `web_search`. Without it the tool returns `not_configured`. |
+| `EXA_KEY` | Enables `web_search`. Without it the tool is not listed and returns `not_configured` when called. |
 | `GITHUB_TOKEN` | Optional read-only token for `project_check` (keyless GitHub is 60 requests/hour per IP). |
 | `FACTS_URL`, `FACTS_KEY`, `FACTS_ACCESS_ID`, `FACTS_ACCESS_SECRET` | Optional Freeweight index for Robinhood Chain tokens (see Enrichment). `FACTS_URL` must be https. |
 | `MCP_ALLOWED_ORIGINS` | Browser origins allowed to call `handleMcp` (comma-separated exact origins). Requests without an `Origin` header (SDKs, CLIs, servers) and same-origin requests are always allowed; any other origin gets 403. |
@@ -172,11 +176,32 @@ a re-registration), what the site ships (title, framework, external script hosts
 links to X / Telegram / GitHub / Discord) and linked GitHub accounts or repos (age, commits seen, fork).
 
 ### `web_search` `{ query, num_results?, days? }`
-Exa search: titles, URLs, dates and short snippets. Returns `not_configured` without `EXA_KEY`.
+Exa search: titles, URLs, dates and short snippets. Without `EXA_KEY` it is not listed and returns `not_configured`.
 
 ### `market_data` `{ chain?, token? | pair?, majors? }`
 DexScreener pools for a token (main, other real pools, junk pools flagged) or one pair, with price, liquidity, volume,
 buys/sells and price change; USD prices for majors from CoinGecko (`eth`, `btc`, `sol` or CoinGecko ids).
+
+### `new_launches` `{ chain?, launchpad?, stage?, limit?, min_age_minutes?, max_age_minutes?, min_liquidity_usd? }`
+The newest tokens on a chain, newest first. It needs no address. Two public sources:
+
+- **A launchpad's own list.** Pons on Robinhood Chain (`ponsfamily.com/api/launches`): every token started there, with
+  its stage (`curve` or `graduated`), bonding-curve progress, market cap, the amount raised, volume and trades since
+  launch, creator, creator fee, description and links. Pages of 40; a call reads at most three.
+- **GeckoTerminal new pools** on any supported chain: the 20 newest pools with reserve, FDV, 24 h volume and trades.
+
+On Robinhood Chain both are read and merged (`launchpad` or `stage` narrows the call to the launchpad). A new pool whose
+token is already in the launchpad list, or that sits on the launchpad's own exchange, is dropped: it is that token
+graduating, not a new launch. On other chains only new pools are read.
+
+Limits. GeckoTerminal's keyless API answers 429 to most requests from Workers' shared addresses (measured: 1 answer in
+16 calls from a deployed Worker), so it is asked once per call, never retried, and a good answer is shared for two
+minutes. When it fails on Robinhood Chain the result is `partial`, holds launchpad rows only and says so; on another
+chain the call fails with `upstream_error`. `liquidity_usd` is the pool reserve for a pool and the amount raised for a
+token on the curve; a graduated launchpad token has none in this list, and `min_liquidity_usd` leaves it out with a
+note. Market caps are the sources' own figures and can be far off for a token with almost no trades. Age and liquidity
+filters run on the rows read, not on the whole history; a note says how far back the call looked. The tool lists and
+does not judge. Only launchpads named in `data.supported_launchpads` are covered.
 
 ### `chain_read` `{ chain?, op, … }`
 Generic read-only access. `op`:

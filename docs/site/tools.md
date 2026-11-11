@@ -1,17 +1,17 @@
 ---
 title: Tools
-summary: Ten read-only research tools for on-chain questions, what each returns and where each falls short.
+summary: Eleven read-only research tools for on-chain questions, what each returns and where each falls short.
 order: 60
 group: Build
 ---
 
-Freeweight has ten research tools for questions about tokens and contracts on EVM chains. They read public data:
+Freeweight has eleven research tools for questions about tokens and contracts on EVM chains. They read public data:
 chain nodes, block explorers, market data, project websites. They never sign or send a transaction.
 
 There are three ways to use them:
 
 - **In the chat on the site.** Switch tools on and the model calls them when it needs a fact.
-- **Over MCP.** `POST /mcp` serves the same tools to any agent or MCP client, with no session. Nine tools are
+- **Over MCP.** `POST /mcp` serves the same tools to any agent or MCP client, with no session. Ten tools are
   open to anyone and rate limited per network address. `web_search` runs only for a wallet: an API key or the
   browser sign-in.
 - **From your own loop.** Pass the tool list to a model through `/v1` and run the calls yourself.
@@ -82,7 +82,11 @@ Three rules hold for every tool:
 Over MCP the envelope is the tool result: as JSON text in `content[0].text`, as an object in `structuredContent`,
 and `isError` is `true` when `ok` is `false`.
 
-## The ten tools
+A model is only offered tools that can run for the caller. `tools/list`, and the list the site's chat hands to the
+model, leave out `web_search` for a caller without a wallet and while the service has no web search set up. When
+no tool fits a question, the model is told to say so in one sentence and to offer what it can look up.
+
+## The eleven tools
 
 ### `token_overview`
 
@@ -257,6 +261,40 @@ real pools of a token, or one pool, with price, liquidity, volume, the count of 
 change. Junk side pools are flagged. It also
 returns US dollar prices of large coins from CoinGecko, such as `eth`, `btc` and `sol`.
 
+### `new_launches`
+
+Input: all optional. `chain`; `launchpad` (`pons`, on Robinhood Chain); `stage` (`curve` or `graduated`, launchpad
+tokens only); `limit` (1 to 25, default 10); `min_age_minutes`; `max_age_minutes`; `min_liquidity_usd`.
+
+The newest tokens on a chain, newest first. This is the one tool that needs no address: it answers "what just
+launched" and gives you the addresses the other tools take.
+
+A launchpad is a site where anyone can start a token. The token trades on a bonding curve first, and when enough
+is raised it graduates to an exchange pool. On Robinhood Chain the tool reads the public list of the Pons
+launchpad: each token with its stage, how far along the curve it is, market cap, the amount raised, volume and
+trades since launch, the creator's address, the creator's fee, and the description and links the creator
+entered. It also reads GeckoTerminal's newest pools, which catches tokens that were put straight into a pool or
+came from somewhere else. On every other chain it reads GeckoTerminal's newest pools only.
+
+Each row says where it came from in `source`, and `launchpad` is `null` when the source names none. Names,
+symbols, descriptions and links are in `_untrusted` fields.
+
+What it misses:
+
+- It lists and does not judge. A row says nothing about whether a token is safe. Run `safety_check` or
+  `token_overview` on a token before you rely on it.
+- The figures are the sources' own and are not checked on chain. A market cap can be far off for a token with
+  almost no trades.
+- GeckoTerminal's free API refuses most requests from shared cloud addresses. When that happens on Robinhood
+  Chain the result is `partial`, holds Pons launches only, and a note says new pools were not checked. On
+  another chain the call fails with `upstream_error`: try again in a minute.
+- Pons is the only launchpad it reads. Tokens from other launchpads show up only once they have a pool that
+  GeckoTerminal lists, and then without a launchpad name.
+- `liquidity_usd` is the pool's reserve for a pool, and the amount raised for a token on the curve. A graduated
+  Pons token has no liquidity figure here, so `min_liquidity_usd` leaves it out, and a note says how many.
+- The filters run on what was read: up to 120 Pons launches and the 20 newest pools. A note says how far back
+  that reached.
+
 ### `chain_read`
 
 Input: `op`, `chain`, and the fields that operation needs.
@@ -365,6 +403,7 @@ other chain `enriched` is always `false`.
 | `chain_read` logs | 10,000 blocks per read, first 100 logs returned |
 | `holders` rows | 5 to 50 |
 | `web_search` results | 1 to 10 |
+| `new_launches` rows | 1 to 25 |
 | Fetched web pages | HTTPS only, at most 1.5 MB and 7 seconds per page, text only. The first 256 KB of a page is analysed. |
 
 Results are cached for a short time, so two identical calls in a row can return the same data.
@@ -424,7 +463,7 @@ the conversation when you run your own loop.
 | `unsupported_chain` | The chain is not in the list above. |
 | `no_result` | The tool ran and found nothing to report, for example an address with no contract code. |
 | `reverted` | A `chain_read` call was rejected by the contract. |
-| `not_configured` | `web_search` was called by a caller it does not run for. |
+| `not_configured` | `web_search` was called by a caller it does not run for, or the service has no web search set up. |
 | `upstream_error` | Every source the tool needs failed. Try again later. |
 | `unknown_tool` | No tool has that name. Over MCP this is a JSON-RPC error instead. |
 

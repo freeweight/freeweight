@@ -186,4 +186,4 @@ extended.
 - [Pricing](/docs/pricing): what a minute costs and when renting by the minute is the wrong choice.
 - [API reference](/docs/api): every endpoint, field and error.
 - [Agents](/docs/agents): keys that start sessions by themselves, and how to cap spend.
-- [Tools](/docs/tools): ten read-only research tools a model or an agent can call.
+- [Tools](/docs/tools): eleven read-only research tools a model or an agent can call.

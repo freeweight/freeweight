@@ -14,7 +14,7 @@ v0.1 runs on a staging address, not on the public domain.
 - **The free try:** 5 minutes on a Light model, from the browser, after a human check.
 - **The API:** the catalog, sessions with a live event stream, API keys (with `auto_session`), receipts, and an
   OpenAI-compatible `/v1`.
-- **Ten read-only research tools** over MCP at `/mcp`, and in the chat on the site.
+- **Eleven read-only research tools** over MCP at `/mcp`, and in the chat on the site.
 - **Two serving lanes** behind one adapter contract (`serving/modal`, `serving/baseten`). Only the Light model
   runs on both. Medium and Heavy run on one.
 - **Listing checks** for model owners. Approval, builds and payouts are done by hand.

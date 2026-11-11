@@ -31,7 +31,7 @@ Status: v0.1, before public launch. The staking vault is written and tested but 
 | ---- | ---- |
 | `apps/gateway` | The backend: API, sessions, billing ledger, top-up verification and the `/v1` proxy. One Cloudflare Worker with Durable Objects and D1. |
 | `apps/web` | The site and the app (Vite, React). A static bundle that the gateway serves from the same origin. |
-| `packages/tools` | Ten read-only research tools for on-chain questions, and the MCP handler that serves them. |
+| `packages/tools` | Eleven read-only research tools for on-chain questions, and the MCP handler that serves them. |
 | `serving/modal`, `serving/baseten` | Two serving lanes behind one adapter contract: wake, status, sleep, inference. |
 | `contracts` | `WeightVault`, the staking vault (Foundry). It holds stake and nothing else. Planned: not deployed. |
 | `docs` | Architecture, decision records, threat model, runbook, the OpenAPI file and the pages of the public site. |

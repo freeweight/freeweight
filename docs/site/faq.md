@@ -155,7 +155,7 @@ agent. v0.1 has no per-key spending limit.
 
 ### What are the tools?
 
-Ten read-only research tools for on-chain questions: token overviews, holders, safety checks and more. A model can
+Eleven read-only research tools for on-chain questions: token overviews, holders, safety checks and more. A model can
 call them in the site's chat, and any agent can call them over MCP at `/mcp`. See [tools](/docs/tools).
 
 ## Models

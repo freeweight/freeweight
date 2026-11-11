@@ -158,13 +158,13 @@ Stopping early returns what was not used, so asking for more minutes than the jo
 
 ## Tools
 
-Freeweight has ten read-only research tools for on-chain questions. The [tools](/docs/tools) page describes each
+Freeweight has eleven read-only research tools for on-chain questions. The [tools](/docs/tools) page describes each
 one. An agent can reach them in three ways.
 
 ### Over MCP
 
 `POST https://freeweight.xyz/mcp` is a Model Context Protocol endpoint. Point an MCP client at that address with
-the Streamable HTTP transport. It is stateless and answers in plain JSON. It needs no session. Nine tools need
+the Streamable HTTP transport. It is stateless and answers in plain JSON. It needs no session. Ten tools need
 no key and are rate limited per network address; `web_search` needs your API key (see below).
 
 Without an MCP client, it is two JSON-RPC calls. List the tools:
@@ -198,7 +198,9 @@ Rules of the endpoint:
 - Tool calls are limited to 30 per minute per network address. A refusal is HTTP 429 with `Retry-After: 30`.
   Listing the tools is not counted.
 - `web_search` runs only for a caller we know. Send your API key as the bearer token to use it. Without a key it
-  answers `not_configured`. The other nine tools need no key.
+  is not in `tools/list` and answers `not_configured` when called. It is also left out while the service has no
+  web search set up. The other ten tools need no key.
+- `new_launches` is the tool for "what is new": it lists the newest tokens on a chain and needs no address.
 - A web page on another site cannot call the endpoint from the browser. Such a request is refused with HTTP 403
   unless that site's origin is on the operator's allow list. Requests from servers, command lines and SDKs
   carry no `Origin` header and are not affected.
