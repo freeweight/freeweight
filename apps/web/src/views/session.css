@@ -1033,6 +1033,13 @@ ol .rk-t::after {
   .turn .who {
     padding-top: 4px;
   }
+  /* The plain line under a tool row sits under the row, not in the label column. */
+  .tool-turn {
+    row-gap: var(--s1);
+  }
+  .tool-said {
+    grid-column: 2;
+  }
   .log-empty {
     padding-left: calc(56px + var(--s4));
     max-width: calc(560px + 56px + var(--s4));
