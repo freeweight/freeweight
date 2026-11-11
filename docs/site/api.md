@@ -599,6 +599,8 @@ serve it. What differs from a rented model:
 - **The answer.** A chat completion in the OpenAI shape, with this model's id in `model`. A message carries
   `role`, `content` and, when the model sent them, `tool_calls`, `refusal` and `reasoning_content`. `usage` has
   `prompt_tokens`, `completion_tokens` and `total_tokens`: the numbers the charge was made from.
+  `finish_reason` is `stop`, `length`, `tool_calls` or `content_filter`. The `id` of a tool call is made by the
+  gateway (`call_...`). Send it back as `tool_call_id` with the result, as with any OpenAI-shaped API.
 - **Streaming.** `"stream": true` works as on a rented model, ending with `data: [DONE]`, and the usage chunk is
   sent only with `"stream_options": {"include_usage": true}`. A stream that breaks ends with one error block and
   no `[DONE]`: `upstream_error` or `slow_client`. It is charged for what arrived.
