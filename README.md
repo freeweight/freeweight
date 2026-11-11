@@ -88,6 +88,7 @@ Deploying, secrets (names only) and the operating procedures are in [docs/runboo
 | [docs/roadmap.md](docs/roadmap.md) | What is live in v0.1, what is planned for launch, and what is open with no date. |
 | [docs/api/openapi.yaml](docs/api/openapi.yaml) | OpenAPI 3.1 for the gateway API as implemented. |
 | [docs/site](docs/site) | The pages of the public docs: quickstart, pricing, API reference, agents, tools, models, policies. |
+| [docs/site/verify.md](docs/site/verify.md) | What runs where, and a request for each public claim that anyone can run without a wallet, key or money. |
 
 ## Security
 

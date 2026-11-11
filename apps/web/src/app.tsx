@@ -169,6 +169,7 @@ export function App() {
               <Link href="/docs/pricing">Pricing</Link>
               <Link href="/docs/terms">Terms</Link>
               <Link href="/docs/privacy">Privacy</Link>
+              <Link href="/docs/verify">Check our claims</Link>
               <Link href="/roadmap">Roadmap</Link>
             </nav>
           </div>

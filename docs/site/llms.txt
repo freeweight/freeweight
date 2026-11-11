@@ -120,3 +120,4 @@ and the OpenAPI file, which is plain text.
 - [Terms](https://freeweight.xyz/docs/terms): draft v0.1.
 - [Privacy](https://freeweight.xyz/docs/privacy): what is stored and what is not. Draft v0.1.
 - [Acceptable use](https://freeweight.xyz/docs/acceptable-use): what is refused. Draft v0.1.
+- [Check our claims](https://freeweight.xyz/docs/verify): what runs where, and for each claim a request that shows it, with no wallet, key or money.
