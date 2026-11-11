@@ -81,6 +81,9 @@ export type Load = {
   cap_minutes: number;
   hold_usd_micro: number;
   charged_usd_micro: number;
+  /** When the load entered its GPU stage, and how long it then waited for a GPU. The wait is not charged. */
+  gpu_at?: number | null;
+  gpu_wait_ms?: number | null;
   code?: string;
   detail?: string;
   created_at: number;

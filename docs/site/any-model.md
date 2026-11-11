@@ -60,12 +60,14 @@ use the model for your purpose is for you to read.
 ## The first load
 
 A first load needs an account with a balance. You pay the class price per minute for the time the load takes,
-and never for more minutes than the cap of the class. A download that takes longer than the cap still finishes:
-those minutes are on Freeweight. The start on a GPU is not: it may use the GPU for the cap of the class, plus up
-to two minutes of waiting for a GPU. A model that is not ready by then fails its load, and costs nothing.
+by the second, and never for more minutes than the cap of the class. Time spent waiting for a GPU is not charged:
+it runs from the end of the download and its checks until the machine with the GPU first reports, and it is taken
+off the time of the load. A download that takes longer than the cap still finishes: those minutes are on
+Freeweight. The start on a GPU is not: it may use the GPU for the cap of the class, counted from that first
+report. A model that is not ready by then fails its load, and costs nothing.
 
 - The cap is held from your balance when the load starts. When the load ends, you are charged for the time it
-  took and the rest of the hold returns.
+  took less the time it waited for a GPU, at most the cap, and the rest of the hold returns.
 - **A load that fails costs nothing.** The whole hold returns, and the load says why it failed in one sentence.
 - The commit of the repository is pinned at the first load. The catalog entry names it in `sha`. Later changes to
   the repository do not change what is served.
@@ -234,6 +236,8 @@ you started it, 200 when you joined one that was running.
   "cap_minutes": 5,
   "hold_usd_micro": 150000,
   "charged_usd_micro": 0,
+  "gpu_at": null,
+  "gpu_wait_ms": null,
   "created_at": 1794300000000,
   "ended_at": null,
   "now": 1794300000000

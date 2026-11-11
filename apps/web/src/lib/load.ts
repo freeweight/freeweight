@@ -46,9 +46,20 @@ export function loadElapsedMs(l: Pick<Load, "created_at" | "ended_at">, now: num
   return Math.max(0, (l.ended_at ?? now) - l.created_at);
 }
 
-/** What a load that ended now would cost: its time at the class rate, and never more than the cap. */
-export function loadCostMicro(l: Pick<Load, "price_usd_micro_per_min" | "cap_minutes">, elapsedMs: number): number {
-  const seconds = Math.min(Math.ceil(elapsedMs / 1000), l.cap_minutes * 60);
+type Billed = Partial<Pick<Load, "created_at" | "gpu_at" | "gpu_wait_ms">>;
+
+/**
+ * The part of `elapsedMs` a load is charged for: the wait for a GPU is not. Until the lane says how long that was,
+ * all time since the GPU stage began counts as waiting.
+ */
+export function loadBilledMs(l: Billed, elapsedMs: number): number {
+  const wait = l.gpu_wait_ms ?? (l.gpu_at && l.created_at ? l.created_at + elapsedMs - l.gpu_at : 0);
+  return Math.max(elapsedMs - Math.max(wait, 0), 0);
+}
+
+/** What a load that ended now would cost: its charged time at the class rate, and never more than the cap. */
+export function loadCostMicro(l: Pick<Load, "price_usd_micro_per_min" | "cap_minutes"> & Billed, elapsedMs: number): number {
+  const seconds = Math.min(Math.ceil(loadBilledMs(l, elapsedMs) / 1000), l.cap_minutes * 60);
   return Math.round((seconds * l.price_usd_micro_per_min) / 60);
 }
 

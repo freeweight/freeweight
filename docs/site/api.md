@@ -893,6 +893,8 @@ holds nothing and pays nothing.
   "cap_minutes": 5,
   "hold_usd_micro": 150000,
   "charged_usd_micro": 0,
+  "gpu_at": null,
+  "gpu_wait_ms": null,
   "created_at": 1794300000000,
   "ended_at": null,
   "now": 1794300042000
@@ -906,11 +908,12 @@ holds nothing and pays nothing.
 | `bytes`, `size_bytes` | Fetched so far, and the total. |
 | `mine` | `true` for the account that pays for the load. |
 | `hold_usd_micro`, `charged_usd_micro` | The hold and the charge. Both are 0 for anyone but the payer. |
+| `gpu_at`, `gpu_wait_ms` | When the load reached its GPU stage (`starting`), and how long it then waited for a GPU, until the machine with the GPU first reported. Each is `null` until it is known. The wait is not charged. |
 | `code`, `detail` | On a failed load: why, as a code and as one sentence. |
 | `created_at`, `ended_at`, `now` | When the load started, when it ended (`null` while it runs), and the server's clock. |
 
-A load that ends `ready` is charged the price per minute for the seconds from `created_at` to the end, at most
-`cap_minutes`. A load that ends `failed` is charged nothing. In both cases the rest of the hold returns. The
+A load that ends `ready` is charged the price per minute for the seconds from `created_at` to the end less
+`gpu_wait_ms`, at most `cap_minutes`. A load that ends `failed` is charged nothing. In both cases the rest of the hold returns. The
 model's commit is pinned by its first load: a load after the weights were cleared fetches the same `sha`.
 
 Refusals come before any money is held:
@@ -936,8 +939,9 @@ The `code` of a failed load is one of `insufficient_balance`, `too_big`, `unsupp
 `_p` and six more characters); `false` the public model; left out, your private copy if you have one, else the
 public model. A private copy does not keep anyone else from loading the repository.
 
-The model is started on a GPU for at most the cap of its class, plus up to two minutes of waiting for a GPU. A
-model that is not ready by then fails its load with `wake_failed` or `timeout`, and is charged nothing.
+The model is started on a GPU for at most the cap of its class, counted from the moment the machine with the GPU
+first reports. The wait for a GPU before that is not charged. A model that is not ready by then fails its load
+with `wake_failed` or `timeout`, and is charged nothing.
 
 ### Follow a load
 

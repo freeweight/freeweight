@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { api, type Load, type LoadStage } from "../api";
 import { clockTenths, perMin, shortSha, size, TIER_NAME, took, usd } from "../lib/format";
 import { refreshLive, refreshMe, useFrame, useLive, useLoad, useTitle } from "../lib/hooks";
-import { loadCostMicro, loadFraction, loadRows, useLoadOf, type LoadRowView } from "../lib/load";
+import { loadBilledMs, loadCostMicro, loadFraction, loadRows, useLoadOf, type LoadRowView } from "../lib/load";
 import { Link } from "../router";
 import { Icon, Notice, TierMark } from "../ui/bits";
 import { WakeBox } from "../ui/wakebox";
@@ -129,7 +129,7 @@ export default function LoadView({ params }: { params: Record<string, string> })
             <dt>So far</dt>
             <dd className="facts-row">
               <span className="mono">{usd(loadCostMicro(l, elapsed))}</span>
-              <span className="dimmer">{elapsed >= capMs ? "the cap is reached: the rest of this load is free" : `of ${usd(l.hold_usd_micro)} held. Charged only if the load succeeds`}</span>
+              <span className="dimmer">{loadBilledMs(l, elapsed) >= capMs ? "the cap is reached: the rest of this load is free" : `of ${usd(l.hold_usd_micro)} held. Charged only if the load succeeds`}</span>
             </dd>
           </div>
         )}

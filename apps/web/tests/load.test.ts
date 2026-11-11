@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../src/api/client";
 import type { Load } from "../src/api/types";
-import { followLoad, loadCostMicro, loadElapsedMs, loadFraction, loadRows } from "../src/lib/load";
+import { followLoad, loadBilledMs, loadCostMicro, loadElapsedMs, loadFraction, loadRows } from "../src/lib/load";
 
 const load = (over: Partial<Load> = {}): Load => ({
   id: "load_1",
@@ -67,6 +67,18 @@ describe("load figures", () => {
     expect(loadCostMicro(l, 300_000)).toBe(150_000);
     expect(loadCostMicro(l, 3_600_000)).toBe(150_000);
     expect(loadCostMicro({ price_usd_micro_per_min: 100_000, cap_minutes: 15 }, 3_600_000)).toBe(1_500_000);
+  });
+
+  it("leaves the wait for a GPU out of what a load costs", () => {
+    const l = { price_usd_micro_per_min: 30_000, cap_minutes: 5, created_at: 1_000 };
+    // Before the GPU stage everything counts; in it, all time counts as waiting until the lane says how long that was.
+    expect(loadBilledMs({ ...l, gpu_at: null }, 40_000)).toBe(40_000);
+    expect(loadBilledMs({ ...l, gpu_at: 41_000 }, 100_000)).toBe(40_000);
+    expect(loadBilledMs({ ...l, gpu_at: 41_000, gpu_wait_ms: 30_000 }, 100_000)).toBe(70_000);
+    expect(loadCostMicro({ ...l, gpu_at: 41_000, gpu_wait_ms: 245_000 }, 371_000)).toBe(63_000);
+    // The cap stays, and a wait longer than the load never makes a cost below zero.
+    expect(loadCostMicro({ ...l, gpu_at: 2_000, gpu_wait_ms: 10_000 }, 3_600_000)).toBe(150_000);
+    expect(loadCostMicro({ ...l, gpu_at: 2_000, gpu_wait_ms: 90_000 }, 60_000)).toBe(0);
   });
 });
 
