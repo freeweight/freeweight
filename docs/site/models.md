@@ -43,6 +43,7 @@ This page explains how to read the catalog. The catalog itself is live:
 | `owner` | The wallet of the model owner, if an owner listed it. `null` for models Freeweight added. |
 | `state` | Whether the model is on a GPU now. See below. |
 | `wake_estimate_s` | The expected wake time in seconds. |
+| `wake_low_s`, `wake_high_s` | The range most wakes fall in, in seconds. 0 until the model has been woken. |
 | `tools_ok` | Whether tool calling is switched on for this model and has passed our test. See below. |
 | `tags`, `blurb` | Short labels and one line of description. |
 
@@ -151,6 +152,11 @@ A model goes back to sleep when its last session ends. Nobody pays for a sleepin
 `wake_estimate_s` is measured, not promised. It is the median of the model's last 15 successful wakes. A model that
 has never been woken shows the value from its catalog entry instead, and its state is `cold`. A value of 0 means
 the wake has not been measured yet. In v0.1 that is the Heavy model.
+
+Wakes of one model differ, so the catalog also gives a range. `wake_low_s` and `wake_high_s` are the 25th and
+75th percentile of the same 15 wakes: half of them took between the two. Both are 0 until the model has been
+woken once, and after a single wake all three numbers are the same. When the two differ, say "30 to 55 seconds"
+instead of one number.
 
 A wake can be faster than the estimate, when the weights are still cached near the GPU. It can be slower, when
 GPUs are scarce or the weights have to be fetched again. It can fail. A failed wake costs nothing.

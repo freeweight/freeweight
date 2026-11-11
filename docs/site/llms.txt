@@ -21,7 +21,8 @@ staging address with the same paths. `/api` has no version prefix and can still 
   `/v1` request with no live session answers `409 no_active_session`.
 - A sleeping model takes from under a minute to a few minutes to wake, depending on its size. The catalog gives
   an estimate per model in `wake_estimate_s`: 40 for `qwen3-8b`, 60 for `qwen3-32b`, 0 (not measured yet) for
-  `llama33-70b`.
+  `llama33-70b`. `wake_low_s` and `wake_high_s` give the range most wakes of that model fall in (0 until it
+  has been woken).
   A `/v1` request on a waking session waits up to 5 minutes, then
   answers `503 model_waking` with `Retry-After`. Set the client timeout to 10 minutes and retry on that code.
 - Every successful `/v1` answer carries the header `x-freeweight-session` with the id of the session it ran on.

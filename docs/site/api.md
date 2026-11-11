@@ -172,13 +172,16 @@ A `Model`:
   "owner": null,
   "state": "asleep",
   "wake_estimate_s": 40,
+  "wake_low_s": 30,
+  "wake_high_s": 55,
   "tags": ["chat", "reasoning", "tools"],
   "blurb": "Fast general model with tool calling. The default pick.",
   "tools_ok": true
 }
 ```
 
-`state` and `wake_estimate_s` change as the model is used. `hf_repo`, `sha` and `quant` say exactly which
+`state`, `wake_estimate_s` and the range around it (`wake_low_s` to `wake_high_s`, 0 until measured) change as
+the model is used. `hf_repo`, `sha` and `quant` say exactly which
 weights are served. `context` is 16384 on every model in v0.1. `tools_ok` is `false` on `llama33-70b`: read it
 before you send `tools`. The [models](/docs/models) page explains every field. `state` is one of
 `asleep`, `waking`, `awake`, `cold`, `unavailable`.
