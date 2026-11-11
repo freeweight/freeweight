@@ -179,7 +179,7 @@ curl -X POST https://freeweight.xyz/api/models/check \
   "price_usd_micro_per_min": 30000,
   "load_cap_minutes": 5,
   "load_cap_usd_micro": 150000,
-  "load_estimate_s": 162,
+  "load_estimate_s": 212,
   "wake_estimate_s": 27,
   "state": "new",
   "model_id": null,

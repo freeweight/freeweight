@@ -869,7 +869,7 @@ const sizeOf = (repo: string): { tier: Tier; params: number; bytes: number } => 
   const bytes = Math.round(params * 2.03e9);
   return { tier: known?.tier ?? TIER_MAX_GIB.find(([, max]) => bytes <= max * GIB)?.[0] ?? "heavy", params, bytes };
 };
-const estimates = (bytes: number): { load_s: number; wake_s: number } => ({ load_s: Math.round(90 + (bytes / GIB) * 12), wake_s: Math.round(15 + (bytes / GIB) * 2) });
+const estimates = (bytes: number): { load_s: number; wake_s: number } => ({ load_s: Math.round(140 + (bytes / GIB) * 12), wake_s: Math.round(15 + (bytes / GIB) * 2) });
 const viewOf = (x: Ld): Load => ({ ...x.l, mine: x.payer && signedIn, hold_usd_micro: x.payer && signedIn ? x.l.hold_usd_micro : 0, charged_usd_micro: x.payer && signedIn ? x.l.charged_usd_micro : 0, now: vnow() });
 const runningLoad = (repo: string): Ld | undefined => [...loads.values()].find((x) => x.l.state === "loading" && x.l.hf_repo.toLowerCase() === repo.toLowerCase());
 const pastedId = (repo: string): string => repo.toLowerCase().replace("/", "_");
