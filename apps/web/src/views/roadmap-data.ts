@@ -13,7 +13,7 @@ export const ROADMAP: RoadmapGroup[] = [
       { title: "Wake view", text: "Real stages and real timings while a GPU loads the model. Wake time is never billed." },
       { title: "Sessions by the minute", text: "A clock, extend, stop, and a receipt in GPU-seconds." },
       { title: "Session endpoint", text: "OpenAI-compatible chat and completions, with keys per wallet." },
-      { title: "Chain toolkit", text: "Ten read-only tools for tokens on EVM chains, in chat and over MCP." },
+      { title: "Chain toolkit", text: "Eleven read-only tools for tokens on EVM chains, in chat and over MCP." },
       { title: "List a model", text: "Automatic checks on a Hugging Face repo. Listings are approved by hand for now." },
     ],
   },
