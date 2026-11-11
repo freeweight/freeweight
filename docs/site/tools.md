@@ -83,7 +83,8 @@ Over MCP the envelope is the tool result: as JSON text in `content[0].text`, as 
 and `isError` is `true` when `ok` is `false`.
 
 A model is only offered tools that can run for the caller. `tools/list`, and the list the site's chat hands to the
-model, leave out `web_search` for a caller without a wallet and while the service has no web search set up. When
+model, leave out `web_search` for a caller without a wallet and while the service has no web search set up. The
+chat on the always-awake model leaves it out for everyone for now. When
 no tool fits a question, the model is told to say so in one sentence and to offer what it can look up.
 
 ## The eleven tools

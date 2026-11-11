@@ -167,8 +167,8 @@ In the chat on the site, the first 20 messages a day are free, without a wallet:
 - A human check runs before the first free message of a day.
 - There are limits per network address, and a daily total for all visitors. Days are UTC days.
 - A signed-in wallet whose balance covers the message pays per token and has none of these limits. Paid messages
-  may use the [tools](/docs/tools). Each step of a tool loop is one request, charged like any other. The tool
-  calls themselves cost nothing.
+  may use the [tools](/docs/tools), without web search for now. Each step of a tool loop is one request, charged
+  like any other. The tool calls themselves cost nothing.
 - Free messages exist in the chat on the site only. A request with an API key is always paid.
 
 To keep the model available, one account runs at most 4 requests at the same time and 30 in a minute. The
