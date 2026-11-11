@@ -100,7 +100,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | ------ | ---- | ------- |
 | 400 | `bad_request` | The body or a field is missing or malformed. |
 | 400 | `model_mismatch` | `model` in the request is not the model of the session. |
-| 400 | `invalid_request` | A `/v1` field the gateway checks has a wrong value: `stream` that is not `true` or `false`, `n` outside 1 to 4, or `max_tokens` / `max_completion_tokens` that is not a whole number of zero or more. Nothing was sent to the model. On the always-awake model: `n` other than 1, a `max_tokens` below 1, or a request the model refused as it was sent. |
+| 400 | `invalid_request` | A `/v1` field the gateway checks has a wrong value: `stream` that is not `true` or `false`, `n` outside 1 to 4, or `max_tokens` / `max_completion_tokens` that is not a whole number of zero or more. Nothing was sent to the model. On the always-awake model: `n` other than 1, a `max_tokens` below 1, message content that is not text, a tool that is not a function, another field with a value it does not allow, or a request the model refused as it was sent. |
 | 400 | `too_long` | The extension would take the session past 240 minutes. |
 | 400 | `turnstile_required` | The free try, or the first free message of a day on the always-awake model, needs a token from the human check. |
 | 400 | `invalid_message`, `nonce_expired`, `nonce_used` | Sign-in message problems. |
@@ -581,11 +581,19 @@ serve it. What differs from a rented model:
   sent for the model to read (messages, tools, an answer format), counted at one token for every byte, plus `max_tokens` of output. If the balance does not cover that, the
   answer is `402 insufficient_balance`. When the answer ends, the charge is written from the token counts and
   the rest of the hold is released. On a stream this happens before the stream closes.
-- **Fields.** These go to the model as you sent them: `messages`, `tools`, `tool_choice`, `parallel_tool_calls`,
+- **Fields.** These go to the model: `messages`, `tools`, `tool_choice`, `parallel_tool_calls`,
   `temperature`, `top_p`, `stop`, `presence_penalty`, `frequency_penalty`, `seed` and `response_format`. Every
-  other field stays at the gateway, `chat_template_kwargs` among them.
+  other field stays at the gateway, `chat_template_kwargs` among them. One that is `null` counts as left out.
+- **Text only.** Message `content` is a string, or an array of parts of the form `{"type": "text", "text": ...}`.
+  Pictures, files and audio are not read. An assistant message with `tool_calls` may have `content: null`.
+  A field of a message other than `role`, `content`, `name`, `tool_calls` and `tool_call_id` is left out.
+- **Your tools only.** Each entry of `tools` is `{"type": "function", "function": {name, description,
+  parameters, strict}}`: a function your own code runs when the model calls it. Other tool types are refused.
+  `tool_choice` is `auto`, `none`, `required` or one named function. `stop` is a string or up to four strings.
+  `response_format` is of type `text`, `json_object` or `json_schema`.
 - **Checks.** `messages` holds 1 to 200 messages with the roles `system`, `user`, `assistant` and `tool`
-  (`400 bad_request` otherwise). `stream` must be `true` or `false`. `n` must be 1 or left out. `max_tokens` and
+  (`400 bad_request` otherwise). A field above with a value it does not allow answers `400 invalid_request`,
+  and nothing is sent to the model. `stream` must be `true` or `false`. `n` must be 1 or left out. `max_tokens` and
   `max_completion_tokens` must be whole numbers of one or more. A value above `max_output_tokens` is lowered to
   it, and a request that sends neither gets `max_output_tokens`.
 - **The answer.** A chat completion in the OpenAI shape, with this model's id in `model`. A message carries
