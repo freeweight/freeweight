@@ -4,6 +4,9 @@
 export const loadedNote = (own: boolean): string =>
   `${own ? "This is your private copy, loaded already. Only this account sees it." : "This model is in the catalog already."} It wakes like any other, with no first load.`;
 
+/** The cap of a first load and its estimate are shown only for a model that would get one, never for a loaded one. */
+export const firstLoadShown = (state: string): boolean => state !== "loaded";
+
 const NAME = /^[\w.-]+\/[\w.-]+$/;
 
 /** "owner/name" from pasted text, or null when it is not a repo. */

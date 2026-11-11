@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Config, type RepoCheck } from "../api";
 import { about, context, params, perMin, shortSha, size, TIER_NAME, usd } from "../lib/format";
 import { refreshMe, toApiError, useMe } from "../lib/hooks";
-import { loadedNote, parseRepo } from "../lib/repo";
+import { firstLoadShown, loadedNote, parseRepo } from "../lib/repo";
 import { Link, navigate } from "../router";
 import { Icon, Notice, TierMark } from "./bits";
 import "./pastebox.css";
@@ -184,22 +184,26 @@ export function PasteBox({ config, id = "paste", initial = "" }: { config: Confi
               <dt>Price</dt>
               <dd className="mono">{perMin(check.price_usd_micro_per_min)}</dd>
             </div>
-            <div>
-              <dt>First load</dt>
-              <dd>
-                <span className="mono">at most {usd(check.load_cap_usd_micro)}</span>
-                <span className="pb-note">
-                  the {TIER_NAME[check.tier]} rate while it loads, capped at {check.load_cap_minutes} min
-                </span>
-              </dd>
-            </div>
-            <div>
-              <dt>Estimate</dt>
-              <dd>
-                <span className="mono">{about(check.load_estimate_s)}</span>
-                <span className="pb-note">to load, from its size. Waiting for a GPU can add a few minutes. Later wakes: {about(check.wake_estimate_s)}</span>
-              </dd>
-            </div>
+            {firstLoadShown(check.state) && (
+              <>
+              <div>
+                <dt>First load</dt>
+                <dd>
+                  <span className="mono">at most {usd(check.load_cap_usd_micro)}</span>
+                  <span className="pb-note">
+                    the {TIER_NAME[check.tier]} rate while it loads, capped at {check.load_cap_minutes} min
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Estimate</dt>
+                <dd>
+                  <span className="mono">{about(check.load_estimate_s)}</span>
+                  <span className="pb-note">to load, from its size. Waiting for a GPU can add a few minutes. Later wakes: {about(check.wake_estimate_s)}</span>
+                </dd>
+              </div>
+              </>
+            )}
             <div>
               <dt>Size</dt>
               <dd className="mono">

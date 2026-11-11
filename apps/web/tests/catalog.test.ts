@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Model } from "../src/api/types";
 import { filterModels, isFiltered, NO_FILTERS, readFilters, tagsOf, toQuery } from "../src/lib/catalog";
-import { loadedNote, parseRepo } from "../src/lib/repo";
+import { firstLoadShown, loadedNote, parseRepo } from "../src/lib/repo";
 
 const model = (over: Partial<Model>): Model => ({
   id: "m",
@@ -80,6 +80,10 @@ describe("loadedNote", () => {
     expect(loadedNote(true)).not.toMatch(/catalog/);
     expect(loadedNote(false)).toMatch(/^This model is in the catalog already\./);
     for (const own of [true, false]) expect(loadedNote(own)).toMatch(/It wakes like any other, with no first load\.$/);
+  });
+  it("shows the cost and the time of a first load only for a model that is not loaded", () => {
+    expect(firstLoadShown("loaded")).toBe(false);
+    for (const state of ["new", "needs_load", "loading"]) expect(firstLoadShown(state), state).toBe(true);
   });
 });
 
