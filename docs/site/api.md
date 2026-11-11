@@ -922,7 +922,7 @@ Refusals come before any money is held:
 
 The `code` of a failed load is one of `insufficient_balance`, `too_big`, `unsupported_architecture`,
 `custom_code`, `no_chat_template`, `no_weights`, `unsupported_format`, `unsafe_files`, `too_many_files`, `no_config`,
-`download_failed`, `wake_failed`, `timeout`, `lane_unavailable`, `build_error`.
+`download_failed`, `wake_failed`, `timeout`, `removed`, `lane_unavailable`, `build_error`.
 
 ### Follow a load
 
