@@ -601,6 +601,9 @@ serve it. What differs from a rented model:
   `prompt_tokens`, `completion_tokens` and `total_tokens`: the numbers the charge was made from.
   `finish_reason` is `stop`, `length`, `tool_calls` or `content_filter`. The `id` of a tool call is made by the
   gateway (`call_...`). Send it back as `tool_call_id` with the result, as with any OpenAI-shaped API.
+- **No thinking pass.** This model answers directly. The gateway asks for no thinking on every request, and
+  thinking fields you send stay at the gateway. If the model's server reports thinking tokens anyway, they are
+  in `completion_tokens` and charged as output, inside the hold.
 - **Streaming.** `"stream": true` works as on a rented model, ending with `data: [DONE]`, and the usage chunk is
   sent only with `"stream_options": {"include_usage": true}`. A stream that breaks ends with one error block and
   no `[DONE]`: `upstream_error` or `slow_client`. It is charged for what arrived.
