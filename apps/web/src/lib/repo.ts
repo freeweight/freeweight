@@ -1,5 +1,9 @@
 // A Hugging Face repo, as people paste it: "owner/name", a full link, or a link into the file tree.
 
+/** What the check says under a model that is loaded already: the caller's own private copy, or the catalog's model. */
+export const loadedNote = (own: boolean): string =>
+  `${own ? "This is your private copy, loaded already. Only this account sees it." : "This model is in the catalog already."} It wakes like any other, with no first load.`;
+
 const NAME = /^[\w.-]+\/[\w.-]+$/;
 
 /** "owner/name" from pasted text, or null when it is not a repo. */

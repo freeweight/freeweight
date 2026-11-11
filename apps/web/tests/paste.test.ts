@@ -107,6 +107,8 @@ describe("mock gateway: pasted models", () => {
     const before = (await after(api.me())).balance_usd_micro;
     const mine = await after(api.models());
     expect(mine.find((m) => m.id === "you_scratch-7b")).toMatchObject({ private: true, mine: true });
+    // The check of its own private copy says so: the paste box then calls it a private copy, not a catalog model.
+    expect(await passed("you/scratch-7b")).toMatchObject({ state: "loaded", model_id: "you_scratch-7b", private: true, can_load: false });
 
     expect(await refused(api.startLoad("acme/gated-7b", false))).toMatchObject({ code: "gated", status: 422 });
     const loaded = await refused(api.startLoad("smallworks/fable-3b", false));

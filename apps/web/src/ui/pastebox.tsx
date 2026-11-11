@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Config, type RepoCheck } from "../api";
 import { about, context, params, perMin, shortSha, size, TIER_NAME, usd } from "../lib/format";
 import { refreshMe, toApiError, useMe } from "../lib/hooks";
-import { parseRepo } from "../lib/repo";
+import { loadedNote, parseRepo } from "../lib/repo";
 import { Link, navigate } from "../router";
 import { Icon, Notice, TierMark } from "./bits";
 import "./pastebox.css";
@@ -230,7 +230,7 @@ function Verdict({ check, signedIn, busy, keep, setKeep, onLoad }: { check: Pass
           Open it
           <Icon name="arrow" />
         </Link>
-        <span className="pb-fine">This model is in the catalog already. It wakes like any other, with no first load.</span>
+        <span className="pb-fine">{loadedNote(check.private)}</span>
       </div>
     );
   if (check.state === "loading" && check.load_id)

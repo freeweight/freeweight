@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Model } from "../src/api/types";
 import { filterModels, isFiltered, NO_FILTERS, readFilters, tagsOf, toQuery } from "../src/lib/catalog";
-import { parseRepo } from "../src/lib/repo";
+import { loadedNote, parseRepo } from "../src/lib/repo";
 
 const model = (over: Partial<Model>): Model => ({
   id: "m",
@@ -71,6 +71,15 @@ describe("catalog filters", () => {
     expect(tagsOf(models).slice(0, 2).sort()).toEqual(["chat", "tools"]);
     expect(tagsOf(models)).toHaveLength(3);
     expect(tagsOf(models).at(-1)).toBe("code");
+  });
+});
+
+describe("loadedNote", () => {
+  it("calls the caller's own private copy that, and never says it is in the catalog", () => {
+    expect(loadedNote(true)).toMatch(/^This is your private copy, loaded already\. Only this account sees it\./);
+    expect(loadedNote(true)).not.toMatch(/catalog/);
+    expect(loadedNote(false)).toMatch(/^This model is in the catalog already\./);
+    for (const own of [true, false]) expect(loadedNote(own)).toMatch(/It wakes like any other, with no first load\.$/);
   });
 });
 
