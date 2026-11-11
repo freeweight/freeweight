@@ -2,7 +2,8 @@
 
 > Freeweight rents open-weight text models by the GPU minute.
 > A model sleeps as stored weights and costs nothing. A session wakes it on a GPU. The wake is free.
-> You pay per minute while the session runs: $0.03 (Light), $0.06 (Medium) or $0.10 (Heavy, preview). Tokens are never counted.
+> You pay per minute while the session runs: $0.03 (Light), $0.06 (Medium) or $0.10 (Heavy, preview). On a rented model tokens are never priced.
+> One model is always awake and needs no session: `deepseek-v4.1-flash`, paid per token ($0.50 per million in, $2.00 per million out) from the same balance.
 > Inference is OpenAI-compatible at `/v1`. The catalog, sessions and the account are at `/api`.
 > Eleven read-only research tools for on-chain questions are served over MCP at `/mcp`, with no session. Ten need no key and are rate limited; `web_search` needs an API key.
 
@@ -13,6 +14,14 @@ staging address with the same paths. `/api` has no version prefix and can still 
 
 - A `/v1` request runs on a session, and a session costs by the minute whether or not you send anything.
   It ends when its minutes are used, after 5 minutes without a request, or when you stop it.
+- The exception is the always-awake model. `GET /api/hosted` returns it, or `{"model": null}` when the deployment
+  does not offer it. `POST /v1/chat/completions` with `"model": "deepseek-v4.1-flash"` and an API key is answered
+  at once, with no session, and charged per token: the highest possible price is held first, the real one is
+  charged when the answer ends. Too little balance answers `402 insufficient_balance`. `n` must be 1,
+  `max_tokens` is capped at 4096, and tools are passed through. Per account: 4 requests at once
+  (`429 too_many_in_flight`) and 30 a minute (`429 rate_limited`). `503 hosted_busy` means the model's daily
+  ceiling is reached: retry later, as `Retry-After` says. The answer carries `x-freeweight-request`, not
+  `x-freeweight-session`. Its context is 128000 tokens.
 - Authenticate with an API key: `Authorization: Bearer fw_...`. A wallet owner creates keys on the site. A key
   spends that wallet's balance. v0.1 has no spending limit per key, so the balance is the cap.
 - Start a session with `POST /api/sessions` and `{"model_id": "qwen3-8b", "minutes": 10}`. Minutes are 1 to 240.
@@ -93,7 +102,7 @@ The docs pages are rendered in the browser. A client that does not run JavaScrip
 and the OpenAPI file, which is plain text.
 
 - [Quickstart](https://freeweight.xyz/docs/quickstart): wake a model on the site, then from curl, Python and TypeScript.
-- [Pricing](https://freeweight.xyz/docs/pricing): the price per GPU minute for each tier, sessions, holds, receipts, and when renting by the minute is the wrong choice.
+- [Pricing](https://freeweight.xyz/docs/pricing): the price per GPU minute for each tier, sessions, holds, receipts, the per-token price of the always-awake model, and when renting by the minute is the wrong choice.
 - [API reference](https://freeweight.xyz/docs/api): every endpoint, field and error code.
 - [Agents](https://freeweight.xyz/docs/agents): keys that start sessions, waiting for a wake, budgets, MCP and a worked loop.
 - [Tools](https://freeweight.xyz/docs/tools): what each of the eleven tools returns, on which chains, and what it misses.

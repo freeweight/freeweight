@@ -110,6 +110,10 @@ How to read the outcomes:
 The clock runs while the session is live, whether or not the agent sends anything. Tokens do not change the
 charge.
 
+The one always-awake model is the other way round: no session and no clock, and each request is paid for the
+tokens it reads and writes. An agent that calls it is bounded by the balance, by `max_tokens` on each request
+and by the size of the conversation it sends. See [pricing](/docs/pricing).
+
 What bounds the spend:
 
 - **The balance.** A key spends the balance of the wallet that made it, and nothing else. v0.1 has no spending
@@ -323,7 +327,7 @@ What the loop does to keep the cost bounded:
 - Each tool call is its own MCP request, because the endpoint takes one call per request.
 
 A tool result can be long. Keep the model's context length in mind: the catalog shows it as `context`, in
-tokens. In v0.1 it is 16384 on every model, and thinking text counts toward it. Cut a long result before you add it to the conversation, or ask the tool for less.
+tokens. In v0.1 it is 16384 on every rented model, and thinking text counts toward it. Cut a long result before you add it to the conversation, or ask the tool for less.
 
 Tool results contain text written by other people: token names, website text, search snippets. Fields whose
 names end in `_untrusted` hold such text. Tell the model to treat it as data, as the system message above does,

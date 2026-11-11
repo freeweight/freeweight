@@ -4,7 +4,9 @@ Rent an open-weight text model by the GPU minute.
 
 A model sleeps as stored weights and costs nothing. A session wakes it on a serverless GPU, the wake is shown stage
 by stage and is not billed, and the clock runs from the moment the model is ready until the session ends. The price
-is per GPU minute. Tokens are never counted.
+is per GPU minute, never per token.
+
+One model is the exception: it is always awake, needs no session and is paid per token from the same balance.
 
 Status: v0.1, before public launch. The staking vault is written and tested but not deployed. No token is live.
 

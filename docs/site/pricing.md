@@ -1,12 +1,15 @@
 ---
 title: Pricing
-summary: One price per GPU minute for each tier, charged only while your session runs.
+summary: One price per GPU minute for each tier, charged only while your session runs. One always-awake model is paid per token.
 order: 20
 group: Start
 ---
 
-You rent a model by the GPU minute. There is no price per token. A long prompt costs the same as a short one. What
-you pay for is the time your session is open.
+You rent a model by the GPU minute. A rented model has no price per token. A long prompt costs the same as a
+short one. What you pay for is the time your session is open.
+
+One model is the exception. It is always awake, it needs no session, and it is paid per token from the same
+balance. See [the always-awake model](#the-always-awake-model).
 
 ## Tiers
 
@@ -122,12 +125,63 @@ Paid sessions draw on a prepaid balance, counted in US dollars.
 
 Used minutes are not refunded. See the [terms](/docs/terms) for the rest.
 
+## The always-awake model
+
+One model in the catalog never sleeps: DeepSeek V4.1 Flash in its uncensored build, with the id
+`deepseek-v4.1-flash`. It is served by a hosted endpoint and not from a GPU rented here, so there is nothing to
+wake, no session and no clock. Its description on the site says where it is served from.
+
+It is paid per token, from the same balance as rented minutes.
+
+| Tokens | Price |
+| ------ | ----- |
+| Input: what the model reads | $0.50 per million tokens |
+| Output: what the model writes | $2.00 per million tokens |
+
+How one request is charged:
+
+1. Before the request runs, its highest possible price is held from your balance: everything you sent, counted
+   generously, plus the longest answer the request allows. One answer is at most 4,096 tokens.
+2. If the balance does not cover the hold, the answer is `402 insufficient_balance` and nothing runs.
+3. When the answer ends, you are charged for the tokens the model read and wrote, as its server counted them. The
+   rest of the hold goes back to your balance. The charge is rounded up to a millionth of a dollar.
+4. If no count arrives, the charge comes from an upper count of what was sent and streamed. It is never more
+   than the hold.
+
+A request that fails before any answer costs nothing. An answer that breaks off part-way is charged for what
+arrived.
+
+| Request | Charge |
+| ------- | ------ |
+| 1,000 tokens in, 500 tokens out | $0.0015 |
+| 20,000 tokens in, 1,000 tokens out | $0.012 |
+| Failed before the first word | $0.00 |
+
+The whole conversation is read again with every message, so the input grows as a chat gets longer.
+
+In the chat on the site, the first 20 messages a day are free, without a wallet:
+
+- A free message is short. The conversation is cut to its newest 4,000 bytes, the answer stops at 400 tokens, and
+  it runs without tools.
+- A human check runs before the first free message of a day.
+- There are limits per network address, and a daily total for all visitors. Days are UTC days.
+- A signed-in wallet whose balance covers the message pays per token and has none of these limits. Paid messages
+  may use the [tools](/docs/tools). Each step of a tool loop is one request, charged like any other. The tool
+  calls themselves cost nothing.
+- Free messages exist in the chat on the site only. A request with an API key is always paid.
+
+To keep the model available, one account runs at most 4 requests at the same time and 30 in a minute. The
+service also has a ceiling on what this model may cost in a day, all callers together. When it is reached, the
+model answers `503 hosted_busy` until the next UTC day, and the site says so.
+
+The live prices and limits are in `GET /api/hosted`. Your account page lists what each answer used and cost.
+
 ## Thinking costs time, not tokens
 
 Some models think before they answer. The two Qwen3 models do, unless you switch it off. Thinking text is made
-of tokens, like the answer, and tokens are not billed. What you pay for is the time: an answer with thinking
-takes longer, and the session clock runs while the model thinks. For short questions, switching thinking off
-gives faster answers. The [API reference](/docs/api) shows how.
+of tokens, like the answer, and on a rented model tokens are not billed. What you pay for is the time: an answer
+with thinking takes longer, and the session clock runs while the model thinks. For short questions, switching
+thinking off gives faster answers. The [API reference](/docs/api) shows how.
 
 ## Receipts
 
@@ -146,12 +200,16 @@ The receipt on the site also names what you rented: the model's repository, its 
 The site shows recent receipts from all renters: model, minutes, price, tokens and wake time. No wallet address
 appears there.
 
+The always-awake model has no sessions, so it has no receipts of this kind. Each of its answers is a line in
+your account's history, with its tokens and its charge.
+
 ## When renting by the minute is the wrong choice
 
 Renting by the minute is not always the cheapest way to use a model.
 
 If you chat now and then with a popular model, a service that sells that model by the token will cost you less.
 There you pay for a few thousand tokens. Here you pay for minutes in which the GPU mostly waits for you to type.
+That is what [the always-awake model](#the-always-awake-model) is for: one model, sold by the token.
 
 Renting wins when you keep the GPU busy, or when nobody sells the model by the token:
 

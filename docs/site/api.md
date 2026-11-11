@@ -8,7 +8,8 @@ group: Build
 The API has two parts.
 
 - `/api` is Freeweight's own API: the catalog, sessions, your account.
-- `/v1` is OpenAI-compatible inference. It needs a session, because a session is what you pay for.
+- `/v1` is OpenAI-compatible inference. It needs a session, because a session is what you pay for. The one
+  exception is [the always-awake model](#the-always-awake-model), which is paid per token and needs none.
 
 A machine-readable description is at [/openapi.yaml](/openapi.yaml). This page and that file are written from the
 same code.
@@ -23,8 +24,8 @@ same code.
 - Money is an integer count of millionths of a US dollar, in fields that end in `usd_micro`. `30000` is $0.03.
 - Times are Unix time in milliseconds, unless a field ends in `_s` (seconds) or `_ms` (a duration).
 - Wallet addresses are lowercase hex.
-- Ids have a prefix: `ses_` for sessions, `key_` for API keys, `lst_` for listings. An API key itself starts with
-  `fw_`.
+- Ids have a prefix: `ses_` for sessions, `key_` for API keys, `lst_` for listings, `hst_` for requests to the
+  always-awake model. An API key itself starts with `fw_`.
 - A request body can be at most 1 MB.
 
 ## Authentication
@@ -99,16 +100,16 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | ------ | ---- | ------- |
 | 400 | `bad_request` | The body or a field is missing or malformed. |
 | 400 | `model_mismatch` | `model` in the request is not the model of the session. |
-| 400 | `invalid_request` | A `/v1` field the gateway checks has a wrong value: `stream` that is not `true` or `false`, `n` outside 1 to 4, or `max_tokens` / `max_completion_tokens` that is not a whole number of zero or more. Nothing was sent to the model. |
+| 400 | `invalid_request` | A `/v1` field the gateway checks has a wrong value: `stream` that is not `true` or `false`, `n` outside 1 to 4, or `max_tokens` / `max_completion_tokens` that is not a whole number of zero or more. Nothing was sent to the model. On the always-awake model: `n` other than 1, a `max_tokens` below 1, or a request the model refused as it was sent. |
 | 400 | `too_long` | The extension would take the session past 240 minutes. |
-| 400 | `turnstile_required` | The free try needs a token from the human check. |
+| 400 | `turnstile_required` | The free try, or the first free message of a day on the always-awake model, needs a token from the human check. |
 | 400 | `invalid_message`, `nonce_expired`, `nonce_used` | Sign-in message problems. |
 | 4xx | `invalid_request_error` | The model refused the request, for example a prompt longer than its context. The status is the one the model gave. |
 | 401 | `unauthorized` | No usable credential. |
 | 401 | `invalid_api_key` | The API key is unknown or revoked. |
 | 401 | `invalid_signature` | The sign-in signature does not match the address. |
 | 401 | `sign_in_required` | A paid session was asked for without a wallet. Sign in and top up. |
-| 402 | `insufficient_balance` | The balance does not cover the minutes asked for, or one minute. |
+| 402 | `insufficient_balance` | The balance does not cover the minutes asked for, or one minute. On the always-awake model: it does not cover the highest price the request can have. |
 | 403 | `bad_origin` | A cross-origin write without a bearer token. |
 | 403 | `cookie_required` | API keys are created and revoked from a signed-in browser only. |
 | 403 | `turnstile_failed` | The human check failed. |
@@ -123,19 +124,22 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 409 | `too_many_keys` | The wallet already has 20 keys. |
 | 409 | `pending_confirmations`, `tx_already_used` | Top-up states. See below. |
 | 413 | `body_too_large` | The body is over 1 MB. |
+| 413 | `message_too_long` | A free message on the always-awake model is longer than a free message may be. |
 | 422 | `tx_failed`, `no_transfer`, `tx_too_old`, `amount_too_small`, `amount_too_large` | Top-up problems. See below. |
-| 429 | `rate_limited` | The model is busy with other requests. Carries `Retry-After`. The session is still live. |
+| 429 | `rate_limited` | The model is busy with other requests. Carries `Retry-After`. The session is still live. On the always-awake model: the account sent more than 30 requests in a minute. |
+| 429 | `too_many_in_flight` | The account already has 4 requests running on the always-awake model. Carries `Retry-After: 5`. |
 | 429 | `too_many_requests` | The session already has 4 requests in flight. Wait for one to finish. Carries `Retry-After: 1`. |
 | 429 | `wake_budget` | Too many paid sessions were stopped before the model was ready: more than 3 in an hour or 10 in a day. Carries `retry_after`, in seconds, in the error body, and a `Retry-After` header. A wake that failed on our side does not count. |
-| 429 | `free_used` | Today's free session is used, for this visitor or this network address. |
-| 429 | `free_budget_spent` | Today's free sessions are all taken. |
+| 429 | `free_used` | Today's free session is used, for this visitor or this network address. On the always-awake model: today's free messages are. |
+| 429 | `free_budget_spent` | Today's free sessions, or today's free messages on the always-awake model, are all taken. |
 | 429 | `too_many_listings` | More than 20 listing checks in a day. |
 | 500 | `internal_error` | A fault on our side. |
 | 502 | `upstream_error` | The model did not answer. Try again. |
 | 502 | `hf_unavailable` | Hugging Face could not be read for a listing check. |
 | 503 | `model_waking` | The model is still waking after a 5-minute wait, or is being woken again. Carries `Retry-After`. The session is still live. |
 | 503 | `model_unavailable` | The model cannot be woken or reached right now. |
-| 503 | `misconfigured` | The service is not set up completely. Until it is, only the public reads answer: health, config, stats, receipts and the catalog. `/mcp` answers 503 too, as a JSON-RPC error. |
+| 503 | `hosted_busy` | The always-awake model has reached what it may cost in a day, all callers together, or cannot take more requests right now. Carries `Retry-After`. Nothing was charged. |
+| 503 | `misconfigured` | The service is not set up completely. Until it is, only the public reads answer: health, config, stats, receipts, the catalog and `/api/hosted`. `/mcp` answers 503 too, as a JSON-RPC error. |
 | 503 | `model_lost` | The model stopped while the session was live and could not be woken again. The session has ended, and time after the model stopped is not charged. Start a new one. |
 | 503 | `trial_unavailable`, `turnstile_unavailable` | The human check for the free try is not set up or could not be reached right now. |
 | 503 | `topups_closed`, `rpc_unavailable`, `price_unavailable`, `price_out_of_bounds`, `ledger_unavailable` | Money paths that are closed or could not be checked. Nothing was charged or credited. |
@@ -152,7 +156,8 @@ No authentication.
 | `GET /api/models` | `{ models: [Model] }`: the catalog with live state. |
 | `GET /api/models/{id}` | One `Model`. |
 | `GET /api/awake` | `{ awake: [{ model_id, since, sessions }] }`: listed models on a GPU now. |
-| `GET /api/stats` | `{ gpu_seconds, sessions, tokens, wakes, median_wake_s }`: service totals for listed models. `median_wake_s` is `null` before the first wake. The totals are counted again at most every 30 seconds, so they can be up to 30 seconds old. |
+| `GET /api/hosted` | `{ model }`: the always-awake model, or `null` when the deployment does not offer one. See [below](#the-always-awake-model). |
+| `GET /api/stats` | `{ gpu_seconds, sessions, tokens, wakes, median_wake_s, hosted_requests, hosted_tokens }`: service totals for listed models. `median_wake_s` is `null` before the first wake. `hosted_requests` and `hosted_tokens` count the answers of the always-awake model and their tokens. They are kept apart: `tokens` and the GPU figures are rented sessions only. The totals are counted again at most every 30 seconds, so they can be up to 30 seconds old. |
 | `GET /api/receipts` | `{ receipts: [...] }`: the last 20 ended sessions on listed models, without any account data. |
 
 A `Model`:
@@ -401,6 +406,9 @@ curl https://freeweight.xyz/v1/chat/completions \
   -d '{"model": "qwen3-8b", "messages": [{"role": "user", "content": "Say hello."}]}'
 ```
 
+A request that names the always-awake model in `model` is the exception to most of this section. It needs no
+session and is answered at once. See [the always-awake model](#the-always-awake-model).
+
 ### Which session a request runs on
 
 1. The session named in `X-Freeweight-Session`, or a `ses_` id sent as the bearer token.
@@ -514,8 +522,141 @@ that is too long gets an error from the model that says so.
 ### `GET /v1/models`
 
 The catalog in OpenAI's list shape. Each entry has `id`, `object`, `created` and `owned_by`, plus `name`,
-`context_length`, `state`, `tier` and `price_usd_micro_per_min`. `context_length` is 16384 on every model in
-v0.1. This list has no `tools_ok`: read that from `GET /api/models`.
+`context_length`, `state`, `tier` and `price_usd_micro_per_min`. `context_length` is 16384 on every rented model
+in v0.1. This list has no `tools_ok`: read that from `GET /api/models`.
+
+When the always-awake model is offered, it is the first entry. It has no `tier` and no price per minute. In
+their place it carries `hosted: true`, `max_output_tokens`, `price_in_usd_micro_per_mtok` and
+`price_out_usd_micro_per_mtok`, and its `state` is always `awake`.
+
+## The always-awake model
+
+One model needs no wake and no session. It is served by a hosted endpoint, not from a GPU rented here, and it is
+paid per token from the same balance. [Pricing](/docs/pricing#the-always-awake-model) has the rules for money.
+
+```
+GET /api/hosted
+```
+
+```json
+{
+  "model": {
+    "id": "deepseek-v4.1-flash",
+    "kind": "hosted",
+    "name": "DeepSeek V4.1 Flash",
+    "blurb": "A fast general model in its uncensored build. Always awake: no wake, no session, paid per token.",
+    "source": "",
+    "context": 128000,
+    "price_in_usd_micro_per_mtok": 500000,
+    "price_out_usd_micro_per_mtok": 2000000,
+    "max_output_tokens": 4096,
+    "tools_ok": true,
+    "free": { "per_day": 20, "max_input_bytes": 4000, "max_output_tokens": 400 },
+    "created_at": 1794355200000
+  }
+}
+```
+
+`model` is `null` when the deployment does not offer the model. Then `/v1/models` does not list it, its id
+answers `404 model_not_found`, and the chat route below answers `404 not_found`. Prices are millionths of a US
+dollar for one million tokens: `500000` is $0.50. `source` is one line about where the model is served from. It
+is empty when the operator has set none, and it is repeated at the end of `blurb`. `free` describes a free
+message in the chat on the site. This model is not in `GET /api/models`, which lists rented models only.
+
+### Through `/v1`
+
+```
+curl https://freeweight.xyz/v1/chat/completions \
+  -H "Authorization: Bearer $FREEWEIGHT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "deepseek-v4.1-flash", "messages": [{"role": "user", "content": "Say hello."}]}'
+```
+
+`POST /v1/chat/completions` with this model's id in `model` runs without a session. `/v1/completions` does not
+serve it. What differs from a rented model:
+
+- **Credential.** An API key, or the browser sign-in. Anything else answers `401 unauthorized`. No session is
+  started, also for a key with `auto_session`.
+- **Money.** The highest price the request can have is held from the balance before it runs: what you sent,
+  counted generously, plus `max_tokens` of output. If the balance does not cover that, the
+  answer is `402 insufficient_balance`. When the answer ends, the charge is written from the token counts and
+  the rest of the hold is released. On a stream this happens before the stream closes.
+- **Fields.** These go to the model as you sent them: `messages`, `tools`, `tool_choice`, `parallel_tool_calls`,
+  `temperature`, `top_p`, `stop`, `presence_penalty`, `frequency_penalty`, `seed` and `response_format`. Every
+  other field stays at the gateway, `chat_template_kwargs` among them.
+- **Checks.** `messages` holds 1 to 200 messages with the roles `system`, `user`, `assistant` and `tool`
+  (`400 bad_request` otherwise). `stream` must be `true` or `false`. `n` must be 1 or left out. `max_tokens` and
+  `max_completion_tokens` must be whole numbers of one or more. A value above `max_output_tokens` is lowered to
+  it, and a request that sends neither gets `max_output_tokens`.
+- **The answer.** A chat completion in the OpenAI shape, with this model's id in `model`. A message carries
+  `role`, `content` and, when the model sent them, `tool_calls`, `refusal` and `reasoning_content`. `usage` has
+  `prompt_tokens`, `completion_tokens` and `total_tokens`: the numbers the charge was made from.
+- **Streaming.** `"stream": true` works as on a rented model, ending with `data: [DONE]`, and the usage chunk is
+  sent only with `"stream_options": {"include_usage": true}`. A stream that breaks ends with one error block and
+  no `[DONE]`: `upstream_error` or `slow_client`. It is charged for what arrived.
+- **Failure.** A request that fails before any answer, or a request without streaming whose answer broke off,
+  answers `502 upstream_error` and costs nothing.
+- **Tools.** `tools` are passed to the model and it returns `tool_calls`, streamed or not. Your code runs them.
+- **Header.** The answer carries `x-freeweight-request` with the id of the request (`hst_...`). There is no
+  `x-freeweight-session`.
+- **Limits.** One account runs at most 4 requests at the same time (`429 too_many_in_flight`) and 30 in a minute
+  (`429 rate_limited`). When the model has reached what it may cost in a day, all callers together, the answer is
+  `503 hosted_busy` until the next UTC day. All three carry `Retry-After`.
+
+### The chat on the site
+
+```
+POST /api/hosted/chat
+```
+
+```json
+{
+  "messages": [{ "role": "user", "content": "Who holds this token? 0x..." }],
+  "tools": true
+}
+```
+
+One turn of a conversation, with the tool loop run by the server. This is what the chat page of the site uses.
+`messages` is as above. `tools`, `temperature` and `max_tokens` are optional. `turnstile_token` carries the
+token of the human check when one is needed.
+
+Who pays is decided for each request:
+
+- **Paid.** A signed-in wallet, or an API key, whose balance covers the request pays per token. With
+  `tools: true` the model may call the [tools](/docs/tools), at most 4 rounds of 3 calls. Each step of the loop
+  is held and charged as one request.
+- **Free.** Everyone else gets a free message: 20 a day per visitor, with a limit per network address and a
+  daily total for all visitors. A free message runs without tools, also when `tools` is `true`. Older turns of
+  the conversation are dropped until it fits in 4,000 bytes, and the answer stops at 400 tokens. If the newest
+  message alone is longer than that, the answer is `413 message_too_long`. The first free message of a UTC day
+  needs the human check: `400 turnstile_required` without a token. An API key gets no free messages: it answers
+  `402 insufficient_balance` when the balance does not cover the request.
+
+A request that is not let in is a plain error answer: `429 free_used`, `429 free_budget_spent`,
+`429 rate_limited`, `429 too_many_in_flight`, `402 insufficient_balance` or `503 hosted_busy`. Otherwise the
+answer is a server-sent event stream:
+
+| Event | Data |
+| ----- | ---- |
+| `start` | `{ free, free_left, tools }`: whether this turn is free, how many free messages are left today after it (`null` on a paid turn), and whether tools are on for it. Always first. |
+| `delta` | `{ text }`: a piece of the answer. |
+| `reasoning` | `{ text }`: a piece of the model's thinking, if it sends any. |
+| `tool_call` | `{ id, name, arguments }`: the model asked for a tool. |
+| `tool_result` | `{ id, name, ok, summary }`: the tool answered. |
+| `usage` | `{ tokens_in, tokens_out, cost_usd_micro, free }`: one for each step of the loop, after its text. `cost_usd_micro` is what the step was charged, `0` on a free turn. |
+| `done` | `{ rounds }` |
+| `error` | `{ code, message }`. A stream that fails ends with this event and sends no `done`. Steps that already sent `usage` stay charged. |
+
+### In your account
+
+`GET /api/me` carries `hosted` when the model is offered, and `null` otherwise:
+
+| Field | Meaning |
+| ----- | ------- |
+| `model_id` | The model's id. |
+| `free_per_day`, `free_left` | Free messages a day, and how many this caller has left today. |
+| `check_needed` | Whether the next free message needs the human check. |
+| `recent` | The account's last 20 answers, newest first: `id`, `at`, `surface` (`chat` or `api`), `free`, `tokens_in`, `tokens_out` and `charged_usd_micro`. |
 
 ## Chat with tools
 
@@ -567,6 +708,7 @@ The session clock runs while they do.
   "keys": [],
   "perks": { "enabled": false, "day": "2026-11-10", "hold": null, "stake": null, "allowance_usd_micro": 0 },
   "sessions": [],
+  "hosted": { "model_id": "deepseek-v4.1-flash", "free_per_day": 20, "free_left": 20, "check_needed": true, "recent": [] },
   "listing_proof_line": "freeweight-owner: 0x1234567890abcdef1234567890abcdef12345678"
 }
 ```
@@ -574,7 +716,8 @@ The session clock runs while they do.
 `perks.hold` is always `null` in v0.1. Perks are planned for staking only, and nothing is deployed.
 
 `balance_usd_micro` is what you can spend now. `held_usd_micro` is held by live sessions and is not part of the
-balance. `sessions` lists up to 5 live sessions. `listing_proof_line` is the line this wallet puts in a model's
+balance. `sessions` lists up to 5 live sessions. `hosted` is the caller's use of
+[the always-awake model](#in-your-account), or `null` when it is not offered. `listing_proof_line` is the line this wallet puts in a model's
 README to [list it](/docs/listing). Without a wallet it comes back with `address: null`, no
 `listing_proof_line`, and `perks` holding only `enabled`.
 
@@ -672,6 +815,9 @@ and a busy model answers more slowly. A model that cannot take another request r
 `429 rate_limited` with `Retry-After`. A session runs at most 4 requests at the same time: one more answers
 `429 too_many_requests`.
 
+The always-awake model is the one place with a request rate limit: 30 requests a minute and 4 at the same time
+for one account.
+
 The fixed limits:
 
 | Limit | Value |
@@ -682,7 +828,9 @@ The fixed limits:
 | API keys | 20 per wallet |
 | Listing checks | 20 per wallet per day |
 | Request body | 1 MB on `/api` and `/v1`, 256 KiB on `/mcp` |
-| Chat messages | 200 per request on the chat route |
+| Chat messages | 200 per request on the chat routes |
+| Always-awake model | 4 requests at the same time and 30 a minute per account. 4,096 tokens of output per request. A daily ceiling for all callers together. |
+| Free messages | 20 per visitor per UTC day in the chat on the site, each at most 4,000 bytes in and 400 tokens out, with limits per network address and a daily total |
 | `/mcp` | One message per request with at most one `tools/call`. 30 tool calls per minute per network address. Listing the tools is not counted. |
 
 ## Idempotency
@@ -699,7 +847,7 @@ These are not:
 
 - `POST /api/sessions/{id}/extend` adds minutes each time it succeeds.
 - `POST /api/keys` creates a new key each time.
-- `/v1` requests run each time.
+- `/v1` requests run each time. A request to the always-awake model is charged each time it is answered.
 
 ## Calling from a browser
 

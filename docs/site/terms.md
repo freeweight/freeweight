@@ -38,6 +38,9 @@ By using the service you accept these terms, the [privacy policy](/docs/privacy)
   counted in whole seconds and rounded up, and the rest is released.
 - Waking a model is free. The clock starts when the model is ready.
 - A paid session is billed by the second, with a minimum of one minute once the model is awake.
+- One model is always awake and is not rented. It is paid per token: a request holds its largest possible price,
+  you are charged for the tokens it read and wrote, and the rest is released. A request that fails before it
+  writes anything costs nothing.
 - Free wakes are limited. An account that stops too many paid sessions before the model is ready can be
   refused a new session for a while.
 - A session keeps the price it started with.

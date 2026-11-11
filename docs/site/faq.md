@@ -18,6 +18,13 @@ Because a GPU costs by the minute, whoever uses it. Per-minute pricing lets us s
 rare to sell by the token. It is not always cheaper for you. The [pricing](/docs/pricing) page says when it is the
 wrong choice.
 
+### Is there a model I can use without waking anything?
+
+One. DeepSeek V4.1 Flash, in its uncensored build, is always awake. It has no session and no clock, and it is
+paid per token: $0.50 per million tokens in and $2.00 per million out, from the same balance. In the chat on the
+site, 20 short messages a day are free. It is served by a hosted endpoint, not from a GPU rented here. See
+[pricing](/docs/pricing#the-always-awake-model).
+
 ### Is waking a model free?
 
 Yes. The clock starts when the model is ready. A wake that fails costs nothing.
@@ -100,7 +107,8 @@ same model on the same kind of GPU as a paid session.
 ### Do you store my prompts or the answers?
 
 No. They pass through the gateway and the GPU in memory and are not written down. We keep the numbers billing
-needs: time, cost and token counts. The [privacy](/docs/privacy) page lists everything.
+needs: time, cost and token counts. A conversation with the always-awake model goes to the hosted endpoint that
+serves it, not to a GPU we rent. The [privacy](/docs/privacy) page lists everything.
 
 ### Do you train on what I send?
 
@@ -134,8 +142,8 @@ Read `tools_ok` from `GET /api/models` before you send `tools`. See [agents](/do
 
 ### Does thinking cost extra?
 
-Not by the token. The Qwen3 models think before they answer, and the thinking text is not billed, because no
-tokens are. It costs time: the answer takes longer, and the session clock runs. You can switch thinking off for
+Not by the token. The Qwen3 models think before they answer, and the thinking text is not billed, because on a
+rented model no tokens are. It costs time: the answer takes longer, and the session clock runs. You can switch thinking off for
 a request with `"chat_template_kwargs": {"enable_thinking": false}`. See the [API reference](/docs/api).
 
 ### How long can a conversation be?
@@ -162,7 +170,8 @@ call them in the site's chat, and any agent can call them over MCP at `/mcp`. Se
 
 ### Which models can I rent?
 
-The live list is on the site under Models and in `GET /api/models`.
+The live list is on the site under Models and in `GET /api/models`. The one always-awake model is not rented:
+it is in `GET /api/hosted`.
 
 ### Can I add my own model?
 

@@ -18,6 +18,7 @@ changes with it.
 - You can try a model without an account. Paying needs a wallet, not a name or an email.
 - We keep what billing needs: your wallet address, what you rented, for how long, and what it cost.
 - Your prompts pass through the GPU machine that runs the model. It is rented, and it is not ours.
+- The always-awake model is not on a GPU we rent. Its prompts go to the hosted endpoint that serves it.
 - Payments are on a public blockchain. Anyone can see them.
 
 ## What we store
@@ -30,6 +31,7 @@ changes with it.
 | Ledger | Every credit and charge on your balance, with a reference and a time. | Billing. Entries cannot be edited or deleted. |
 | Top-ups | Transaction hash, sending address, asset, amount, block number, and the ETH price used. | To credit a payment once. |
 | Free try | A random visitor id from a cookie (or your wallet address, if you are signed in), a salted and shortened hash of your network address, the day, and the cost of the session. | The daily limits on the free try. |
+| Always-awake model | One line per request: your wallet address or a random visitor id, the day, whether it came from the chat or the API, whether it was free, tokens in and out, what was held and what was charged. For a free message also a salted and shortened hash of your network address. | Billing, your usage history, and the daily limits on free messages. |
 | Stopped wakes | The session id, your wallet address and the time, when you stop a paid session before the model is ready and it is not charged. | The limit on free wakes, per account and for the service as a whole. |
 | Wake records | Model, GPU source, duration, outcome and a short error text. No account. | Wake estimates and fault finding. |
 | Sign-in | The one-time code from your sign-in message and when it was used. | To stop a signature being replayed. |
@@ -57,6 +59,12 @@ your threat model does not allow a third party's machine to see a prompt, do not
 
 One instance of a model serves everyone who is renting it at that moment. Requests are handled separately and one
 renter cannot read another renter's requests. There is no hardware isolation between renters.
+
+The always-awake model takes a different road. It is not on a GPU that we rent: our gateway sends the request
+to a hosted endpoint run by another company, and the answer comes back through the gateway. The model's
+description on the site says where it is served from. That company sees the conversation you send to this model,
+under its own terms, and it sees our server, not your network address or your wallet. We send it nothing else
+about you. The same caution applies: if a third party must not see a prompt, do not send it.
 
 In the site's chat, your conversation lives in the page's memory. Reload the page and it is gone.
 
