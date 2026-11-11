@@ -197,7 +197,7 @@ export function PasteBox({ config, id = "paste", initial = "" }: { config: Confi
               <dt>Estimate</dt>
               <dd>
                 <span className="mono">{about(check.load_estimate_s)}</span>
-                <span className="pb-note">to load, from its size. Later wakes: {about(check.wake_estimate_s)}</span>
+                <span className="pb-note">to load, from its size. Waiting for a GPU can add a few minutes. Later wakes: {about(check.wake_estimate_s)}</span>
               </dd>
             </div>
             <div>

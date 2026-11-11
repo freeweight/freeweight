@@ -850,7 +850,7 @@ An accepted model:
 | `context` | The context the model is served with: what its config states, up to 8192 tokens. |
 | `price_usd_micro_per_min` | The price of the class, for the load and for sessions. |
 | `load_cap_minutes`, `load_cap_usd_micro` | The most minutes a first load is charged for, and what they cost. This amount is held when a load starts. |
-| `load_estimate_s`, `wake_estimate_s` | Estimates from the size, in seconds. |
+| `load_estimate_s`, `wake_estimate_s` | Estimates from the size, in seconds, with a GPU free at once. Waiting for a GPU can add a few minutes to either. After the model's first wake, `wake_estimate_s` is what its wakes measured. |
 | `state` | `new`, `needs_load`, `loading` or `loaded`. |
 | `model_id` | The catalog id, when `state` is `loaded` or `needs_load`. Otherwise `null`. |
 | `load_id` | The running load, when `state` is `loading`. Otherwise `null`. |
