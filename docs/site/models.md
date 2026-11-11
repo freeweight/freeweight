@@ -49,7 +49,7 @@ This page explains how to read the catalog. The catalog itself is live:
 | `owner` | The wallet of the model owner, if an owner listed it. `null` for models Freeweight added. |
 | `state` | Whether the model is on a GPU now. See below. |
 | `wake_estimate_s` | The expected wake time in seconds. |
-| `wake_low_s`, `wake_high_s` | The range most wakes fall in, in seconds. 0 until the model has been woken. |
+| `wake_low_s`, `wake_high_s` | The range most wakes fall in, in seconds. 0 until the model has been woken three times. |
 | `tools_ok` | Whether tool calling is switched on for this model and has passed our test. See below. |
 | `tags`, `blurb` | Short labels and one line of description. |
 | `origin` | `catalog`, or `pasted` for a model somebody [brought by its Hugging Face ID](/docs/any-model). |
@@ -159,13 +159,16 @@ A model goes back to sleep when its last session ends. Nobody pays for a sleepin
 ## Wake estimates
 
 `wake_estimate_s` is measured, not promised. It is the median of the model's last 15 successful wakes. A model that
-has never been woken shows the value from its catalog entry instead, and its state is `cold`. A value of 0 means
-the wake has not been measured yet. In v0.1 that is the Heavy model.
+has been woken fewer than three times shows the value from its catalog entry instead (for a pasted model, an
+estimate from its size), and one never woken is in the state `cold`. A value of 0 means the wake has not been
+measured yet. In v0.1 that is the Heavy model.
+
+A wake is measured without the time it waited for a GPU: that depends on the moment, not on the model. What is
+left out is the wait beyond the 10 seconds a container takes to start even when a GPU is free.
 
 Wakes of one model differ, so the catalog also gives a range. `wake_low_s` and `wake_high_s` are the 25th and
 75th percentile of the same 15 wakes: half of them took between the two. Both are 0 until the model has been
-woken once, and after a single wake all three numbers are the same. When the two differ, say "30 to 55 seconds"
-instead of one number.
+woken three times. When the two differ, say "30 to 55 seconds" instead of one number.
 
 A wake can be faster than the estimate, when the weights are still cached near the GPU. It can be slower, when
 GPUs are scarce or the weights have to be fetched again. It can fail. A failed wake costs nothing.
