@@ -132,7 +132,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 409 | `pending_confirmations`, `tx_already_used` | Top-up states. See below. |
 | 413 | `body_too_large` | The body is over 1 MB. |
 | 413 | `message_too_long` | A free message on the always-awake model is longer than a free message may be. |
-| 422 | `repo_not_found`, `disabled`, `gated`, `not_text_generation`, `no_safetensors`, `unsupported_architecture`, `custom_code`, `no_chat_template`, `too_big`, `blocked`, `removed` | A first load was asked for a repository that cannot be loaded. The codes are those of the check. See [pasted models](#pasted-models). |
+| 422 | `repo_not_found`, `disabled`, `gated`, `not_text_generation`, `no_safetensors`, `unsupported_architecture`, `custom_code`, `unsupported_quantization`, `no_chat_template`, `too_big`, `blocked`, `removed` | A first load was asked for a repository that cannot be loaded. The codes are those of the check. See [pasted models](#pasted-models). |
 | 422 | `tx_failed`, `no_transfer`, `tx_too_old`, `amount_too_small`, `amount_too_large` | Top-up problems. See below. |
 | 429 | `rate_limited` | The model is busy with other requests. Carries `Retry-After`. The session is still live. On the always-awake model: the account sent more than 30 requests in a minute. On `POST /api/models/check` and `POST /api/loads` together: more than 20 in a minute. Carries `Retry-After: 60`. |
 | 429 | `too_many_in_flight` | The account already has 4 requests running on the always-awake model. Carries `Retry-After: 5`. |
@@ -834,7 +834,7 @@ POST /api/models/check
 can be loaded or not. Read `ok`.
 
 A refusal is `{ ok: false, repo, code, reason }`. `code` is one of `repo_not_found`, `disabled`, `gated`,
-`not_text_generation`, `no_safetensors`, `unsupported_architecture`, `custom_code`, `no_chat_template`,
+`not_text_generation`, `no_safetensors`, `unsupported_architecture`, `custom_code`, `unsupported_quantization`, `no_chat_template`,
 `too_big`, `blocked`, `removed`. `reason` is one sentence for a person.
 
 An accepted model:
@@ -929,7 +929,7 @@ Refusals come before any money is held:
 | 503 | `loads_unavailable`, `load_not_started` | No GPU source takes pasted models right now, or the load could not be handed over. The hold was returned. |
 
 The `code` of a failed load is one of `insufficient_balance`, `too_big`, `unsupported_architecture`,
-`custom_code`, `no_chat_template`, `no_weights`, `unsupported_format`, `unsafe_files`, `too_many_files`, `no_config`,
+`custom_code`, `unsupported_quantization`, `no_chat_template`, `no_weights`, `unsupported_format`, `unsafe_files`, `too_many_files`, `no_config`,
 `download_failed`, `wake_failed`, `timeout`, `removed`, `lane_unavailable`, `build_error`.
 
 `private` names the copy you load: `true` your own private copy, which gets an id of its own (the public id with

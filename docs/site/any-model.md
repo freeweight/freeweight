@@ -38,6 +38,7 @@ A model is accepted when all of this holds:
 | Its weights are safetensors files. | GGUF, bin and pickle files are not loaded. |
 | Its `config.json` names one architecture that the serving engine runs as a text model. | The engine is vLLM, at the version in `paste.engine_version` of `GET /api/config`. |
 | It needs no code of its own to load. | Code from a repository is never run. A model with `auto_map` or the `custom_code` tag is refused. |
+| Quantised weights are of a kind the engine runs here: AWQ (4-bit), GPTQ (4- or 8-bit, symmetric) or FP8, as `config.json` states it. | Other kinds, bitsandbytes among them, either do not run on this engine version or were not proven on its GPUs. Plain weights are always fine. |
 | Its tokenizer has a chat template. | Without one the chat route cannot be used. |
 | Its files fit a class. | Models are served as they are. Nothing is quantised or shrunk for you. |
 
@@ -275,6 +276,7 @@ Every field and error code is in the [API reference](/docs/api#pasted-models).
 | `no_safetensors` | The repository has no safetensors weights. |
 | `unsupported_architecture` | The config names no architecture, more than one, or one the engine does not run as a text model. |
 | `custom_code` | The model needs its own Python code to load. |
+| `unsupported_quantization` | The weights are quantised in a way the engine does not run here, or `config.json` does not say how. |
 | `no_chat_template` | The tokenizer has no chat template. |
 | `too_big` | The files are bigger than the Heavy class holds, or the repository does not say how big they are. |
 | `blocked` | Freeweight does not load this repository. |
