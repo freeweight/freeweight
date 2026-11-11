@@ -596,6 +596,8 @@ serve it. What differs from a rented model:
   no `[DONE]`: `upstream_error` or `slow_client`. It is charged for what arrived.
 - **Failure.** A request that fails before any answer, or a request without streaming whose answer broke off,
   answers `502 upstream_error` and costs nothing.
+- **Closing early.** A request you close after it was sent to the model is charged: for what you sent, and for
+  what the model had written by then. This holds with and without streaming, and it counts toward your limits.
 - **Tools.** `tools` are passed to the model and it returns `tool_calls`, streamed or not. Your code runs them.
 - **Header.** The answer carries `x-freeweight-request` with the id of the request (`hst_...`). There is no
   `x-freeweight-session`.

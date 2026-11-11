@@ -149,7 +149,8 @@ How one request is charged:
    than the hold.
 
 A request that fails before any answer costs nothing. An answer that breaks off part-way is charged for what
-arrived.
+arrived. A request you close yourself after it was sent is charged for what you sent and for what had been
+written by then.
 
 | Request | Charge |
 | ------- | ------ |
