@@ -23,7 +23,8 @@ v0.1 runs on a staging address, not on the public domain.
 
 Written or designed, and not live.
 
-- **The public domain.** Examples in the docs use `https://freeweight.xyz`. Nothing is published there yet.
+- **The public domain.** Examples in the docs use `https://freeweight.xyz`. Until launch it shows a placeholder
+  page and nothing else.
 - **Top-ups** in ETH and USDG on Robinhood Chain. The verification code is written. Top-ups stay closed until a
   treasury address is configured.
 - **A catalog of about ten models.** The three models above are what is listed today.
