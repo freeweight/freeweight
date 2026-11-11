@@ -578,7 +578,7 @@ serve it. What differs from a rented model:
 - **Credential.** An API key, or the browser sign-in. Anything else answers `401 unauthorized`. No session is
   started, also for a key with `auto_session`.
 - **Money.** The highest price the request can have is held from the balance before it runs: what you sent,
-  counted generously, plus `max_tokens` of output. If the balance does not cover that, the
+  counted at one token for every byte, plus `max_tokens` of output. If the balance does not cover that, the
   answer is `402 insufficient_balance`. When the answer ends, the charge is written from the token counts and
   the rest of the hold is released. On a stream this happens before the stream closes.
 - **Fields.** These go to the model as you sent them: `messages`, `tools`, `tool_choice`, `parallel_tool_calls`,
