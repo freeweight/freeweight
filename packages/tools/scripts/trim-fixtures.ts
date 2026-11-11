@@ -1,7 +1,7 @@
 /**
  * Shrink recorded fixtures to the fields the tools read (run after `npm run record`):
  *   npx tsx scripts/trim-fixtures.ts
- * RPC log, block and transaction objects keep only the fields used; explorer listings keep the fields parsed.
+ * RPC log, block and transaction objects keep only the fields used; explorer listings and launch lists keep the fields parsed.
  * Page bodies are left as recorded (page analysis reads them in full). chain_read fixtures are never trimmed: that
  * tool returns whole transactions and blocks. Batch responses are paired with requests by JSON-RPC id; a batch whose
  * ids do not line up is left untouched.
@@ -49,6 +49,19 @@ function trim(e: Entry): string {
       const j = JSON.parse(e.body) as { items?: { address: Record<string, unknown>; value: string }[] };
       j.items = (j.items ?? []).map((i) => ({ address: pick(i.address, ["hash", "is_contract", "name"]) as Record<string, unknown>, value: i.value }));
       return JSON.stringify(j);
+    }
+    if (url.startsWith("https://ponsfamily.com/api/launches")) {
+      const j = JSON.parse(e.body) as { items?: unknown[]; nextCursor?: unknown };
+      const keep = ["address", "name", "symbol", "stage", "description", "deployer", "createdAt", "quote", "progress", "marketCapUsd", "raisedUsd", "volumeUsd", "tradeCount", "creatorTaxBps", "socials", "pool"];
+      return JSON.stringify({ items: (j.items ?? []).map((i) => ({ ...(pick(i, keep) as object), quote: pick((i as { quote?: unknown }).quote, ["symbol"]) })), nextCursor: j.nextCursor });
+    }
+    if (/geckoterminal\.com\/api\/v2\/networks\/[a-z0-9_-]+\/new_pools/.test(url)) {
+      const j = JSON.parse(e.body) as { data?: { attributes?: unknown; relationships?: unknown }[]; included?: { id?: unknown; type?: unknown; attributes?: unknown }[] };
+      const attrs = ["address", "pool_created_at", "fdv_usd", "market_cap_usd", "reserve_in_usd", "volume_usd", "transactions"];
+      return JSON.stringify({
+        data: (j.data ?? []).map((p) => ({ attributes: pick(p.attributes, attrs), relationships: pick(p.relationships, ["base_token", "quote_token", "dex"]) })),
+        included: (j.included ?? []).map((x) => ({ id: x.id, type: x.type, attributes: pick(x.attributes, ["address", "symbol", "name"]) })),
+      });
     }
   } catch {
     /* leave as recorded */

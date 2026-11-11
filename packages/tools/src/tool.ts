@@ -1,5 +1,5 @@
 import type { Chain } from "./chains.js";
-import type { JsonSchema, ToolCtx, ToolDef, ToolResult } from "./types.js";
+import type { JsonSchema, ToolCtx, ToolDef, ToolEnv, ToolResult } from "./types.js";
 import { InputError } from "./util/args.js";
 import { Run } from "./util/http.js";
 import { fetchEnrichment, type Enrichment } from "./sources/facts.js";
@@ -22,6 +22,8 @@ export type ToolSpec = {
   title: string;
   description: string;
   inputSchema: JsonSchema;
+  /** False when the tool cannot work with this configuration (a missing key). */
+  available?: (env: ToolEnv) => boolean;
   /** When set, the Freeweight index is asked for enrichment for this token on Robinhood Chain. */
   enrich?: (args: Record<string, unknown>) => { chain: Chain; token: string } | null;
   run: (args: Record<string, unknown>, run: Run) => Promise<Body>;
@@ -38,6 +40,7 @@ export function defineTool(spec: ToolSpec): ToolDef {
     title: spec.title,
     description: spec.description,
     inputSchema: spec.inputSchema,
+    ...(spec.available ? { available: spec.available } : {}),
     handler: (args, ctx) => execute(spec, args, ctx),
   };
 }

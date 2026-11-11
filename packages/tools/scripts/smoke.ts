@@ -50,6 +50,8 @@ function argsFor(tool: string, t: Target): Record<string, unknown> {
       return { query: `${t.label.split(" ")[0]} token` };
     case "market_data":
       return { chain: t.chain, token: t.token, majors: ["ethereum", "bitcoin"] };
+    case "new_launches":
+      return { chain: t.chain, limit: 5 };
     case "chain_read":
       return { chain: t.chain, op: "call", to: t.token, signature: "function totalSupply() view returns (uint256)" };
     default:

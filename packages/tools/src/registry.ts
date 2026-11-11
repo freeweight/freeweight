@@ -1,5 +1,5 @@
 import { validateArgs } from "./util/schema.js";
-import type { ToolCtx, ToolDef, ToolResult } from "./types.js";
+import type { ToolCtx, ToolDef, ToolEnv, ToolResult } from "./types.js";
 import { tokenOverview } from "./tools/token_overview.js";
 import { safetyCheck } from "./tools/safety_check.js";
 import { holdersTool } from "./tools/holders.js";
@@ -10,6 +10,7 @@ import { webSearch } from "./tools/web_search.js";
 import { marketData } from "./tools/market_data.js";
 import { chainRead } from "./tools/chain_read.js";
 import { contractSource } from "./tools/contract_source.js";
+import { newLaunches } from "./tools/new_launches.js";
 
 export const tools: ToolDef[] = [
   tokenOverview,
@@ -20,6 +21,7 @@ export const tools: ToolDef[] = [
   projectCheck,
   webSearch,
   marketData,
+  newLaunches,
   chainRead,
   contractSource,
 ];
@@ -47,9 +49,17 @@ export async function runTool(name: string, args: unknown, ctx: ToolCtx): Promis
   return t.handler(a as Record<string, unknown>, ctx);
 }
 
-/** OpenAI Chat Completions `tools` array. */
-export function openAiToolSpecs(): object[] {
-  return tools.map((t) => ({
+/**
+ * The tools that can work with this configuration. A tool that needs a key the server does not have is left out of
+ * what a model is offered (it would only spend a round on "not configured"); calling it by name still answers.
+ */
+export function availableTools(env: ToolEnv): ToolDef[] {
+  return tools.filter((t) => !t.available || t.available(env));
+}
+
+/** OpenAI Chat Completions `tools` array: the tools that can work with this configuration. */
+export function openAiToolSpecs(env: ToolEnv): object[] {
+  return availableTools(env).map((t) => ({
     type: "function",
     function: { name: t.name, description: t.description, parameters: t.inputSchema },
   }));

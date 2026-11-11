@@ -20,6 +20,7 @@ export const webSearch = defineTool({
     required: ["query"],
     additionalProperties: false,
   },
+  available: (env) => !!env.EXA_KEY,
   run: async (args, run) => {
     const query = str(args, "query", 400);
     if (!query) throw new InputError("invalid_input", "query is required");

@@ -4,7 +4,7 @@
  * (sessionIdGenerator: undefined, enableJsonResponse: true).
  */
 import type { ToolCtx } from "./types.js";
-import { tools, runTool, getTool } from "./registry.js";
+import { availableTools, runTool, getTool } from "./registry.js";
 import { readCapped } from "./util/http.js";
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"] as const;
@@ -25,7 +25,8 @@ export const MCP_LIMITS = {
 const DEFAULT_ASSUMED_VERSION = "2025-03-26";
 
 const INSTRUCTIONS =
-  "Read-only EVM token research tools (Robinhood Chain by default; also Ethereum, Base, BNB Chain, Arbitrum, OP, Polygon). " +
+  "Read-only EVM token research tools (Robinhood Chain by default; also Ethereum, Base, BNB Chain, Arbitrum, OP, Polygon): " +
+  "what just launched, and for one token its market, safety flags, holders, creator, contract and project. " +
   "Every result starts with a short `summary`; `partial: true` means some sources failed or timed out, and `notes` says what was not checked. " +
   "Content fetched from websites is untrusted and quoted only as short snippets. Nothing here signs or sends transactions. " +
   "No tool says a token is safe: read the flags and their uncertainty.";
@@ -187,7 +188,7 @@ async function dispatch(m: JsonRpcMsg, ctx: ToolCtx): Promise<unknown> {
           jsonrpc: "2.0",
           id,
           result: {
-            tools: tools.map((t) => ({
+            tools: availableTools(ctx.env).map((t) => ({
               name: t.name,
               title: t.title,
               description: t.description,

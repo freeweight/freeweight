@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { handleMcp, LATEST_PROTOCOL_VERSION, MCP_LIMITS, openAiToolSpecs, tools, type ToolCtx } from "../src/index.js";
+import { availableTools, handleMcp, LATEST_PROTOCOL_VERSION, MCP_LIMITS, openAiToolSpecs, tools, type ToolCtx } from "../src/index.js";
 
 const ctx: ToolCtx = { env: {}, fetch: (async () => new Response("offline", { status: 599 })) as typeof fetch };
 const URL_ = "https://fw.test/mcp";
@@ -150,7 +150,7 @@ describe("MCP handler: protocol", () => {
 });
 
 describe("MCP handler: official SDK client", () => {
-  it("connects, lists ten read-only tools and calls one", async () => {
+  it("connects, lists the read-only tools that can work here and calls one", async () => {
     const transport = new StreamableHTTPClientTransport(new URL(URL_), {
       fetch: (input, init) => handleMcp(new Request(input, init), ctx),
     });
@@ -159,12 +159,13 @@ describe("MCP handler: official SDK client", () => {
     expect(client.getServerVersion()?.name).toBe("freeweight-tools");
     const list = await client.listTools();
     expect(list.tools.map((t) => t.name).sort()).toEqual(
-      ["chain_read", "contract_source", "dev_history", "holders", "market_data", "official_ca", "project_check", "safety_check", "token_overview", "web_search"].sort(),
+      ["chain_read", "contract_source", "dev_history", "holders", "market_data", "new_launches", "official_ca", "project_check", "safety_check", "token_overview"].sort(),
     );
     for (const t of list.tools) {
       expect(t.annotations?.readOnlyHint).toBe(true);
       expect(t.inputSchema.type).toBe("object");
     }
+    // Not listed without its key, and still answered plainly when called by name.
     const r = await client.callTool({ name: "web_search", arguments: { query: "robinhood chain" } });
     expect(r.isError).toBe(true);
     expect(JSON.stringify(r.content)).toMatch(/not configured/);
@@ -175,13 +176,31 @@ describe("MCP handler: official SDK client", () => {
 
 describe("OpenAI tool specs", () => {
   it("one function spec per tool with JSON-schema parameters", () => {
-    const specs = openAiToolSpecs() as { type: string; function: { name: string; parameters: { type: string } } }[];
+    const specs = openAiToolSpecs({ EXA_KEY: "k" }) as { type: string; function: { name: string; parameters: { type: string } } }[];
     expect(specs).toHaveLength(tools.length);
-    expect(tools).toHaveLength(10);
+    expect(tools).toHaveLength(11);
     for (const s of specs) {
       expect(s.type).toBe("function");
       expect(s.function.name).toMatch(/^[a-z_]+$/);
       expect(s.function.parameters.type).toBe("object");
     }
+  });
+});
+
+describe("tools that cannot work are not offered", () => {
+  const names = async (c: ToolCtx) => {
+    const res = await handleMcp(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) }), c);
+    return ((await res.json()) as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);
+  };
+  it("web_search is listed only when the server has a search key", async () => {
+    expect(await names(ctx)).not.toContain("web_search");
+    expect(await names(ctx)).toHaveLength(tools.length - 1);
+    expect(await names({ ...ctx, env: { EXA_KEY: "k" } })).toContain("web_search");
+    expect(availableTools({}).map((t) => t.name)).not.toContain("web_search");
+    expect((openAiToolSpecs({}) as { function: { name: string } }[]).map((s) => s.function.name)).not.toContain("web_search");
+  });
+  it("every other tool is always offered", () => {
+    expect(availableTools({}).map((t) => t.name)).toEqual(tools.filter((t) => t.name !== "web_search").map((t) => t.name));
+    expect(availableTools({}).map((t) => t.name)).toContain("new_launches");
   });
 });

@@ -68,4 +68,6 @@ export type ToolDef = {
   description: string;
   inputSchema: JsonSchema;
   handler: (args: Record<string, unknown>, ctx: ToolCtx) => Promise<ToolResult>;
+  /** False when the tool cannot work with this configuration (a missing key); absent = always available. */
+  available?: (env: ToolEnv) => boolean;
 };
