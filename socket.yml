@@ -1,0 +1,13 @@
+# Socket GitHub App: report on a pull request only when it touches a dependency manifest or
+# lockfile (gitignore-style patterns, so they match at any depth).
+version: 2
+
+triggerPaths:
+  - "package.json"
+  - "package-lock.json"
+  - "requirements*.txt"
+  - "requirements*.in"
+  - "socket.yml"
+
+projectIgnorePaths:
+  - "contracts/lib"
