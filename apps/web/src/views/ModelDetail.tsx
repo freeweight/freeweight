@@ -176,10 +176,12 @@ export default function ModelDetail({ params }: { params: Record<string, string>
                 <dt>Wake</dt>
                 <dd>{wakeLine(model)}</dd>
               </div>
-              <div>
-                <dt>Params</dt>
-                <dd className="mono small">{fmtParams(model.params_b)}</dd>
-              </div>
+              {fmtParams(model.params_b) && (
+                <div>
+                  <dt>Params</dt>
+                  <dd className="mono small">{fmtParams(model.params_b)}</dd>
+                </div>
+              )}
               {model.quant && (
                 <div>
                   <dt>Quant</dt>

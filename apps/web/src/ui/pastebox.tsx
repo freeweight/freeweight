@@ -206,7 +206,7 @@ export function PasteBox({ config, id = "paste", initial = "" }: { config: Confi
             <div>
               <dt>Size</dt>
               <dd className="mono">
-                {size(check.size_bytes)} · {params(check.params_b)} · {context(check.context)} context
+                {[size(check.size_bytes), params(check.params_b), `${context(check.context)} context`].filter(Boolean).join(" · ")}
               </dd>
             </div>
             <div>

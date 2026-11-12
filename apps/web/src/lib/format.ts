@@ -147,8 +147,9 @@ export function gpuTime(seconds: number): string {
   return `${trim(seconds / 3600)} h`;
 }
 
+/** A parameter count, or "" when it is not known: a count that rounds to 0M says nothing. */
 export function params(b: number): string {
-  return b >= 1 ? `${trim(b)}B` : `${Math.round(b * 1000)}M`;
+  return b >= 1 ? `${trim(b)}B` : b >= 5e-4 ? `${Math.round(b * 1000)}M` : "";
 }
 
 export function context(tokens: number): string {

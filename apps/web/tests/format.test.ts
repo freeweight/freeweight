@@ -186,6 +186,9 @@ describe("counts and names", () => {
     expect(params(8)).toBe("8B");
     expect(params(7.6)).toBe("7.6B");
     expect(params(0.5)).toBe("500M");
+    expect(params(0.0005)).toBe("1M");
+    // unknown, or so small it rounds to nothing: no value rather than "0M"
+    for (const b of [0, 0.0004, NaN, -1]) expect(params(b), String(b)).toBe("");
     expect(context(32_768)).toBe("32k");
     expect(context(131_072)).toBe("128k");
     expect(context(512)).toBe("512");
