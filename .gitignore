@@ -11,3 +11,5 @@ __pycache__/
 contracts/out/
 contracts/cache/
 .DS_Store
+contracts/lcov.info
+contracts/slither.json

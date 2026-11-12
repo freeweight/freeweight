@@ -1,0 +1,40 @@
+# Slither findings that were read against the code and judged not to be bugs.
+#
+# CI (.github/slither/gate.py) fails on any high or medium finding that is not listed here.
+# A finding matches an entry on detector, file, function and the flagged expressions, so the
+# same detector firing on new code is not covered. Low and informational findings are listed
+# for the record; they do not fail the job. Re-check every entry when the contract changes.
+#
+# Triaged with Slither 0.11.6 on src/ (lib/, test/ and script/ filtered).
+
+[[finding]]
+check = "incorrect-equality"
+impact = "Medium"
+file = "src/WeightVault.sol"
+function = "stake"
+nodes = ["received == 0"]
+reason = "Reverts on a zero balance delta measured inside one nonReentrant call; nobody can game it to gain anything, a donation only enlarges the delta."
+
+[[finding]]
+check = "timestamp"
+impact = "Low"
+file = "src/WeightVault.sol"
+function = "requestUnstake"
+nodes = ["p.pending != 0 && block.timestamp >= p.unlockTime", "unlock < p.unlockTime"]
+reason = "Intended: the cooldown is a time lock; a few seconds of sequencer leeway do not matter at day scale."
+
+[[finding]]
+check = "timestamp"
+impact = "Low"
+file = "src/WeightVault.sol"
+function = "withdraw"
+nodes = ["block.timestamp < p.unlockTime"]
+reason = "Intended: the cooldown is a time lock; a few seconds of sequencer leeway do not matter at day scale."
+
+[[finding]]
+check = "naming-convention"
+impact = "Informational"
+file = "src/IWeightVault.sol"
+function = "MAX_COOLDOWN"
+nodes = []
+reason = "Cosmetic: the getter of a constant, declared in the interface with the constant's name."

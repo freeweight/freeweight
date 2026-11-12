@@ -20,9 +20,10 @@ jobs:
       contracts: ${{ steps.filter.outputs.contracts }}
       node: ${{ steps.filter.outputs.node }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: filter
         run: |
           base="${{ github.event.pull_request.base.sha || github.event.before }}"
@@ -32,8 +33,10 @@ jobs:
           contracts=false; node=false
           if [ -f contracts/foundry.toml ] && echo "$files" | grep -qE '^(contracts/|\.github/)'; then contracts=true; fi
           if [ -f package-lock.json ] && echo "$files" | grep -qE '^(apps/|packages/|docs/|package(-lock)?\.json|\.github/)'; then node=true; fi
-          echo "contracts=$contracts" >> "$GITHUB_OUTPUT"
-          echo "node=$node" >> "$GITHUB_OUTPUT"
+          {
+            echo "contracts=$contracts"
+            echo "node=$node"
+          } >> "$GITHUB_OUTPUT"
 
   contracts:
     needs: changes
@@ -43,23 +46,84 @@ jobs:
       run:
         working-directory: contracts
     steps:
-      - uses: actions/checkout@v4
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.8.6
       - run: forge fmt --check
       - run: forge build --sizes
       - run: forge test -vvv
+
+  # Fails if WeightVault.sol is not fully covered, lines and branches. The fork test needs a live
+  # token address and is left out, as it is skipped without one anyway.
+  contracts-coverage:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.8.6
+      - run: forge coverage --no-match-path 'test/Fork.t.sol' --report summary --report lcov
+      - name: WeightVault.sol at 100 % lines and branches
+        run: |
+          awk -v want=src/WeightVault.sol '
+            /^SF:/ { f = (substr($0, 4) == want); if (f) seen = 1 }
+            f && /^LF:/ { lf = substr($0, 4) } f && /^LH:/ { lh = substr($0, 4) }
+            f && /^BRF:/ { brf = substr($0, 5) } f && /^BRH:/ { brh = substr($0, 5) }
+            END {
+              if (!seen) { print want " is not in lcov.info"; exit 1 }
+              printf "%s: lines %d/%d, branches %d/%d\n", want, lh, lf, brh, brf
+              if (lf == 0 || brf == 0 || lh != lf || brh != brf) exit 1
+            }' lcov.info
+
+  # Slither at a pinned version. High and medium findings fail the job unless they are listed,
+  # with a reason, in contracts/slither-triage.toml.
+  contracts-slither:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.8.6
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - run: pip install --require-hashes --no-deps -r ../.github/slither/requirements.txt
+      # --fail-none: the gate below decides, against the triage file.
+      - run: slither . --fail-none --json slither.json
+      - run: python ../.github/slither/gate.py slither.json slither-triage.toml
 
   node:
     needs: changes
     if: needs.changes.outputs.node == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Known vulnerabilities in what ships (dev dependencies left out); fails on high or critical.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
       - run: npm test
       # The site is built from docs/site: a page that is missing fails the build here.
