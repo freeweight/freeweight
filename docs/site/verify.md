@@ -129,9 +129,10 @@ The OpenAPI description is at [/openapi.yaml](openapi.yaml) and a plain-text sum
 - **That prompts and answers are not stored.** The gateway keeps what billing needs: sessions, a ledger and token
   counts. You cannot see that from outside. A prompt also passes through the GPU machine that runs the model, and
   for the always-awake model through NanoGPT, whose own terms apply. See [privacy](privacy.md).
-- **The code the service runs.** The repository `freeweight/freeweight` holds the web app, the research tools
-  and the vault contract. The gateway is not in it, and you cannot check from outside which code a deployment
-  runs.
+- **The code the service runs.** The repository
+  [freeweight/freeweight](https://github.com/freeweight/freeweight) holds the web app, the research tools and the
+  vault contract. The gateway and the serving code are not in it, and you cannot check from outside which code a
+  deployment runs.
 - **Uptime over time.** There is no public status page yet. `/api/health` shows only the present.
 - **Paid use.** A paid session, a top-up and a receipt for them need a wallet and money. The checks above stop
   before that.

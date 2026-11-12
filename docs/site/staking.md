@@ -46,7 +46,8 @@ to the amount staked.
 ## The staking contract
 
 The contract is written and tested, and it is not deployed. It has not been audited by an outside firm. Its source
-and its tests will be published before anyone is asked to stake.
+and its tests are public, in the `contracts` folder of the repository
+[freeweight/freeweight](https://github.com/freeweight/freeweight).
 
 It is deliberately small:
 

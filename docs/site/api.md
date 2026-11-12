@@ -156,7 +156,7 @@ Some errors add fields, such as `session_id` on `session_live`, or `confirmation
 | 503 | `checks_unavailable` | Checks and first loads cannot be taken right now. Nothing was charged. |
 | 503 | `misconfigured` | The service is not set up completely. Until it is, only the public reads answer: health, config, stats, receipts, the catalog and `/api/hosted`. `/mcp` answers 503 too, as a JSON-RPC error. |
 | 503 | `model_lost` | The model stopped while the session was live and could not be woken again. The session has ended, and time after the model stopped is not charged. Start a new one. |
-| 503 | `trial_unavailable`, `turnstile_unavailable` | The human check for the free try is not set up or could not be reached right now. |
+| 503 | `trial_unavailable`, `turnstile_unavailable` | The human check for the free try or the free messages is not set up or could not be reached right now. |
 | 503 | `topups_closed`, `rpc_unavailable`, `price_unavailable`, `price_out_of_bounds`, `ledger_unavailable` | Money paths that are closed or could not be checked. Nothing was charged or credited. |
 | 504 | `upstream_timeout` | The model took too long to answer. Try again. |
 
@@ -221,7 +221,7 @@ model with `private: true` is returned to that account only.
 | ----- | ------- |
 | `prices_usd_micro_per_min` | `{ light, medium, heavy }` |
 | `free_minutes`, `default_minutes`, `max_minutes`, `idle_seconds` | Session limits: 5, 10, 240 and 300 in v0.1. |
-| `turnstile` | `{ enabled, sitekey }` for the human check on the free try. |
+| `turnstile` | `{ enabled, sitekey }` for the human check on the free try and the free messages. |
 | `chain` | `{ id, name }`: Robinhood Chain, id 4663. |
 | `topups` | `{ open, treasury, assets, confirmations }`. `open` is false until top-ups open. |
 | `perks` | `{ enabled, token, vault }`. Staker perks are planned and not live: `enabled` is `false` and both addresses are `null` in v0.1. |

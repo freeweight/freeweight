@@ -6,7 +6,7 @@ group: Policies
 ---
 
 > [!NOTE]
-> Draft v0.1, 2026-11-10: in force at public launch.
+> Draft v0.1, 2026-11-12: in force at public launch.
 
 This page describes what the service does today, checked against its source code. If the code changes, this page
 changes with it.
@@ -36,6 +36,8 @@ changes with it.
 | Wake records | Model, GPU source, duration, outcome and a short error text. No account. | Wake estimates and fault finding. |
 | Sign-in | The one-time code from your sign-in message and when it was used. | To stop a signature being replayed. |
 | Model listings | Repository name, commit, the owner's wallet address, check results, and the end of the build log. | To list a model and credit its owner. |
+| Pasted models | For each model loaded from a Hugging Face repository: the repository, commit, tier, the wallet address that paid for the first load and whether that wallet keeps the model private. For each load: the repository, commit, tier, your wallet address, whether it was a private load, its stages, size, times, what was held and charged, and why it failed if it did. | To load, list and bill the model, to show a private model only to its wallet, and the limits on loads per account. |
+| Repository checks | The repository name, the result of the free check and when it ran. No account. | So that the same repository is not read from Hugging Face again for every paste. |
 
 Token counters are numbers. They say how much text went through, not what it said.
 
@@ -51,7 +53,8 @@ Token counters are numbers. They say how much text went through, not what it sai
 1. Your request reaches our gateway. It checks your session and passes the request on. The text is held in memory
    for as long as the request takes.
 2. The request goes to a GPU machine that runs the model. We rent these machines from GPU providers. The text is in
-   that machine's memory while the answer is produced. Our serving code does not write it to disk.
+   that machine's memory while the answer is produced. Our serving code does not write it to disk, and it starts
+   the model's engine with request logging switched off.
 3. The answer comes back the same way.
 
 We do not control a provider's hardware, and we cannot prove what its operator is technically able to observe. If
@@ -76,8 +79,10 @@ search service. Those sources see our server, not your network address. They do 
 
 ## Logs
 
-- Our code logs failures: an error message with a short hash of the session id, or a model id. It does not log
-  prompts or answers.
+- Our code logs failures. A log line holds an error message and, depending on where it failed, a short hash of the
+  session id, a model id, a load id, a request id, or the request's method and path with a stack trace. When a
+  research tool fails, the line names the tool and holds the tool's error text, which can repeat part of what the
+  tool was asked, such as an address or a URL. Our code does not log prompts or answers.
 - Our hosting platform records request logs for the gateway. In v0.1 this is switched on. A log line can include
   the time, the path, the status, your network address and your browser's user agent. Bodies are not part of these
   logs. The platform deletes them after its retention period.
@@ -93,8 +98,9 @@ search service. Those sources see our server, not your network address. They do 
 
 The site also remembers your light or dark theme in your browser.
 
-There are no analytics and no advertising scripts. The only third-party script is the human check on the free try.
-When you complete it, the service that runs the check receives your network address and signals from your browser.
+There are no analytics and no advertising scripts. The only third-party script is the human check on the free try
+and on the first free message of a day to the always-awake model. When you complete it, the service that runs the
+check receives your network address and signals from your browser.
 
 ## Payments are public
 
@@ -112,19 +118,19 @@ receipts with the model, the minutes, the price and the tokens produced. No wall
 | --- | ------------- |
 | Our hosting platform | Requests to the gateway and the database described above. |
 | The GPU providers we rent from | Prompts and answers in memory, while a model produces the answer. |
-| The human-check service | Your network address and browser signals, on the free try only. |
+| The human-check service | Your network address and browser signals, on the free try and the first free message of a day. |
 | Public data sources behind the tools | Tool arguments. |
 | Chain endpoints | The transaction hashes and wallet addresses we look up. |
 
 We do not sell data. We have no advertising partners.
 
 If a court or an authority with jurisdiction orders us to hand over data, we can only hand over what is listed under
-"What we store". We have no prompts to give.
+"What we store" and the logs described under "Logs". We have no prompts to give.
 
 ## How long we keep it
 
-Sign-in codes are deleted once they are 20 minutes old, the next time anyone signs in. Nothing else is deleted
-automatically in v0.1. The other records above are kept while the service runs.
+Sign-in codes are deleted once they are 20 minutes old, the next time anyone signs in. Repository checks are deleted
+by an hourly job once they are a day old. Nothing else is deleted automatically in v0.1. The other records above are kept while the service runs.
 
 > [!WARNING]
 > Not decided yet: how long sessions, free-try records and wake records are kept, and what is deleted when.
@@ -152,8 +158,10 @@ Ledger entries are kept by design: an account history that can be edited is wort
 We will change this page when the service changes, and put the date at the top.
 
 > [!WARNING]
-> Not decided yet: whether the code of the service this page describes will be published, so that every statement
-> on this page can be checked against it.
+> Not decided yet: whether the code of the gateway and the serving lanes will be published, so that every statement
+> on this page can be checked against it. The public repository
+> [freeweight/freeweight](https://github.com/freeweight/freeweight) holds the site, the research tools and the
+> staking contract, not the code that keeps the records on this page.
 
 ## Who we are
 
