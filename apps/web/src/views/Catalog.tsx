@@ -181,7 +181,7 @@ export default function Catalog() {
       )}
 
       <p className="cat-foot small dimmer">
-        Cold means the weights are not cached near a GPU yet, so the first wake takes longer. Untested means somebody pasted the model from Hugging Face and nobody here has tried it. Have a model of your own?{" "}
+        Cold means nobody has woken it here yet, so its wake time is an estimate. Untested means somebody pasted the model from Hugging Face and nobody here has tried it. Have a model of your own?{" "}
         <Link className="link" href="/list">
           List it
         </Link>

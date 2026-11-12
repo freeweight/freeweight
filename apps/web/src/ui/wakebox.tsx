@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { api, DEFAULT_CONFIG, type Config, type Model, type Session } from "../api";
-import { perMin, typicalWake, usd, wakeBudget } from "../lib/format";
+import { perMin, usd, wakeBudget, wakeText } from "../lib/format";
 import { refreshLive, refreshMe, toApiError, useMe } from "../lib/hooks";
 import { turnstileToken } from "../lib/turnstile";
 import { Link, navigate } from "../router";
@@ -158,7 +158,7 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
   const short = signedIn && !free && (me?.balance_usd_micro ?? 0) < cost;
   const verb = model.state === "awake" ? "Join" : "Wake it";
   const freeMin = config?.free_minutes ?? DEFAULT_CONFIG.free_minutes;
-  const est = typicalWake(model)?.text;
+  const est = wakeText(model);
 
   async function go(): Promise<void> {
     if (!model || busy) return;
@@ -267,8 +267,7 @@ export function WakeBox({ models, initial, fixed = false, config }: { models: Mo
             <>Waking now. You join when it is ready.</>
           ) : (
             <>
-              {est ? `Wake: ${est}` : "Typical wake: not measured yet"}
-              {est && model.state === "cold" ? ", longer from cold" : ""}. The wake is free.
+              {est ? `Wake: ${est}` : "Typical wake: not measured yet"}. The wake is free.
             </>
           )}
         </span>

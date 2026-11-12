@@ -170,6 +170,11 @@ Wakes of one model differ, so the catalog also gives a range. `wake_low_s` and `
 75th percentile of the same 15 wakes: half of them took between the two. Both are 0 until the model has been
 woken three times. When the two differ, say "30 to 55 seconds" instead of one number.
 
+A pasted model's estimate from its size is that of a wake that restores a saved copy of the started engine. About
+4 in 10 wakes, of any model, start the engine from scratch instead. Measured on the GPU, without the wait for one,
+that took about 60 seconds for 3 GB and about 105 seconds for 30 GB, against 12 to 27 seconds for a restore. Until
+a model has three measured wakes, the site gives both: "about 20 s, or about 1 min when it starts from scratch".
+
 A wake can be faster than the estimate, when the weights are still cached near the GPU. It can be slower, when
 GPUs are scarce or the weights have to be fetched again. It can fail. A failed wake costs nothing.
 

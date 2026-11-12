@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api, type Model } from "../api";
-import { context, licence, params as fmtParams, perMin, shortAddr, shortSha, TIER_CLASS, typicalWake } from "../lib/format";
+import { context, licence, params as fmtParams, perMin, shortAddr, shortSha, TIER_CLASS, wakeText } from "../lib/format";
 import { useEffect } from "react";
 import { loadFailed, refreshLive, toApiError, useHosted, useLive, useLoad, useTitle } from "../lib/hooks";
 import { HOSTED_PATH } from "../lib/hosted";
@@ -18,9 +18,8 @@ function wakeLine(m: Model): string {
   if (m.state === "waking") return "Waking for someone else. You can join as soon as it is ready.";
   if (m.state === "unavailable") return "Not available right now.";
   if (m.state === "needs_load") return "Not until it is loaded again: the stored weights were cleared.";
-  const est = typicalWake(m)?.text;
-  if (!est) return "Typical wake: not measured yet.";
-  return m.state === "cold" ? `Wake: ${est}. Cold: the weights are not cached near a GPU yet, so the first one takes longer.` : `Wake: ${est}.`;
+  const est = wakeText(m);
+  return est ? `Wake: ${est}.` : "Typical wake: not measured yet.";
 }
 
 function snippet(m: Model): string {

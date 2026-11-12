@@ -103,9 +103,9 @@ and has `origin: "pasted"` in the API.
 - Its context is what the model's config states, up to 8192 tokens. `context` on the model gives the number.
 - `tools_ok` is `false`: tool calling on an untested model is not set up. Do not send `tools` to it.
 - It runs on one GPU source. There is no second source to fall back on.
-- Its first wake after the load usually comes back from the snapshot the load left, in seconds. For AWQ and GPTQ
-  models it has started the engine from scratch instead, a minute or two, and only the wakes after it were quick.
-  Their wake estimate says so until the model has woken three times.
+- Its wakes usually come back from the snapshot the load left, in seconds. About 4 in 10 wakes, of any model and
+  any kind of weights, start the engine from scratch instead: about a minute for 3 GB, about two for 30 GB. Until
+  the model has woken three times, its page gives both.
 - Nobody earns an owner share on it. If the owner of the repository [lists the model](/docs/listing), the owner's
   listing takes its place in the catalog when it is approved and built.
 

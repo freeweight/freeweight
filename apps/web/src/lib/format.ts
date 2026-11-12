@@ -102,6 +102,17 @@ export function typicalWake(m: WakeFigures | null | undefined): TypicalWake | nu
   return { text: s < 60 ? `about ${s} s` : `about ${minutes(s)} min`, lowS: s, highS: s, range: false };
 }
 
+/**
+ * The typical wake in words, honest about a figure that is not measured yet. Most wakes restore a snapshot of the
+ * engine; about 4 in 10 started it from scratch, which took about 40 s more on the GPU (60 s for 3 GB, 105 s for
+ * 30 GB). Before three wakes are measured the estimate is that of a restore, so the words give both.
+ */
+export function wakeText(m: WakeFigures | null | undefined): string | null {
+  const t = typicalWake(m);
+  if (!t || (measured(m!.wake_low_s) && measured(m!.wake_high_s))) return t?.text ?? null;
+  return `${t.text}, or ${typicalWake({ wake_estimate_s: m!.wake_estimate_s! + 40 })!.text} when it starts from scratch`;
+}
+
 /** The gateway's answer to too many wakes stopped before they finished, with how long to wait when it says. */
 export function wakeBudget(retryAfter: unknown): string {
   const min = typeof retryAfter === "number" && retryAfter > 0 ? Math.ceil(retryAfter / 60) : 0;

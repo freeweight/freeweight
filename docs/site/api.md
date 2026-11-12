@@ -851,7 +851,7 @@ An accepted model:
 | `context` | The context the model is served with: what its config states, up to 8192 tokens. |
 | `price_usd_micro_per_min` | The price of the class, for the load and for sessions. |
 | `load_cap_minutes`, `load_cap_usd_micro` | The most minutes a first load is charged for, and what they cost. This amount is held when a load starts. |
-| `load_estimate_s`, `wake_estimate_s` | Estimates from the size, in seconds, with a GPU free at once. Waiting for a GPU can add a few minutes to either. For an AWQ or GPTQ model, `wake_estimate_s` is that of a start from scratch, which its first wake after the load has been. After the model's third wake, it is what its wakes measured, without the time they waited for a GPU. |
+| `load_estimate_s`, `wake_estimate_s` | Estimates from the size, in seconds, with a GPU free at once. Waiting for a GPU can add a few minutes to either. `wake_estimate_s` is a wake that restores a saved copy of the started engine. About 4 in 10 wakes start the engine from scratch instead and take longer: about a minute for 3 GB, about two for 30 GB. After the model's third wake, it is what its wakes measured, without the time they waited for a GPU. |
 | `state` | `new`, `needs_load`, `loading` or `loaded`. |
 | `model_id` | The catalog id, when `state` is `loaded` or `needs_load`. Otherwise `null`. |
 | `load_id` | The running load, when `state` is `loading`. Otherwise `null`. |

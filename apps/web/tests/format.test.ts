@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, licence, params, perMin, plainCode, shortAddr, shortSha, size, took, usd, typicalWake, wakeBudget } from "../src/lib/format";
+import { about, ago, clock, clockTenths, compact, context, day, gpuTime, grouped, licence, params, perMin, plainCode, shortAddr, shortSha, size, took, usd, typicalWake, wakeBudget, wakeText } from "../src/lib/format";
 
 describe("money", () => {
   it("prints dollars with two decimals", () => {
@@ -151,6 +151,24 @@ describe("typical wake", () => {
     expect(span(40, 40, 40)).toBe("about 40 s");
     expect(span(2, 2, 4)).toBe("about 5 s"); // nothing wakes in "0 to 5 s"
     expect(typicalWake({ wake_estimate_s: 26, wake_low_s: null, wake_high_s: undefined })?.text).toBe("about 25 s");
+  });
+});
+
+describe("a wake in words", () => {
+  it("gives the estimate and the slower start from scratch until wakes are measured", () => {
+    // the size estimates of a 3 GB Light and a 30 GB Medium model
+    expect(wakeText({ wake_estimate_s: 21 })).toBe("about 20 s, or about 1 min when it starts from scratch");
+    expect(wakeText({ wake_estimate_s: 71, wake_low_s: 0, wake_high_s: 0 })).toBe("about 1 min, or about 2 min when it starts from scratch");
+  });
+
+  it("says only what was measured once it was", () => {
+    expect(wakeText({ wake_estimate_s: 14, wake_low_s: 12, wake_high_s: 15 })).toBe("usually 10 to 15 s");
+    expect(wakeText({ wake_estimate_s: 40, wake_low_s: 40, wake_high_s: 40 })).toBe("about 40 s");
+  });
+
+  it("says nothing without a figure", () => {
+    expect(wakeText({ wake_estimate_s: 0 })).toBeNull();
+    expect(wakeText(null)).toBeNull();
   });
 });
 

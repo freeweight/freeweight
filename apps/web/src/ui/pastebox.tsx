@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Config, type RepoCheck } from "../api";
-import { about, context, licence, params, perMin, shortSha, size, TIER_NAME, usd } from "../lib/format";
+import { about, context, licence, params, perMin, shortSha, size, TIER_NAME, usd, wakeText } from "../lib/format";
 import { refreshMe, toApiError, useMe } from "../lib/hooks";
 import { cannotLoad, firstLoadShown, loadedNote, parseRepo } from "../lib/repo";
 import { Link, navigate } from "../router";
@@ -198,7 +198,7 @@ export function PasteBox({ config, id = "paste", initial = "" }: { config: Confi
                 <dt>Estimate</dt>
                 <dd>
                   <span className="mono">{about(check.load_estimate_s)}</span>
-                  <span className="pb-note">to load, from its size. Waiting for a GPU can add a few minutes. Later wakes: {about(check.wake_estimate_s)}</span>
+                  <span className="pb-note">to load, from its size. Waiting for a GPU can add a few minutes. Later wakes: {wakeText(check)}</span>
                 </dd>
               </div>
               </>

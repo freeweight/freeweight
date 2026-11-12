@@ -2,7 +2,7 @@
 
 import { useRef, useState, type CSSProperties } from "react";
 import { api, DEFAULT_CONFIG, type Model, type Session, type Stage } from "../../api";
-import { clock, clockTenths, context, licence, perMin, shortSha, TIER_CLASS, took, typicalWake } from "../../lib/format";
+import { clock, clockTenths, context, licence, perMin, shortSha, TIER_CLASS, took, typicalWake, wakeText } from "../../lib/format";
 import { useConfig, useFrame } from "../../lib/hooks";
 import { turnstileToken } from "../../lib/turnstile";
 import type { Live } from "../../lib/session";
@@ -222,7 +222,7 @@ export function Wake({ live, session: s, model }: { live: Live; session: Session
                           : "Still working. One stage can take a couple of minutes on its own. The wake is not billed."
                         : model
                           ? est
-                            ? `Wake: ${est.text}${model.state === "cold" ? ", longer from cold storage" : ""}. It can take longer. The wake is not billed.`
+                            ? `Wake: ${wakeText(model)}. It can take longer. The wake is not billed.`
                             : "Typical wake: not measured yet for this model. The wake is not billed."
                           : "The wake is not billed."}
                 </span>
