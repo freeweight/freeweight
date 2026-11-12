@@ -158,7 +158,8 @@ A model goes back to sleep when its last session ends. Nobody pays for a sleepin
 
 ## Wake estimates
 
-`wake_estimate_s` is measured, not promised. It is the median of the model's last 15 successful wakes. A model that
+`wake_estimate_s` is measured, not promised. It is the median of the model's last 15 successful wakes. For a
+pasted model only wakes since its last first load count: weights loaded again start the count over. A model that
 has been woken fewer than three times shows the value from its catalog entry instead (for a pasted model, an
 estimate from its size), and one never woken is in the state `cold`. A value of 0 means the wake has not been
 measured yet. In v0.1 that is the Heavy model.
