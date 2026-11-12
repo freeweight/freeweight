@@ -29,9 +29,9 @@ where each request may land on a different isolate, and every tool here is a sin
   when the tool's `ok` is false.
 - The endpoint is open: no key is needed. A caller that sends an API key, or is signed in, is treated as known, and
   only known callers get the paid web search.
-- The gateway checks a request before the toolkit sees it (`apps/gateway/src/index.ts`): a body of at most
-  256 KiB, one `tools/call` at most, and 30 tool calls per 60 seconds per network address (`RL_MCP`, bound in
-  `wrangler.jsonc`). Only tool calls are counted. A handshake or a tool listing is free.
+- The gateway checks a request before the toolkit sees it (the gateway is not in this repository): a body of at most
+  256 KiB, one `tools/call` at most, and 30 tool calls per 60 seconds per network address (in the gateway's
+  configuration, not in this repository). Only tool calls are counted. A handshake or a tool listing is free.
 - The gateway rebuilds the response with a fixed set of headers and removes the private index host from the body.
 
 ## Consequences

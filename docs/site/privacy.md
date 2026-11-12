@@ -127,8 +127,7 @@ Sign-in codes are deleted once they are 20 minutes old, the next time anyone sig
 automatically in v0.1. The other records above are kept while the service runs.
 
 > [!WARNING]
-> Draft point for the owner: set retention periods for sessions, free-try records and wake records, and say here
-> what is deleted when.
+> Not decided yet: how long sessions, free-try records and wake records are kept, and what is deleted when.
 
 Ledger entries are kept by design: an account history that can be edited is worth nothing.
 
@@ -141,26 +140,26 @@ Ledger entries are kept by design: an account history that can be edited is wort
   ask you to sign a message with that wallet.
 
 > [!WARNING]
-> Draft point for the owner: confirm the deletion process and which records are excluded from it.
+> Not decided yet: the deletion process, and which records are excluded from it.
 
 ## Age
 
 > [!WARNING]
-> Draft point for the owner: minimum age. Until it is set, the service is meant for adults.
+> Not decided yet: the minimum age. Until it is set, the service is meant for adults.
 
 ## Changes
 
 We will change this page when the service changes, and put the date at the top.
 
 > [!WARNING]
-> Draft point for the owner: whether the source code is public at launch. If it is, say here that every statement on
-> this page can be checked against it.
+> Not decided yet: whether the code of the service this page describes will be published, so that every statement
+> on this page can be checked against it.
 
 ## Who we are
 
 Freeweight operates the service.
 
 > [!WARNING]
-> Placeholder: legal entity and governing law. To be filled in before public launch.
+> Not decided yet: the legal entity and the governing law. They will be named here before public launch.
 
 Contact: hello@freeweight.xyz

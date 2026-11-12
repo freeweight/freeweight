@@ -12,9 +12,9 @@ the second person wait through a wake that the first one already paid for in tim
 
 A model has at most one running instance. Every session on that model uses it.
 
-- `ModelDO` (one Durable Object per model id, `apps/gateway/src/model-do.ts`) owns the instance: it wakes it when the
+- `ModelDO` (one Durable Object per model id, in the gateway, not in this repository) owns the instance: it wakes it when the
   first session joins, keeps it alive while sessions are live, and puts it to sleep when the last session leaves.
-- `SessionDO` (one Durable Object per session, `apps/gateway/src/session-do.ts`) owns one renter's clock, hold and
+- `SessionDO` (one Durable Object per session, in the gateway, not in this repository) owns one renter's clock, hold and
   receipt. Sessions do not know about each other.
 - A session that joins a model that is already awake becomes active at once, with no wake.
 - Which models are awake, since when and with how many sessions is public (`GET /api/awake`).
@@ -25,7 +25,7 @@ A model has at most one running instance. Every session on that model uses it.
 - Each renter pays the full class price for their own minutes. The price is for access to the model, not for a
   private GPU, and the pricing page says so.
 - Throughput is shared. A model with many live sessions answers each of them more slowly. v0.1 sets no cap on
-  sessions per model: this is an open item (see the threat model).
+  sessions per model: this is an open item (see the gateway's threat model, not in this repository).
 - Requests from different sessions are batched by the same inference engine. Sessions cannot read each other's
   prompts through the API, but there is no hardware isolation between renters of one model.
 - The model sleeps only when every session has ended, so one long session keeps it awake for later joiners.

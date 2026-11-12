@@ -11,7 +11,7 @@ holding user keys, without a deposit contract to audit, and without signing anyt
 ## Decision
 
 The user sends a normal transfer from their own wallet to the treasury address, then tells the gateway the
-transaction hash. The gateway reads the chain and credits what it can prove (`apps/gateway/src/topups.ts`).
+transaction hash. The gateway reads the chain and credits what it can prove (the gateway is not in this repository).
 
 - The caller must be signed in with the wallet that paid. Only transfers **from the signed-in wallet to the treasury**
   count: the native value of the transaction, and each USDG `Transfer` log in it.

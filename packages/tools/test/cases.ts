@@ -21,7 +21,5 @@ export const CASES: Case[] = [
   { name: "market_data-base-degen", tool: "market_data", args: { chain: "base", token: DEGEN_BASE, majors: ["eth", "btc"] } },
   { name: "chain_read-eth-call", tool: "chain_read", args: { chain: "ethereum", op: "call", to: PEPE_ETH, signature: "balanceOf(address) returns (uint256)", args: ["0xf977814e90da44bfa03b6295a0616a897441acec"] } },
   { name: "contract_source-eth-pepe", tool: "contract_source", args: { chain: "ethereum", address: PEPE_ETH, max_chars: 4000 } },
-  { name: "new_launches-rh", tool: "new_launches", args: { limit: 8 } },
-  { name: "new_launches-rh-pons-graduated", tool: "new_launches", args: { chain: "robinhood", launchpad: "pons", stage: "graduated", limit: 5 } },
   { name: "new_launches-base", tool: "new_launches", args: { chain: "base", limit: 5, min_liquidity_usd: 1000 } },
 ];

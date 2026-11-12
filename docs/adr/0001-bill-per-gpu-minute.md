@@ -15,9 +15,9 @@ of them are not served anywhere.
 A session is billed for the time it runs, at the price of the model's weight class.
 
 - Prices are per GPU minute and belong to the class, not to the model: Light $0.03, Medium $0.06, Heavy $0.10
-  (defaults in `apps/gateway/src/env.ts`, stored as 30,000, 60,000 and 100,000 micro-USD per minute).
+  (defaults in the gateway, not in this repository, stored as 30,000, 60,000 and 100,000 micro-USD per minute).
 - The charge is `ceil(seconds * price_per_minute / 60)` micro-USD, computed once when the session ends
-  (`priceOf` in `apps/gateway/src/ledger.ts`). Seconds are whole seconds of server time.
+  (`priceOf` in the gateway, not in this repository). Seconds are whole seconds of server time.
 - Tokens in and out are counted per session and shown on the receipt. They never enter a price.
 
 ## Consequences

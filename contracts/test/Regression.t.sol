@@ -34,7 +34,7 @@ contract RegressionTest is Test {
     // ------------------------------------------------------------ regression: re-request and cooldown raise, end to end
 
     /// regression: the re-request scenarios, now asserting the fixed behaviour.
-    function test_f1_poc_relockAndShortenBothBlocked() public {
+    function test_rerequestAfterCooldownRaise_cannotRelockMaturedFunds() public {
         vm.startPrank(alice);
         vault.stake(100 ether);
         vault.requestUnstake(99 ether, type(uint256).max);
@@ -51,7 +51,7 @@ contract RegressionTest is Test {
         assertEq(token.balanceOf(alice), 1_000_000 ether - 1 ether);
     }
 
-    function test_f2_poc_ownerRaiseCannotLengthenRequestBeyondMax() public {
+    function test_ownerRaiseBeforeRequest_cannotLengthenExitBeyondMax() public {
         vm.prank(alice);
         vault.stake(100 ether);
         vm.prank(owner);
@@ -80,7 +80,7 @@ contract RegressionTest is Test {
 
     /// Documents why the README rule compares with the day start: with the claim-time rule about
     /// 24 h of stake earns two daily credits, with the day-start rule one.
-    function test_f3_utcBoundary_dayStartRuleGivesOneCreditFor24h() public {
+    function test_stakeAcrossUtcBoundary_dayStartRuleGivesOneCreditFor24h() public {
         vm.prank(owner);
         vault.setCooldown(0);
         uint256 minAge = 24 hours;
@@ -115,7 +115,7 @@ contract RegressionTest is Test {
 
     /// A token blocklist (not expected for $WEIGHT) traps a blocked user's withdrawal until it is
     /// lifted; cancelUnstake still works. Deployment checklist requires a fork round trip.
-    function test_f6_blocklistTrapsWithdrawButCancelWorks() public {
+    function test_tokenBlocklist_trapsWithdrawButCancelWorks() public {
         BlocklistToken bt = new BlocklistToken();
         WeightVault v = new WeightVault(address(bt), owner);
         bt.mint(alice, 10 ether);

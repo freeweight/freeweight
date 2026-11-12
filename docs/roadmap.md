@@ -15,7 +15,7 @@ v0.1 runs on a staging address, not on the public domain.
 - **The API:** the catalog, sessions with a live event stream, API keys (with `auto_session`), receipts, and an
   OpenAI-compatible `/v1`.
 - **Eleven read-only research tools** over MCP at `/mcp`, and in the chat on the site.
-- **Two serving lanes** behind one adapter contract (`serving/modal`, `serving/baseten`). Only the Light model
+- **Two serving lanes.** Only the Light model
   runs on both. Medium and Heavy run on one.
 - **Listing checks** for model owners. Approval, builds and payouts are done by hand.
 
@@ -42,7 +42,7 @@ Written or designed, and not live.
 - **A warm grace period:** keeping a model up for a short time after its last session, so that the next renter
   needs no wake.
 - **Abuse and rate-limit hardening.**
-- **The known gaps between the parts**, listed in the [architecture](architecture.md#known-gaps-in-v01): a
+- **The known gaps between the parts:** a
   check of the catalog against what each lane serves, a job that prunes old rows, and a payout route for
   owners.
 - **The Heavy model:** tool calling on it is not tested and its wake is not measured.

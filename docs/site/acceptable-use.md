@@ -60,8 +60,7 @@ When this policy is broken we can revoke API keys, end sessions and refuse a wal
 Where the law requires it, we report illegal content to the authorities.
 
 > [!WARNING]
-> Draft point for the owner: whether an unspent balance is returned when a wallet is refused for breaking this
-> policy.
+> Not decided yet: whether an unspent balance is returned when a wallet is refused for breaking this policy.
 
 ## Model licences
 
@@ -80,6 +79,6 @@ Report security problems privately to the same address. Do not post the details 
 Freeweight operates the service.
 
 > [!WARNING]
-> Placeholder: legal entity and governing law. To be filled in before public launch.
+> Not decided yet: the legal entity and the governing law. They will be named here before public launch.
 
 Contact: hello@freeweight.xyz

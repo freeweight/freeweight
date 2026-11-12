@@ -33,7 +33,7 @@ The session clock starts when the lane reports the model ready, and not before.
   An account is a wallet and free to make, so the service as a whole also caps the uncharged wakes it gives
   away in an hour. Past that, a stop before `ready` costs the one-minute
   minimum and the receipt says why (`note: "wake_minimum"`).
-  The free try is limited per visitor, per network address and per day (see the threat model).
+  The free try is limited per visitor, per network address and per day (see the gateway's threat model, not in this repository).
 
 ## Alternatives
 

@@ -28,7 +28,7 @@ By using the service you accept these terms, the [privacy policy](/docs/privacy)
 - We never ask for your private key or seed phrase, and we never sign anything for you.
 
 > [!WARNING]
-> Draft point for the owner: minimum age and any countries where the service is not offered.
+> Not decided yet: the minimum age, and any countries where the service is not offered.
 
 ## Paying
 
@@ -66,8 +66,8 @@ By using the service you accept these terms, the [privacy policy](/docs/privacy)
   stopped. If you think a stop cost you money, write to us with the receipt.
 
 > [!WARNING]
-> Draft point for the owner: unspent balance is refundable on request to the paying wallet, minus the network fee.
-> Not decided yet. Until it is, refunds of unspent balance are handled case by case.
+> Not decided yet: whether unspent balance is refundable on request to the paying wallet, minus the network fee.
+> Until this is settled, refunds of unspent balance are handled case by case.
 
 ## The free try
 
@@ -122,7 +122,7 @@ You can stop using the service at any time. We can end sessions, revoke keys or 
 The service is provided as it is.
 
 > [!WARNING]
-> Draft point for the owner: warranty and liability wording needs legal review. Nothing is claimed here until then.
+> Not decided yet: the warranty and liability wording, which needs legal review. Nothing is claimed here until then.
 
 ## Changes
 
@@ -134,6 +134,6 @@ new terms apply.
 Freeweight operates the service.
 
 > [!WARNING]
-> Placeholder: legal entity and governing law. To be filled in before public launch.
+> Not decided yet: the legal entity and the governing law. They will be named here before public launch.
 
 Contact: hello@freeweight.xyz

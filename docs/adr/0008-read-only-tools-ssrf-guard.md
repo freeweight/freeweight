@@ -37,7 +37,7 @@ systems, and feeding hostile text back into a model.
   because the platform counts outgoing requests per invocation.
 - **The private index stays private.** On Robinhood Chain six tools merge facts from Freeweight's own index. Only
   documented fields are copied, and the gateway removes the index host from tool output (`hideFacts` in
-  `apps/gateway/src/tools.ts`).
+  the gateway, not in this repository).
 
 ## Consequences
 

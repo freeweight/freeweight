@@ -1,0 +1,2230 @@
+openapi: 3.1.0
+info:
+  title: Freeweight gateway API
+  version: 0.1.0
+  summary: Rent an open-weight text model by the GPU minute.
+  description: |
+    The API of Freeweight v0.1.
+
+    `/api` is Freeweight's own API: catalog, sessions, account. `/v1` is OpenAI-compatible inference and needs a
+    session. `/mcp` is a Model Context Protocol endpoint with read-only research tools.
+
+    One model is the exception to sessions: the always-awake model of `GET /api/hosted`. It is served by a
+    hosted endpoint, needs no wake and no session, and is paid per token from the same balance.
+
+    Money is an integer count of millionths of a US dollar in fields that end in `usd_micro`. Times are Unix
+    milliseconds unless a field ends in `_s` (seconds) or `_ms` (a duration in milliseconds).
+
+    Every error has the shape of the `Error` schema. Program against `error.code`.
+
+    The server URL below is the public address. Before public launch the service runs on a staging address,
+    which differs.
+  contact:
+    name: Freeweight
+    email: hello@freeweight.xyz
+servers:
+  - url: https://freeweight.xyz
+    description: Public address
+tags:
+  - name: Public
+    description: Reads that need no credential.
+  - name: Sessions
+    description: Start, follow, extend and stop a rental.
+  - name: Inference
+    description: OpenAI-compatible routes. Every request runs on a session, except one that names the always-awake model.
+  - name: Account
+    description: Sign-in, balance, API keys and top-ups.
+  - name: Listings
+    description: Model owners submit a Hugging Face repository for listing.
+  - name: Pasted models
+    description: Anyone pastes a Hugging Face model ID, pays a capped first load, and the model is in the catalog.
+  - name: Tools
+    description: Read-only research tools over the Model Context Protocol.
+security: []
+
+paths:
+  /api/health:
+    get:
+      tags: [Public]
+      operationId: getHealth
+      summary: Liveness and configuration check
+      responses:
+        "200":
+          description: The gateway answers and its required settings are present.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, status, now]
+                properties:
+                  ok: { type: boolean, const: true }
+                  status: { type: string, const: ok }
+                  now: { $ref: "#/components/schemas/TimeMs" }
+        "503":
+          description: "A required setting is missing. Until it is fixed only the public reads answer (health, config, stats, receipts, the catalog). Every other `/api` and `/v1` route answers `503 misconfigured`, and `/mcp` answers 503 with the JSON-RPC error `-32000`."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, status, now]
+                properties:
+                  ok: { type: boolean, const: false }
+                  status: { type: string, const: misconfigured }
+                  now: { $ref: "#/components/schemas/TimeMs" }
+
+  /api/config:
+    get:
+      tags: [Public]
+      operationId: getConfig
+      summary: Prices, limits and payment details
+      responses:
+        "200":
+          description: The public configuration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Config" }
+
+  /api/models:
+    get:
+      tags: [Public]
+      operationId: listModels
+      summary: The catalog with live state
+      responses:
+        "200":
+          description: Every listed model.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [models]
+                properties:
+                  models:
+                    type: array
+                    items: { $ref: "#/components/schemas/Model" }
+
+  /api/models/{id}:
+    get:
+      tags: [Public]
+      operationId: getModel
+      summary: One model
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: A model id from the catalog. }
+      responses:
+        "200":
+          description: The model.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Model" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/awake:
+    get:
+      tags: [Public]
+      operationId: listAwake
+      summary: Models that are on a GPU now
+      responses:
+        "200":
+          description: Awake models that are listed in the catalog, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [awake]
+                properties:
+                  awake:
+                    type: array
+                    items:
+                      type: object
+                      required: [model_id, since, sessions]
+                      properties:
+                        model_id: { type: string }
+                        since: { $ref: "#/components/schemas/TimeMs" }
+                        sessions: { type: integer, description: Live sessions on the model. }
+
+  /api/hosted:
+    get:
+      tags: [Public]
+      operationId: getHostedModel
+      summary: The always-awake model
+      description: |
+        The one model that needs no wake and no session, with its per-token prices. `model` is null when the
+        deployment does not offer it: `/v1/models` then does not list it and its id answers
+        `404 model_not_found`. It is not part of `GET /api/models`, which lists rented models only.
+      responses:
+        "200":
+          description: The model, or null.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [model]
+                properties:
+                  model:
+                    oneOf:
+                      - $ref: "#/components/schemas/HostedModel"
+                      - type: "null"
+
+  /api/hosted/chat:
+    post:
+      tags: [Inference]
+      operationId: chatOnHostedModel
+      summary: One turn of chat on the always-awake model, with the tools run by the server
+      description: |
+        What the chat page of the site uses. There is no session. Who pays is decided for each request.
+
+        Paid: a wallet (browser sign-in or API key) whose balance covers the request pays per token. With
+        `tools: true` the model may call the research tools, at most 4 rounds of 3 calls, and each step of the
+        loop is held and charged as one request.
+
+        Free: everyone else gets a free message, 20 a day per visitor, with a limit per network address and a
+        daily total for all visitors. A free message runs without tools. Older turns are dropped until the
+        conversation fits in 4,000 bytes (`413 message_too_long` if the newest message alone does not), and the
+        answer stops at 400 tokens. The first free message of a UTC day needs the human check
+        (`400 turnstile_required`). An API key gets no free messages: `402 insufficient_balance`.
+
+        A request that is not let in is a plain error: `429 free_used`, `429 free_budget_spent`,
+        `429 rate_limited`, `429 too_many_in_flight`, `402 insufficient_balance` or `503 hosted_busy`.
+        Otherwise the answer is a stream of server-sent events, each with JSON data:
+
+        - `start`: `{ free, free_left, tools }`, always first. `free_left` is null on a paid turn.
+        - `delta`: `{ text }`
+        - `reasoning`: `{ text }`, a piece of the model's thinking, if it sends any
+        - `tool_call`: `{ id, name, arguments }`
+        - `tool_result`: `{ id, name, ok, summary }`
+        - `usage`: `{ tokens_in, tokens_out, cost_usd_micro, free }`, one for each step of the loop
+        - `done`: `{ rounds }`
+        - `error`: `{ code, message }`. No `done` follows. Steps that already sent `usage` stay charged.
+      security:
+        - {}
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messages]
+              properties:
+                messages:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: object
+                    required: [role]
+                    properties:
+                      role: { type: string, enum: [system, user, assistant, tool] }
+                      content: {}
+                    additionalProperties: true
+                tools: { type: boolean, description: Let the model call the research tools. Paid turns only. }
+                temperature: { type: number }
+                max_tokens: { type: integer, minimum: 1, description: "Lowered to the model's `max_output_tokens`, and to the free cap on a free message." }
+                turnstile_token: { type: string, description: "The token of the human check, when one is needed." }
+      responses:
+        "200":
+          description: An event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /api/stats:
+    get:
+      tags: [Public]
+      operationId: getStats
+      summary: Service totals
+      description: |
+        Counted over the models that are listed in the catalog. The answer comes from one cached row that is
+        counted again at most every 30 seconds, so it can be up to 30 seconds old.
+
+        The always-awake model is counted by itself, in `hosted_requests` and `hosted_tokens`. `tokens` and the
+        GPU figures are rented sessions only.
+      responses:
+        "200":
+          description: Totals since the deployment began.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gpu_seconds, sessions, tokens, wakes, median_wake_s, hosted_requests, hosted_tokens]
+                properties:
+                  gpu_seconds: { type: integer }
+                  sessions: { type: integer, description: Sessions that reached a ready model. }
+                  tokens: { type: integer, description: "Tokens in plus tokens out, on rented sessions." }
+                  hosted_requests: { type: integer, description: Answered requests to the always-awake model. }
+                  hosted_tokens: { type: integer, description: Tokens in plus tokens out of those requests. }
+                  wakes: { type: integer, description: Successful wakes. }
+                  median_wake_s:
+                    type: [number, "null"]
+                    description: Median duration of a successful wake, in seconds. Null before the first wake.
+
+  /api/receipts:
+    get:
+      tags: [Public]
+      operationId: listReceipts
+      summary: The last 20 ended sessions, without account data
+      description: Sessions on models that are listed in the catalog. A disabled or building model stays out.
+      responses:
+        "200":
+          description: Recent receipts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [receipts]
+                properties:
+                  receipts:
+                    type: array
+                    items: { $ref: "#/components/schemas/PublicReceipt" }
+
+  /api/sessions:
+    post:
+      tags: [Sessions]
+      operationId: startSession
+      summary: Start a session
+      description: |
+        Starts a session on a model and wakes the model if it is asleep.
+
+        `minutes` (or `free: false`) asks for a paid session and nothing else. It needs a wallet (API key or
+        browser sign-in): without one the answer is `401 sign_in_required`. The price of the minutes is held
+        from the balance. If the balance does not cover the minutes asked for, or one minute, the answer is
+        `402 insufficient_balance`.
+
+        `free: true` asks for the free try and nothing else: no paid session starts and no money is held,
+        whatever the balance is. The free try is a fixed 5 minutes on a Light model, started from the browser
+        after a human check. With an API key, or for a model that is not Light, the answer is
+        `403 trial_unavailable`. `free: true` together with `minutes` is `400 bad_request`.
+
+        With neither field, a wallet that can pay for at least one minute gets a paid session of the default
+        minutes, or of what the balance covers if that is less. An API key that cannot pay gets
+        `402 insufficient_balance`. Any other caller is treated as asking for the free try. On a model that is
+        not Light the answer is then `401 sign_in_required` without a wallet and `402 insufficient_balance`
+        with one. Send `minutes` or `free` to say which one you mean. An API key never starts a free try.
+
+        The wake is free, within a budget. A paid session that its owner stops before the model is ready is
+        an uncharged wake. After more than 3 of those in a rolling hour, or 10 in a day, the next start
+        answers `429 wake_budget` with `retry_after` (seconds) in the body and a `Retry-After` header. When the
+        service has given away its share of uncharged wakes for the hour, a paid session stopped before the
+        model is ready is charged the one-minute minimum, is not counted against the account, and its receipt carries
+        `note: wake_minimum`.
+
+        If the caller already has a live session on the model, that session is returned with status 200,
+        whatever was asked for.
+
+        A pasted model whose stored weights were cleared answers `409 needs_load`, with the repository name
+        in `hf_repo`: start a first load with `POST /api/loads` and try again when it is ready. A private
+        pasted model answers `404 model_not_found` to every account but the one that loaded it.
+      security:
+        - {}
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model_id]
+              properties:
+                model_id: { type: string }
+                minutes:
+                  type: integer
+                  minimum: 1
+                  maximum: 240
+                  description: Asks for a paid session of this length.
+                free:
+                  type: boolean
+                  description: >-
+                    True asks for the free try and nothing else. False asks for a paid session of the default
+                    minutes. Not allowed together with `minutes` when true.
+                turnstile:
+                  type: string
+                  description: The token from the human check. Needed for the free try only.
+            examples:
+              paid:
+                value: { model_id: qwen3-8b, minutes: 10 }
+              freeTry:
+                value: { model_id: qwen3-8b, free: true, turnstile: token-from-the-human-check }
+      responses:
+        "200":
+          description: The caller's existing live session on this model.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "201":
+          description: A new session. A new anonymous visitor also gets the `fw_visitor` cookie.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /api/sessions/{id}:
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      summary: Read a session
+      security:
+        - sessionId: []
+        - sessionBearer: []
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      parameters:
+        - { $ref: "#/components/parameters/SessionId" }
+      responses:
+        "200":
+          description: The session.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/sessions/{id}/events:
+    get:
+      tags: [Sessions]
+      operationId: streamSessionEvents
+      summary: Follow a session as server-sent events
+      description: |
+        Events, each with JSON data:
+
+        - `stage`: a `StageEvent`. Sent once for each stage so far on connect, then as stages happen.
+        - `tick`: the `Session`. Sent every 2 seconds while the session is live.
+        - `ended`: the `Session` with its `receipt`. Sent once, then the stream closes.
+
+        A session that has already ended sends its stages, then `ended`, and closes.
+      security:
+        - sessionId: []
+        - sessionBearer: []
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      parameters:
+        - { $ref: "#/components/parameters/SessionId" }
+      responses:
+        "200":
+          description: An event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+              example: |
+                retry: 2000
+
+                event: stage
+                data: {"stage":"queued","t_ms":0}
+
+                event: tick
+                data: {"id":"ses_abcdefghijklmnopqrstuvwx","state":"waking"}
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/sessions/{id}/extend:
+    post:
+      tags: [Sessions]
+      operationId: extendSession
+      summary: Add minutes to a live session
+      description: |
+        Adds whole minutes at the session's own price and holds the extra amount. Needs the session's owner: the
+        session id alone is not enough. A free session cannot be extended. Each successful call adds minutes.
+        An extension that arrives while the session ends answers `409 session_ended` and its hold is given back.
+      security:
+        - apiKey: []
+        - walletCookie: []
+      parameters:
+        - { $ref: "#/components/parameters/SessionId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [minutes]
+              properties:
+                minutes: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: The session with a later `ends_at`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /api/sessions/{id}/stop:
+    post:
+      tags: [Sessions]
+      operationId: stopSession
+      summary: End a session now
+      description: |
+        Ends the session and settles it. Needs the session's owner: the session id alone is not enough.
+        A paid session is billed by the second, with a one-minute minimum once the model is awake, and the
+        rest of the hold is released. Stopping a paid session that is still in its first wake costs nothing
+        and counts as an uncharged wake, except when the service has given away its uncharged wakes of the
+        last hour: then it costs the one-minute minimum and the receipt carries `note: wake_minimum`.
+        Stopping a paused session (the model is being woken again) costs the seconds used before the pause,
+        with no minimum. Stopping an ended session returns it unchanged.
+      security:
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      parameters:
+        - { $ref: "#/components/parameters/SessionId" }
+      responses:
+        "200":
+          description: The ended session with its receipt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/sessions/{id}/chat:
+    post:
+      tags: [Sessions]
+      operationId: chatOnSession
+      summary: Chat on a session, with the tools run by the server
+      description: |
+        With `tools: true` this route runs the tools on the server and puts the `tool_system_note` from
+        `/api/config` in front of the conversation. `tools` is off unless you send `true`. The answer is a
+        stream of server-sent events, each with JSON data:
+
+        - `delta`: `{ text }`
+        - `reasoning`: `{ text }`, a piece of the model's thinking
+        - `tool_call`: `{ id, name, arguments }`
+        - `tool_result`: `{ id, name, ok, summary }`
+        - `usage`: `{ tokens_in, tokens_out }`
+        - `done`: `{ rounds }`
+        - `error`: `{ code, message }`
+
+        With `tools: true` the model may call the research tools: at most 4 rounds of 3 calls, then it must
+        answer. Tool calls cost nothing extra. The session clock runs while they do.
+      security:
+        - sessionId: []
+        - sessionBearer: []
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      parameters:
+        - { $ref: "#/components/parameters/SessionId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messages]
+              properties:
+                messages:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: object
+                    required: [role]
+                    properties:
+                      role: { type: string, enum: [system, user, assistant, tool] }
+                      content: {}
+                    additionalProperties: true
+                tools: { type: boolean, description: Let the model call the research tools. }
+                temperature: { type: number }
+                max_tokens: { type: integer }
+                chat_template_kwargs:
+                  type: object
+                  additionalProperties: true
+                  description: "Passed to the model as sent. `{ \"enable_thinking\": false }` switches thinking off."
+      responses:
+        "200":
+          description: An event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /v1/models:
+    get:
+      tags: [Inference]
+      operationId: listModelsOpenAI
+      summary: The catalog in the OpenAI list shape
+      description: |
+        When the always-awake model is offered it is the first entry. It has no `tier` and no
+        `price_usd_micro_per_min`. In their place it carries `hosted: true`, `max_output_tokens` and the two
+        per-token prices, and its `state` is always `awake`.
+      responses:
+        "200":
+          description: Every listed model.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, data]
+                properties:
+                  object: { type: string, const: list }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, object, created, owned_by]
+                      properties:
+                        id: { type: string }
+                        object: { type: string, const: model }
+                        created: { type: integer, description: Unix seconds. }
+                        owned_by: { type: string, description: "The owner's wallet address, or `freeweight`." }
+                        name: { type: string }
+                        context_length: { type: integer, description: "Context length in tokens. 16384 on every rented model in v0.1." }
+                        state: { $ref: "#/components/schemas/ModelState" }
+                        tier: { $ref: "#/components/schemas/Tier" }
+                        price_usd_micro_per_min: { type: integer }
+                        hosted: { type: boolean, const: true, description: Present on the always-awake model only. }
+                        max_output_tokens: { type: integer, description: "Always-awake model only. The most one answer may be." }
+                        price_in_usd_micro_per_mtok: { type: integer, description: "Always-awake model only. Price of one million input tokens." }
+                        price_out_usd_micro_per_mtok: { type: integer, description: "Always-awake model only. Price of one million output tokens." }
+
+  /v1/chat/completions:
+    post:
+      tags: [Inference]
+      operationId: createChatCompletion
+      summary: OpenAI-compatible chat completion
+      description: |
+        The body is passed to the model as sent, with `model` set to the session's model. The fields that work
+        are the ones the inference engine supports. `tools` are passed to the model and are not run by the
+        gateway.
+
+        The session is, in this order: the one named in `X-Freeweight-Session` or sent as a `ses_` bearer token;
+        the caller's live session on `model`; a new paid session if the API key has `auto_session` on. Otherwise
+        the answer is `409 no_active_session`.
+
+        A request on a waking session waits up to 5 minutes for the model, then answers `503 model_waking` with
+        `Retry-After: 10`. A request that finds the model gone under a running session waits while the model is
+        woken again and is sent once more. If the model cannot be woken again the answer is `503 model_lost`.
+        A model that cannot take another request right now answers `429 rate_limited` with `Retry-After`.
+        A session runs at most 4 requests at the same time: one more answers `429 too_many_requests` with
+        `Retry-After: 1`.
+        A request that is still running when the session ends is cut off at that moment.
+
+        Before anything is sent, `stream` must be a boolean, `n` a whole number from 1 to 4, and `max_tokens`
+        and `max_completion_tokens` whole numbers of zero or more. A wrong value answers
+        `400 invalid_request`.
+
+        With `stream: true` the answer is an event stream in the OpenAI format. A final usage chunk is sent only
+        when `stream_options.include_usage` is true. A stream that breaks or is cut when the session ends has
+        one last block, `data: {"error": {"code", "message", "type"}}` with the code `upstream_error`,
+        `session_ended` or `slow_client` (more than 8 MB waited for a client that did not read), no
+        `data: [DONE]`, and then closes in order. A line the model's stream cut off in the middle is not
+        passed on.
+
+        Tool calls: a model whose catalog entry says `tools_ok: true` returns parsed `tool_calls` and ends with
+        `finish_reason: "tool_calls"`. In v0.1 that is `qwen3-8b` and `qwen3-32b`. `llama33-70b` says `false`:
+        tool calling is not tested on it. With streaming a tool call arrives in pieces: the first delta has
+        `index`, `id` and `function.name`, later deltas have `index` and a fragment of `function.arguments`.
+        Join the fragments that share an `index`.
+
+        Thinking: the Qwen3 models think before they answer. The thinking text is in `message.reasoning`, or
+        `delta.reasoning` when streaming, apart from `content`. It counts as completion tokens:
+        `usage.completion_tokens_details.reasoning_tokens` says how many. `chat_template_kwargs` with
+        `enable_thinking: false` switches it off for the request. Tokens are not billed, so thinking costs time,
+        not tokens.
+
+        The context is 16384 tokens on every rented model in v0.1: prompt, thinking and answer together.
+
+        The always-awake model: a request whose `model` is the id from `GET /api/hosted` runs without a session
+        and is paid per token. It needs an API key or the browser sign-in (`401 unauthorized` otherwise). The
+        highest price the request can have is held first: what was sent, counted at one token for every
+        byte, plus `max_tokens` of output. Too little balance answers `402 insufficient_balance`. When the
+        answer ends the charge is written from the token counts and the rest of the hold is released. A request
+        that fails before any answer costs nothing, and a stream that breaks is charged for what arrived. A
+        request the caller closes after it was sent is charged for what was sent and what had been written.
+        Only these fields reach the model: `messages`, `tools`, `tool_choice`, `parallel_tool_calls`,
+        `temperature`, `top_p`, `stop`, `presence_penalty`, `frequency_penalty`, `seed` and `response_format`.
+        Message content must be text (a string, or parts of type `text`) and every tool must be of type
+        `function`; anything else answers `400 invalid_request` before the model is asked.
+        `n` must be 1 or left out. `max_tokens` and `max_completion_tokens` must be whole numbers of one or
+        more and are lowered to the model's `max_output_tokens`. The answer has the OpenAI shape with this
+        model's id, `usage` with `prompt_tokens`, `completion_tokens` and `total_tokens`, and the header
+        `x-freeweight-request` in place of `x-freeweight-session`. One account runs at most 4 such requests at
+        the same time (`429 too_many_in_flight`) and 30 in a minute (`429 rate_limited`). `503 hosted_busy`
+        means the model has reached what it may cost in a day, all callers together.
+      security:
+        - sessionId: []
+        - sessionBearer: []
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatCompletionRequest" }
+            examples:
+              simple:
+                value:
+                  model: qwen3-8b
+                  messages:
+                    - { role: user, content: Say hello. }
+              no_thinking:
+                summary: Thinking switched off
+                value:
+                  model: qwen3-8b
+                  messages:
+                    - { role: user, content: Say hello. }
+                  chat_template_kwargs: { enable_thinking: false }
+              with_tools:
+                summary: A request that offers one tool
+                value:
+                  model: qwen3-8b
+                  stream: true
+                  messages:
+                    - { role: user, content: "Who holds 0x1234?" }
+                  tools:
+                    - type: function
+                      function:
+                        name: holders
+                        description: Top holders of a token.
+                        parameters:
+                          type: object
+                          required: [address]
+                          properties:
+                            address: { type: string }
+      responses:
+        "200":
+          description: An OpenAI chat completion object, or an event stream of chunks when `stream` is true.
+          headers:
+            x-freeweight-session:
+              description: The session the request ran on. Not sent for the always-awake model.
+              schema: { type: string }
+            x-freeweight-request:
+              description: "Always-awake model only. The id of the request, starting with `hst_`."
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+              examples:
+                with_thinking:
+                  summary: An answer from a model that thinks. The values are an illustration.
+                  value:
+                    id: chatcmpl-8f1c
+                    object: chat.completion
+                    created: 1794337200
+                    model: qwen3-8b
+                    choices:
+                      - index: 0
+                        message:
+                          role: assistant
+                          reasoning: The user wants a greeting. A short one will do.
+                          content: Hello.
+                          tool_calls: []
+                        finish_reason: stop
+                    usage:
+                      prompt_tokens: 12
+                      completion_tokens: 21
+                      total_tokens: 33
+                      completion_tokens_details: { reasoning_tokens: 17 }
+                tool_call:
+                  summary: An answer that asks for a tool. The values are an illustration.
+                  value:
+                    id: chatcmpl-41d7
+                    object: chat.completion
+                    created: 1794337200
+                    model: qwen3-8b
+                    choices:
+                      - index: 0
+                        message:
+                          role: assistant
+                          content: null
+                          tool_calls:
+                            - id: chatcmpl-tool-a98c
+                              type: function
+                              function:
+                                name: holders
+                                arguments: '{"address": "0x1234"}'
+                        finish_reason: tool_calls
+            text/event-stream:
+              schema: { type: string }
+              examples:
+                tool_call_stream:
+                  summary: A streamed tool call, shortened. Join the argument fragments by `index`.
+                  value: |
+                    data: {"choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}
+
+                    data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"chatcmpl-tool-a98c","type":"function","function":{"name":"holders"}}]}}]}
+
+                    data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"address\": \"0x12"}}]}}]}
+
+                    data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"34\"}"}}]}}]}
+
+                    data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+                    data: [DONE]
+                cut_stream:
+                  summary: A stream cut when the session ended. There is no `[DONE]`.
+                  value: |
+                    data: {"choices":[{"index":0,"delta":{"content":"The first"}}]}
+
+                    data: {"error":{"code":"session_ended","message":"This session has ended. Start a new one.","type":"session_ended"}}
+                thinking_stream:
+                  summary: A streamed answer with thinking, shortened.
+                  value: |
+                    data: {"choices":[{"index":0,"delta":{"reasoning":"A short greeting will do."}}]}
+
+                    data: {"choices":[{"index":0,"delta":{"content":"Hello."}}]}
+
+                    data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+                    data: [DONE]
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+
+  /v1/completions:
+    post:
+      tags: [Inference]
+      operationId: createCompletion
+      summary: OpenAI-compatible text completion
+      description: Same session rules, field checks, waiting and streaming as `/v1/chat/completions`.
+      security:
+        - sessionId: []
+        - sessionBearer: []
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model: { type: string }
+                prompt: {}
+                stream: { type: boolean }
+                n: { type: integer, minimum: 1, maximum: 4 }
+                max_tokens: { type: integer, minimum: 0 }
+              additionalProperties: true
+      responses:
+        "200":
+          description: An OpenAI completion object, or an event stream when `stream` is true.
+          headers:
+            x-freeweight-session:
+              description: The session the request ran on.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+            text/event-stream:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+
+  /api/me:
+    get:
+      tags: [Account]
+      operationId: getMe
+      summary: The caller's account
+      description: |
+        Answers for anyone. Without a wallet it comes back with `address` null, zero balances, no
+        `listing_proof_line`, and `perks` holding only `enabled`.
+      security:
+        - {}
+        - apiKey: []
+        - walletCookie: []
+        - visitorCookie: []
+      responses:
+        "200":
+          description: The account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/auth/nonce:
+    get:
+      tags: [Account]
+      operationId: getNonce
+      summary: Get a sign-in nonce
+      description: Also sets a short-lived nonce cookie. The nonce is valid for 10 minutes and for one sign-in.
+      responses:
+        "200":
+          description: A fresh nonce.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nonce]
+                properties:
+                  nonce: { type: string }
+
+  /api/auth/verify:
+    post:
+      tags: [Account]
+      operationId: verifySignIn
+      summary: Sign in with a wallet signature
+      description: |
+        Takes a Sign-In with Ethereum (EIP-4361) message and its signature. The message's domain and URI must be
+        the site's host, its chain id must be 4663 (`chain.id` in `/api/config`), it must carry the nonce, and it
+        must have been issued within the last 10 minutes.
+        Contract wallets are checked with ERC-1271 on Robinhood Chain. Sets the `fw_session` cookie for 30 days.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, signature]
+              properties:
+                message: { type: string }
+                signature: { type: string }
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [address]
+                properties:
+                  address: { $ref: "#/components/schemas/Address" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/auth/logout:
+    post:
+      tags: [Account]
+      operationId: logout
+      summary: Clear the sign-in cookie
+      responses:
+        "200":
+          description: The cookie is cleared.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
+
+  /api/keys:
+    get:
+      tags: [Account]
+      operationId: listKeys
+      summary: List API keys
+      security:
+        - apiKey: []
+        - walletCookie: []
+      responses:
+        "200":
+          description: The wallet's keys that are not revoked. Never the key itself.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApiKey" }
+        "401": { $ref: "#/components/responses/Error" }
+    post:
+      tags: [Account]
+      operationId: createKey
+      summary: Create an API key
+      description: Browser sign-in only, so a leaked key cannot create more keys. The key is shown once.
+      security:
+        - walletCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: A label. Default `key`. }
+                auto_session:
+                  type: boolean
+                  description: Let `/v1` requests with this key start a paid session when none is live.
+      responses:
+        "201":
+          description: The new key.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiKey"
+                  - type: object
+                    required: [key]
+                    properties:
+                      key: { type: string, description: "The key itself, starting with `fw_`. Shown once." }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/keys/{id}:
+    delete:
+      tags: [Account]
+      operationId: revokeKey
+      summary: Revoke an API key
+      description: Browser sign-in only. Takes effect at once.
+      security:
+        - walletCookie: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: "A key id, starting with `key_`." }
+      responses:
+        "200":
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/topups:
+    post:
+      tags: [Account]
+      operationId: submitTopup
+      summary: Credit an on-chain transfer to the balance
+      description: |
+        Reads the transaction from Robinhood Chain and credits the ETH and USDG it sends from the caller's wallet
+        to the treasury address, after the confirmations named in `GET /api/config`. A transaction is credited
+        once. Submitting the same hash again returns the same credit with `already_credited` true.
+      security:
+        - apiKey: []
+        - walletCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tx_hash]
+              properties:
+                tx_hash: { type: string, pattern: "^0x[0-9a-fA-F]{64}$" }
+      responses:
+        "200":
+          description: What was credited.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TopupResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /api/models/check:
+    post:
+      tags: [Pasted models]
+      operationId: checkRepo
+      summary: Check whether a Hugging Face model can be loaded
+      description: |
+        Free, and needs no credential. Reads the repository on Hugging Face and says whether the model can be
+        served as it is, in which class, and what its first load costs at most.
+
+        The answer has status 200 whether the model is accepted or not: read `ok`. A repository is read from
+        Hugging Face at most once in two minutes. At most 20 checks per minute per network address, and per
+        account, counted together with `POST /api/loads`: one more answers `429 rate_limited` with
+        `Retry-After: 60`. `503 checks_unavailable` when the limit cannot be applied.
+
+        The answer is about the caller's own private copy when it has one (`private: true`), and else about the
+        public model. Another account's private copy is never named.
+      security:
+        - {}
+        - apiKey: []
+        - walletCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repo]
+              properties:
+                repo:
+                  type: string
+                  maxLength: 300
+                  description: "`org/model`, or the address of the model's page on Hugging Face."
+            example: { repo: your-org/your-model }
+      responses:
+        "200":
+          description: The result of the check.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RepoCheck" }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+
+  /api/loads:
+    post:
+      tags: [Pasted models]
+      operationId: startLoad
+      summary: Start the first load of a pasted model, or join the one that is running
+      description: |
+        Checks the repository again, holds the cap of the load from the balance (`load_cap_usd_micro` of the
+        check) and starts the load. A load that ends `ready` is charged the class price per minute for the
+        seconds it took less the time it waited for a GPU (`gpu_wait_ms`), at most `cap_minutes`. A load that
+        ends `failed` is charged nothing. The rest of the hold returns in both cases.
+
+        Safe to repeat: a request for a repository that is being loaded returns that load with status 200 and
+        holds nothing. An account that joins another account's load pays nothing.
+
+        `private` names the copy: `true` the caller's own private copy, under an id of its own (the public id
+        with `_p` and six more characters), `false` the public model, left out the caller's private copy if it
+        has one. Another account's private copy never keeps a repository from being loaded.
+
+        The model is started on a GPU for at most the cap minutes of its class, counted from the moment the
+        machine with the GPU first reports; the wait for a GPU before that is not charged. A model not ready by
+        then fails its load and is charged nothing.
+
+        Refusals come before any money is held. `422` carries one of the codes of the check. `409` is
+        `already_loaded` (with `model_id`) or `model_id_taken`. `402 insufficient_balance` carries
+        `needed_usd_micro`. `429` is `rate_limited` (checks and loads together, 20 a minute), `failed_load_limit`
+        (2 loads that failed on a GPU in the last 24 hours, with `retry_at` and `Retry-After`),
+        `daily_load_limit` (5 in a rolling 24 hours, with `retry_at` and `Retry-After`), `load_running` (with
+        `load_id`: one load at a time per account) or `too_many_loads` (with `Retry-After: 120`). `503` is `storage_full`, `loads_unavailable`,
+        `load_not_started` or `checks_unavailable`.
+      security:
+        - apiKey: []
+        - walletCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repo]
+              properties:
+                repo:
+                  type: string
+                  maxLength: 300
+                  description: "`org/model`, or the address of the model's page on Hugging Face."
+                private:
+                  type: boolean
+                  default: false
+                  description: Keep the model private to the loading account. Ignored for a model that was loaded before.
+            example: { repo: your-org/your-model }
+      responses:
+        "200":
+          description: The load that was already running for this repository.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Load" }
+        "201":
+          description: A new load.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Load" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [Pasted models]
+      operationId: listLoads
+      summary: The last 20 loads of the account
+      security:
+        - apiKey: []
+        - walletCookie: []
+      responses:
+        "200":
+          description: Loads this account paid for, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [loads]
+                properties:
+                  loads:
+                    type: array
+                    items: { $ref: "#/components/schemas/Load" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/loads/{id}:
+    get:
+      tags: [Pasted models]
+      operationId: getLoad
+      summary: Read a load
+      description: |
+        Public: anyone who has the id can follow the load. The money fields are 0 for everyone but the account
+        that pays. The load of a private model is read by its account only, and answers `404 load_not_found`
+        to everyone else.
+      security:
+        - {}
+        - apiKey: []
+        - walletCookie: []
+      parameters:
+        - { $ref: "#/components/parameters/LoadId" }
+      responses:
+        "200":
+          description: The load.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Load" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/loads/{id}/events:
+    get:
+      tags: [Pasted models]
+      operationId: streamLoadEvents
+      summary: Follow a load as server-sent events
+      description: |
+        Events, each with the `Load` as JSON data:
+
+        - `load`: sent on connect, and each time the stage or the byte count changes.
+        - `tick`: sent every 2 seconds while the load runs.
+        - `ended`: sent once, when the load is `ready` or `failed`. Then the stream closes.
+
+        A load that has already ended sends `load`, then `ended`, and closes. The load does not depend on the
+        stream: a client can close it and connect again.
+      security:
+        - {}
+        - apiKey: []
+        - walletCookie: []
+      parameters:
+        - { $ref: "#/components/parameters/LoadId" }
+      responses:
+        "200":
+          description: An event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+              example: |
+                retry: 2000
+
+                event: load
+                data: {"id":"load_k3v7x2m4q7w5z6t5","state":"loading","stage":"downloading","bytes":2147483648,"size_bytes":6442450944}
+
+                event: ended
+                data: {"id":"load_k3v7x2m4q7w5z6t5","state":"ready","stage":"ready","charged_usd_micro":96000}
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/me/models:
+    get:
+      tags: [Pasted models]
+      operationId: listMyModels
+      summary: The pasted models this account loaded
+      description: Private ones included. At most 100, newest first.
+      security:
+        - apiKey: []
+        - walletCookie: []
+      responses:
+        "200":
+          description: The models, each with what it stores and when its weights are due to be cleared.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [models]
+                properties:
+                  models:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Model"
+                        - type: object
+                          required: [size_bytes, last_woken_at, clears_at]
+                          properties:
+                            size_bytes: { type: integer, description: The bytes stored for the model. }
+                            last_woken_at: { $ref: "#/components/schemas/TimeMs" }
+                            clears_at:
+                              type: [integer, "null"]
+                              description: When the weights are due to be cleared if nobody wakes the model before, in Unix milliseconds. Null when they are cleared already.
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/models/{id}/private:
+    put:
+      tags: [Pasted models]
+      operationId: setModelPrivate
+      summary: Keep a pasted model private, or make it public
+      description: |
+        Only the account that paid for the model's first load. A private model is in no public list, and every
+        read and every session start on it answers `404 model_not_found` to any other account.
+
+        A public model cannot be made private once another account has a load of it that is running or ended
+        ready: `409 paid_by_others`. A private copy becomes public, under the id it has, only while the
+        repository has no public model: `409 public_copy_exists`, with `model_id` when that model is in the
+        catalog.
+      security:
+        - apiKey: []
+        - walletCookie: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: The id of a pasted model. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [private]
+              properties:
+                private: { type: boolean }
+      responses:
+        "200":
+          description: The model as it is now.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Model" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/listings:
+    post:
+      tags: [Listings]
+      operationId: submitListing
+      summary: Check a Hugging Face repository for listing
+      description: |
+        Runs the listing checks on the repository's latest commit and records the result as `pending` or
+        `rejected`. A repository and commit that already has an open listing by the same owner returns that
+        listing with status 200. At most 20 checks per wallet per day.
+      security:
+        - apiKey: []
+        - walletCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hf_repo]
+              properties:
+                hf_repo:
+                  type: string
+                  description: "`org/model`, or the repository's Hugging Face URL."
+      responses:
+        "200":
+          description: The open listing for this repository and commit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "201":
+          description: A new listing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+
+  /api/listings/{id}:
+    get:
+      tags: [Listings]
+      operationId: getListing
+      summary: Read a listing
+      description: Public. Anyone who has the id can read the listing, including the owner's wallet address.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string }, description: "A listing id, starting with `lst_`." }
+      responses:
+        "200":
+          description: The listing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Listing" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /mcp:
+    post:
+      tags: [Tools]
+      operationId: mcp
+      summary: Model Context Protocol endpoint (Streamable HTTP, stateless)
+      description: |
+        Takes one JSON-RPC 2.0 message. Methods: `initialize`, `ping`, `tools/list`, `tools/call`.
+        Answers are plain JSON. There is no event stream and no MCP session, so `GET` and `DELETE` answer 405.
+        A body with only notifications is answered with 202.
+
+        A request can carry one `tools/call`. The body can be at most 256 KiB, also when it is sent in chunks
+        with no length: it is read up to the limit and no further. `Content-Type` must be
+        `application/json`. A batch is refused for protocol version `2025-06-18` and later. Older versions,
+        and requests without the `MCP-Protocol-Version` header, may batch up to 8 messages with one
+        `tools/call` among them; `initialize` cannot be batched.
+
+        A request with an `Origin` header from another site is refused with 403 unless the origin is on the
+        allow list. Requests without an `Origin` header are not affected.
+
+        No credential is needed for ten tools; they are rate limited per network address. `web_search` runs
+        only for a caller with a wallet (API key or sign-in), and `tools/list` names it only for such a caller
+        and only when the service has web search set up. While the service is not set up completely the
+        endpoint answers 503 with the JSON-RPC error `-32000`. Every
+        error on this route is a JSON-RPC error object, not the `Error` shape. An unknown tool or bad `params`
+        is answered with status 200 and a JSON-RPC error in the body.
+      security:
+        - {}
+        - apiKey: []
+      parameters:
+        - name: MCP-Protocol-Version
+          in: header
+          required: false
+          schema: { type: string, enum: ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/JsonRpcMessage"
+                - type: array
+                  minItems: 1
+                  maxItems: 8
+                  items: { $ref: "#/components/schemas/JsonRpcMessage" }
+            examples:
+              listTools:
+                value: { jsonrpc: "2.0", id: 1, method: tools/list }
+      responses:
+        "200":
+          description: A JSON-RPC response, or an array of responses for a batch.
+          content:
+            application/json:
+              schema: {}
+        "202":
+          description: Only notifications were sent. No body.
+        "400":
+          description: Not valid JSON, not JSON-RPC 2.0, more than one `tools/call`, a batch that is not allowed, or an unsupported protocol version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcError" }
+        "403":
+          description: A browser request from an origin that is not on the allow list.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcError" }
+        "406":
+          description: The `Accept` header rules out JSON.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcError" }
+        "413":
+          description: The body is over 256 KiB.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcError" }
+        "415":
+          description: "`Content-Type` is not `application/json`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcError" }
+        "429":
+          description: More than 30 tool calls in a minute from this network address. Listing tools is not counted.
+          headers:
+            Retry-After:
+              description: Seconds to wait.
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcError" }
+        "503":
+          description: The service is not set up completely. The endpoint stays closed until it is.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JsonRpcError" }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: A Freeweight API key, starting with `fw_`. Acts as the wallet that created it.
+    sessionBearer:
+      type: http
+      scheme: bearer
+      description: A session id, starting with `ses_`, sent as the bearer token. Accepted wherever the `X-Freeweight-Session` header is.
+    sessionId:
+      type: apiKey
+      in: header
+      name: X-Freeweight-Session
+      description: A session id. A credential for that one session until it ends.
+    walletCookie:
+      type: apiKey
+      in: cookie
+      name: fw_session
+      description: Set by `POST /api/auth/verify`. Same-origin requests only.
+    visitorCookie:
+      type: apiKey
+      in: cookie
+      name: fw_visitor
+      description: Set when an anonymous visitor starts a free session. Same-origin requests only.
+
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: A session id.
+      schema: { type: string, pattern: "^ses_[a-z2-7]{24}$" }
+    LoadId:
+      name: id
+      in: path
+      required: true
+      description: A load id.
+      schema: { type: string, pattern: "^load_[a-z2-7]{16}$" }
+
+  responses:
+    Error:
+      description: An error. See `error.code`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    TimeMs:
+      type: integer
+      description: Unix time in milliseconds.
+
+    Address:
+      type: string
+      pattern: "^0x[0-9a-fA-F]{40}$"
+      description: A wallet address. Returned in lowercase.
+
+    Tier:
+      type: string
+      enum: [light, medium, heavy]
+
+    ModelState:
+      type: string
+      enum: [asleep, waking, awake, cold, unavailable, needs_load]
+      description: |
+        `cold` is asleep and never woken on this deployment. `unavailable` cannot be woken right now.
+        `needs_load` is a pasted model whose stored weights were cleared: it needs a first load again.
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, type]
+          properties:
+            code:
+              type: string
+              description: |
+                A stable machine-readable code. The codes the gateway sends, by status:
+
+                - 400: `bad_request`, `bad_repo`, `invalid_request`, `model_mismatch`, `too_long`, `turnstile_required`,
+                  `invalid_message`, `nonce_expired`, `nonce_used`
+                - 401: `unauthorized`, `invalid_api_key`, `invalid_signature`, `sign_in_required`
+                - 402: `insufficient_balance`
+                - 403: `bad_origin`, `cookie_required`, `forbidden`, `not_yours`, `trial_unavailable`,
+                  `turnstile_failed`
+                - 404: `not_found`, `model_not_found`, `session_not_found`, `key_not_found`,
+                  `listing_not_found`, `load_not_found`, `repo_not_found`, `tx_not_found`
+                - 409: `no_active_session`, `session_ended`, `session_live`, `free_session_fixed`,
+                  `too_many_keys`, `pending_confirmations`, `tx_already_used`, `model_id_taken`,
+                  `needs_load`, `already_loaded`, `public_copy_exists`, `paid_by_others`
+                - 413: `body_too_large`, `message_too_long`
+                - 422: `tx_failed`, `no_transfer`, `tx_too_old`, `amount_too_small`, `amount_too_large`, and on
+                  `POST /api/loads` the codes of a refused check: `repo_not_found`, `disabled`, `gated`,
+                  `not_text_generation`, `no_safetensors`, `unsupported_architecture`, `custom_code`,
+                  `unsupported_quantization`, `no_chat_template`, `too_big`, `blocked`, `removed`
+                - 429: `rate_limited`, `too_many_requests`, `too_many_in_flight`, `wake_budget`, `free_used`,
+                  `free_budget_spent`, `too_many_listings`, `daily_load_limit`, `failed_load_limit`,
+                  `load_running`, `too_many_loads`
+                - 500: `internal_error`
+                - 502: `upstream_error`, `hf_unavailable`
+                - 503: `model_waking`, `model_unavailable`, `model_lost`, `hosted_busy`, `misconfigured`,
+                  `trial_unavailable`, `turnstile_unavailable`, `topups_closed`, `rpc_unavailable`,
+                  `price_unavailable`, `price_out_of_bounds`, `ledger_unavailable`, `storage_full`, `loads_unavailable`,
+                  `load_not_started`, `checks_unavailable`
+                - 504: `upstream_timeout`
+
+                An error the model itself gives, such as a prompt longer than its context, comes back with the
+                model's status (4xx) and the code `invalid_request_error`.
+            message: { type: string, description: A sentence for people. Can change. }
+            type: { type: string, description: The same value as `code`. }
+          additionalProperties: true
+      example:
+        error:
+          code: insufficient_balance
+          message: The balance covers 3 minutes on this model.
+          type: insufficient_balance
+
+    Model:
+      type: object
+      required:
+        [id, name, hf_repo, sha, license, params_b, quant, tier, price_usd_micro_per_min, context, owner, state, wake_estimate_s, wake_low_s, wake_high_s, tags, blurb, tools_ok, origin, private, mine]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        hf_repo:
+          type: string
+          description: "The Hugging Face repository the served weights come from. For a quantised copy this is the repository of the copy, not of the model's authors."
+        sha: { type: string, description: "The pinned commit of `hf_repo`. Every model in v0.1 is pinned." }
+        license: { type: string }
+        params_b: { type: number, description: "Parameters, in billions." }
+        quant: { type: string, description: "Serving precision. In v0.1: `bf16`, `fp8` or `w4a16` (4-bit weights). A pasted model is served as published and says how its weights are stored: `bf16` or `fp16` for plain weights, or the quantisation, such as `AWQ 4-bit`, `GPTQ 8-bit` or `FP8`." }
+        tier: { $ref: "#/components/schemas/Tier" }
+        price_usd_micro_per_min: { type: integer }
+        context: { type: integer, description: "Context length in tokens. 16384 on the three models of v0.1, at most 8192 on a pasted model." }
+        owner:
+          oneOf:
+            - $ref: "#/components/schemas/Address"
+            - type: "null"
+          description: The model owner's wallet, or null for models Freeweight added.
+        state: { $ref: "#/components/schemas/ModelState" }
+        wake_estimate_s:
+          type: integer
+          description: "Median of the last 15 successful wakes, in seconds, without the time they waited for a GPU. Before the third wake it is the value from the catalog (for a pasted model, an estimate from its size), and 0 means not measured yet."
+        wake_low_s:
+          type: integer
+          description: "25th percentile of the same last 15 successful wakes, in seconds. 0 until the model has been woken three times."
+        wake_high_s:
+          type: integer
+          description: "75th percentile of the same last 15 successful wakes, in seconds. 0 until the model has been woken three times. Show wake_low_s to wake_high_s as a range when they differ."
+        tags: { type: array, items: { type: string } }
+        blurb: { type: string }
+        tools_ok:
+          type: boolean
+          description: "Whether tool calling is switched on for this model and has passed a test. Read it before you send `tools`. In v0.1 it is false on `llama33-70b` and on every pasted model."
+        origin:
+          type: string
+          enum: [catalog, pasted]
+          description: "`pasted` for a model somebody added by its Hugging Face ID. Such a model carries the tag `untested`."
+        private: { type: boolean, description: "A pasted model that the account that loaded it keeps private. Such a model is returned to that account only." }
+        mine: { type: boolean, description: "True for the account that loaded this pasted model." }
+      examples:
+        - id: qwen3-8b
+          name: Qwen3 8B
+          hf_repo: Qwen/Qwen3-8B
+          sha: b968826d9c46dd6066d109eabc6255188de91218
+          license: apache-2.0
+          params_b: 8.2
+          quant: bf16
+          tier: light
+          price_usd_micro_per_min: 30000
+          context: 16384
+          owner: null
+          state: asleep
+          wake_estimate_s: 40
+          wake_low_s: 30
+          wake_high_s: 55
+          tags: [chat, reasoning, tools]
+          blurb: Fast general model with tool calling. The default pick.
+          tools_ok: true
+          origin: catalog
+          private: false
+          mine: false
+        - id: llama33-70b
+          name: Llama 3.3 70B
+          hf_repo: RedHatAI/Llama-3.3-70B-Instruct-quantized.w4a16
+          sha: da23851b92f5ea8023d6c70f790feb8e05269812
+          license: llama3.3
+          params_b: 70.6
+          quant: w4a16
+          tier: heavy
+          price_usd_micro_per_min: 100000
+          context: 16384
+          owner: null
+          state: cold
+          wake_estimate_s: 0
+          wake_low_s: 0
+          wake_high_s: 0
+          tags: [chat, preview]
+          blurb: Large general model, 4-bit weights. Preview tier.
+          tools_ok: false
+          origin: catalog
+          private: false
+          mine: false
+
+    Stage:
+      type: string
+      enum: [queued, gpu, container, weights, engine, ready, failed]
+
+    StageEvent:
+      type: object
+      required: [stage, t_ms]
+      properties:
+        stage: { $ref: "#/components/schemas/Stage" }
+        t_ms:
+          type: integer
+          minimum: 0
+          description: |
+            When the stage began, in milliseconds from when the session was asked for (`created_at`). A stage
+            that began before the session joined shows 0.
+        detail: { type: string }
+
+    SessionState:
+      type: string
+      enum: [waking, active, ended, failed]
+
+    Receipt:
+      type: object
+      required: [minutes, price_usd_micro, tokens_out, wake_s, tokens_in, gpu_seconds, reason]
+      properties:
+        minutes: { type: number, description: "GPU minutes on this session's clock, to two decimals." }
+        price_usd_micro: { type: integer, description: The charge. Zero for a free session and for a failed wake. }
+        tokens_in: { type: integer }
+        tokens_out: { type: integer }
+        wake_s:
+          type: number
+          description: >-
+            Seconds from the request to a ready model, to one decimal. Always the first wake: a session whose
+            model was woken again keeps this number.
+        gpu_seconds: { type: integer, description: Whole seconds charged. }
+        reason:
+          type: string
+          description: Why the session ended.
+          examples: [stopped, time, idle, model_lost, wake_failed, wake_timeout, funding_error]
+        note:
+          type: string
+          enum: [wake_minimum]
+          description: >-
+            Present only when the price needs it explained. `wake_minimum`: stopped before the model was ready,
+            at an hour when the service had given away its share of uncharged wakes, so the one-minute minimum
+            was charged.
+
+    Session:
+      type: object
+      required:
+        [id, model_id, state, stages, created_at, degraded, started_at, ends_at, now, base_url, spent_usd_micro, tokens_in, tokens_out, gpu_seconds, free]
+      properties:
+        id: { type: string, pattern: "^ses_[a-z2-7]{24}$" }
+        model_id: { type: string }
+        state: { $ref: "#/components/schemas/SessionState" }
+        stages:
+          type: array
+          items: { $ref: "#/components/schemas/StageEvent" }
+        created_at:
+          type: integer
+          description: "Unix time in milliseconds when the session was asked for. The wake is timed from here."
+        degraded:
+          type: boolean
+          description: >-
+            True while a wake is running and its stage data could not be read on the last check, so `stages`
+            may lag. False otherwise. A change has no event of its own and goes out with a `tick`.
+        paused:
+          type: boolean
+          description: >-
+            Present and true while the model is being woken again under a session that was already running.
+            The state is `waking`, the clock stands still and `ends_at` is null.
+        started_at:
+          type: [integer, "null"]
+          description: >-
+            When the model was ready and the clock started. Null during the first wake. It moves forward by
+            the length of every pause.
+        ends_at:
+          type: [integer, "null"]
+          description: >-
+            When the paid time runs out. Null during the first wake and while paused. After the end, when the
+            session ended.
+        now: { $ref: "#/components/schemas/TimeMs" }
+        base_url: { type: string, const: /v1, description: "Where inference lives, relative to the site." }
+        spent_usd_micro: { type: integer, description: The charge so far. Zero for a free session. }
+        tokens_in: { type: integer }
+        tokens_out: { type: integer }
+        gpu_seconds: { type: integer, description: Seconds on this session's clock so far. }
+        free: { type: boolean }
+        receipt: { $ref: "#/components/schemas/Receipt" }
+
+    PublicReceipt:
+      type: object
+      required: [model_id, free, ended_at, minutes, price_usd_micro, tokens_out, wake_s]
+      properties:
+        model_id: { type: string }
+        free: { type: boolean }
+        ended_at: { $ref: "#/components/schemas/TimeMs" }
+        minutes: { type: number }
+        price_usd_micro: { type: integer }
+        tokens_out: { type: integer }
+        wake_s: { type: number }
+
+    Config:
+      type: object
+      required:
+        [prices_usd_micro_per_min, free_minutes, default_minutes, max_minutes, idle_seconds, turnstile, chain, topups, perks, owner_share_bps, paste, tool_system_note]
+      properties:
+        prices_usd_micro_per_min:
+          type: object
+          required: [light, medium, heavy]
+          properties:
+            light: { type: integer }
+            medium: { type: integer }
+            heavy: { type: integer }
+        free_minutes: { type: integer }
+        default_minutes: { type: integer }
+        max_minutes: { type: integer }
+        idle_seconds: { type: integer }
+        turnstile:
+          type: object
+          required: [enabled, sitekey]
+          properties:
+            enabled: { type: boolean }
+            sitekey: { type: [string, "null"] }
+        chain:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: integer }
+            name: { type: string }
+        topups:
+          type: object
+          required: [open, treasury, assets, confirmations]
+          properties:
+            open: { type: boolean }
+            treasury:
+              oneOf:
+                - $ref: "#/components/schemas/Address"
+                - type: "null"
+            assets:
+              type: array
+              items:
+                type: object
+                required: [symbol, address, decimals]
+                properties:
+                  symbol: { type: string }
+                  address: { type: [string, "null"], description: The token contract. Null for ETH. }
+                  decimals: { type: integer }
+            confirmations: { type: integer }
+        perks:
+          type: object
+          required: [enabled, token, vault]
+          properties:
+            enabled: { type: boolean }
+            token: { type: [string, "null"] }
+            vault: { type: [string, "null"] }
+        owner_share_bps: { type: integer, description: "The model owner's share of paid rent, in basis points." }
+        paste:
+          type: object
+          description: The rules for pasted models.
+          required: [open, engine, engine_version, load_cap_minutes, loads_per_day, clear_after_days]
+          properties:
+            open: { type: boolean, description: False when no GPU source takes pasted models. }
+            engine: { type: string, description: The serving engine a pasted model has to run on. }
+            engine_version: { type: string }
+            load_cap_minutes:
+              type: object
+              description: The most minutes a first load is charged for, per class.
+              required: [light, medium, heavy]
+              properties:
+                light: { type: integer }
+                medium: { type: integer }
+                heavy: { type: integer }
+            loads_per_day: { type: integer, description: First loads an account can start in a rolling 24 hours. }
+            loads_failed_per_day: { type: integer, description: Failed loads that reached a GPU after which an account's next load is refused until the oldest of them is 24 hours old. }
+            clear_after_days: { type: integer, description: Days without a wake after which stored weights are cleared. }
+        tool_system_note:
+          type: string
+          description: >-
+            The system note the server-side tool loop puts in front of a conversation. A client that runs its
+            own tool loop against `/mcp` prepends the same text.
+
+    ApiKey:
+      type: object
+      required: [id, prefix, name, auto_session, created_at]
+      properties:
+        id: { type: string, description: Starts with `key_`. }
+        prefix: { type: string, description: "The first characters of the key, to tell keys apart." }
+        name: { type: string }
+        auto_session: { type: boolean }
+        created_at: { $ref: "#/components/schemas/TimeMs" }
+        last_used_at: { type: [integer, "null"] }
+
+    Perks:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+        day: { type: string, description: "The UTC day, as YYYY-MM-DD." }
+        hold:
+          description: Always null in v0.1. Perks for holding are on the roadmap.
+          oneOf:
+            - type: object
+              properties:
+                tokens: { type: string }
+                tier: { type: [string, "null"] }
+                minutes: { type: integer }
+            - type: "null"
+        stake:
+          oneOf:
+            - type: object
+              properties:
+                tokens: { type: string }
+                since: { type: integer, description: Unix seconds. }
+                eligible: { type: boolean }
+                daily_usd_micro: { type: integer }
+            - type: "null"
+        allowance_usd_micro: { type: integer, description: Perk credit left for today. }
+
+    Me:
+      type: object
+      required: [address, balance_usd_micro, held_usd_micro, free_today, keys, perks, sessions]
+      properties:
+        address:
+          oneOf:
+            - $ref: "#/components/schemas/Address"
+            - type: "null"
+        balance_usd_micro: { type: integer, description: What can be spent now. }
+        held_usd_micro: { type: integer, description: Held by live sessions. Not part of the balance. }
+        free_today:
+          type: object
+          required: [trial_available, trial_minutes, allowance_usd_micro]
+          properties:
+            trial_available: { type: boolean }
+            trial_minutes: { type: integer }
+            allowance_usd_micro: { type: integer }
+        keys:
+          type: array
+          items: { $ref: "#/components/schemas/ApiKey" }
+        perks: { $ref: "#/components/schemas/Perks" }
+        sessions:
+          type: array
+          maxItems: 5
+          description: Live sessions, newest first.
+          items: { $ref: "#/components/schemas/Session" }
+        hosted:
+          description: The caller's use of the always-awake model. Null when the deployment does not offer it.
+          oneOf:
+            - $ref: "#/components/schemas/HostedAccount"
+            - type: "null"
+        listing_proof_line:
+          type: string
+          description: >-
+            Wallet accounts only. The line this wallet puts in a model's README to list it:
+            `freeweight-owner: ` and the address in lower case.
+
+    HostedModel:
+      type: object
+      description: The always-awake model. Served by a hosted endpoint, paid per token, no wake and no session.
+      required:
+        - id
+        - kind
+        - name
+        - blurb
+        - source
+        - context
+        - price_in_usd_micro_per_mtok
+        - price_out_usd_micro_per_mtok
+        - max_output_tokens
+        - tools_ok
+        - free
+        - created_at
+      properties:
+        id: { type: string, description: "The id to send as `model` on `/v1/chat/completions`." }
+        kind: { type: string, const: hosted }
+        name: { type: string }
+        blurb: { type: string, description: "What the model is, then `source`." }
+        source: { type: string, description: One line about where the model is served from. Empty when none is set. }
+        context: { type: integer, description: Context length in tokens. }
+        price_in_usd_micro_per_mtok: { type: integer, description: "Price of one million input tokens, in millionths of a US dollar." }
+        price_out_usd_micro_per_mtok: { type: integer, description: "Price of one million output tokens, in millionths of a US dollar." }
+        max_output_tokens: { type: integer, description: The most one answer may be. A request that asks for more gets this. }
+        tools_ok: { type: boolean }
+        free:
+          type: object
+          description: A free message in the chat on the site.
+          required: [per_day, max_input_bytes, max_output_tokens]
+          properties:
+            per_day: { type: integer, description: Free messages per visitor per UTC day. }
+            max_input_bytes: { type: integer, description: The conversation is cut to this size. }
+            max_output_tokens: { type: integer, description: The answer stops here. }
+        created_at: { $ref: "#/components/schemas/TimeMs" }
+
+    HostedAccount:
+      type: object
+      required: [model_id, free_per_day, free_left, check_needed, recent]
+      properties:
+        model_id: { type: string }
+        free_per_day: { type: integer }
+        free_left: { type: integer, description: Free messages this caller has left today. }
+        check_needed: { type: boolean, description: Whether the next free message needs the human check. }
+        recent:
+          type: array
+          maxItems: 20
+          description: The account's latest answers from the model, newest first.
+          items:
+            type: object
+            required: [id, at, surface, free, tokens_in, tokens_out, charged_usd_micro]
+            properties:
+              id: { type: string, description: "A request id, starting with `hst_`." }
+              at: { $ref: "#/components/schemas/TimeMs" }
+              surface: { type: string, enum: [chat, api] }
+              free: { type: boolean }
+              tokens_in: { type: integer }
+              tokens_out: { type: integer }
+              charged_usd_micro: { type: integer, description: "What the answer cost. `0` for a free message." }
+
+    TopupCredit:
+      type: object
+      required: [asset, amount, credited_usd_micro, already_credited]
+      properties:
+        asset: { type: string, enum: [ETH, USDG] }
+        amount: { type: string, description: "The amount in whole units of the asset, as a decimal string." }
+        credited_usd_micro: { type: integer }
+        already_credited: { type: boolean }
+
+    TopupResult:
+      type: object
+      required: [credited_usd_micro, asset, amount, already_credited, credits, balance_usd_micro]
+      properties:
+        credited_usd_micro: { type: integer, description: The total credit for the transaction. }
+        asset: { type: string, description: "The asset, or both joined with `+` when one transaction sent both." }
+        amount: { type: string, description: The amount of the largest credit. }
+        already_credited: { type: boolean, description: True when this call credited nothing new. }
+        credits:
+          type: array
+          items: { $ref: "#/components/schemas/TopupCredit" }
+        balance_usd_micro: { type: integer }
+
+    Check:
+      type: object
+      required: [name, ok, detail]
+      properties:
+        name:
+          type: string
+          examples: [public, license, safetensors, chat_template, text_generation, size, owner_proof, pinned]
+        ok: { type: boolean }
+        detail: { type: string }
+
+    ListingState:
+      type: string
+      enum: [rejected, pending, building, listed, failed]
+
+    Listing:
+      type: object
+      required: [id, hf_repo, sha, owner, proof_line, state, checks, tier, size_bytes, params_b, license, model_id, detail, created_at]
+      properties:
+        id: { type: string, description: Starts with `lst_`. }
+        hf_repo: { type: string }
+        sha: { type: string, description: The commit that was checked and will be pinned. }
+        owner: { $ref: "#/components/schemas/Address" }
+        proof_line:
+          type: string
+          description: "The line the check looks for in the README: `freeweight-owner: ` and the owner's address in lower case."
+        state: { $ref: "#/components/schemas/ListingState" }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/Check" }
+        tier:
+          oneOf:
+            - $ref: "#/components/schemas/Tier"
+            - type: "null"
+        size_bytes: { type: integer }
+        params_b: { type: number }
+        license: { type: string }
+        model_id: { type: [string, "null"] }
+        detail: { type: [string, "null"] }
+        created_at: { $ref: "#/components/schemas/TimeMs" }
+
+    RepoCheck:
+      description: The result of the free check of a pasted repository. Read `ok`.
+      oneOf:
+        - $ref: "#/components/schemas/RepoAccepted"
+        - $ref: "#/components/schemas/RepoRefused"
+
+    RepoRefused:
+      type: object
+      required: [ok, repo, code, reason]
+      properties:
+        ok: { type: boolean, const: false }
+        repo: { type: string }
+        code:
+          type: string
+          enum: [repo_not_found, disabled, gated, not_text_generation, no_safetensors, unsupported_architecture, custom_code, unsupported_quantization, no_chat_template, too_big, blocked, removed]
+        reason: { type: string, description: One sentence for a person. Can change. }
+      example:
+        ok: false
+        repo: your-org/your-model-gguf
+        code: no_safetensors
+        reason: The repo holds GGUF weights. Only safetensors weights can be loaded.
+
+    RepoAccepted:
+      type: object
+      required:
+        [ok, repo, sha, name, license, tier, size_bytes, params_b, context, architecture, price_usd_micro_per_min, load_cap_minutes, load_cap_usd_micro, load_estimate_s, wake_estimate_s, state, model_id, load_id, private, can_load]
+      properties:
+        ok: { type: boolean, const: true }
+        repo: { type: string, description: The repository name as Hugging Face writes it. }
+        sha: { type: string, description: "The commit a load would fetch: the current one, or the pinned one when the model was loaded before." }
+        name: { type: string }
+        license: { type: string, description: "The licence the model card states, as it states it. Empty when it states none. Shown, not judged." }
+        tier: { $ref: "#/components/schemas/Tier" }
+        size_bytes: { type: integer, description: The bytes a load fetches and stores. }
+        params_b: { type: number, description: "Parameters, in billions." }
+        context: { type: integer, description: "The context the model is served with, in tokens: what its config states, up to 8192." }
+        architecture: { type: string, description: The architecture the config names. }
+        price_usd_micro_per_min: { type: integer, description: "The price of the class, for the load and for sessions." }
+        load_cap_minutes: { type: integer, description: The most minutes a first load is charged for. }
+        load_cap_usd_micro: { type: integer, description: What those minutes cost. Held when a load starts. }
+        load_estimate_s: { type: integer, description: "An estimate of the load time from the size, in seconds, with a GPU free at once. Waiting for a GPU can add a few minutes." }
+        wake_estimate_s: { type: integer, description: "An estimate of a wake, in seconds: measured once the model has been woken three times, from the size before." }
+        state:
+          type: string
+          enum: [new, needs_load, loading, loaded]
+          description: |
+            `new`: nobody has loaded it. `needs_load`: in the catalog, weights cleared. `loading`: a load is
+            running. `loaded`: in the catalog.
+        model_id: { type: [string, "null"], description: "The catalog id, when `state` is `loaded` or `needs_load`." }
+        load_id: { type: [string, "null"], description: "The running load, when `state` is `loading`." }
+        private: { type: boolean, description: "True when the answer is about the caller's own private copy." }
+        can_load: { type: boolean, description: "True when `state` is `new` or `needs_load` and, for a signed-in caller, the account can start a load now." }
+        limit:
+          type: object
+          description: For a signed-in caller whose account cannot start this load now. Left out otherwise.
+          required: [code, reason]
+          properties:
+            code: { type: string, enum: [failed_load_limit, daily_load_limit, load_running], description: "The code `POST /api/loads` would answer 429 with." }
+            reason: { type: string, description: "One sentence for a person, with the time the limit frees up." }
+            retry_at: { $ref: "#/components/schemas/TimeMs" }
+            load_id: { type: string, description: "The account's running load, for `load_running`." }
+
+    LoadStage:
+      type: string
+      enum: [queued, checking, downloading, validating, starting, ready, failed]
+
+    Load:
+      type: object
+      required:
+        [id, model_id, hf_repo, sha, tier, state, stage, bytes, size_bytes, mine, price_usd_micro_per_min, cap_minutes, hold_usd_micro, charged_usd_micro, gpu_at, gpu_wait_ms, created_at, ended_at, now]
+      properties:
+        id: { type: string, pattern: "^load_[a-z2-7]{16}$" }
+        model_id: { type: string, description: "The catalog id the model has, or gets when the load is ready." }
+        hf_repo: { type: string }
+        sha: { type: string, description: The commit that is fetched and pinned. }
+        tier: { $ref: "#/components/schemas/Tier" }
+        state: { type: string, enum: [loading, ready, failed] }
+        stage: { $ref: "#/components/schemas/LoadStage" }
+        bytes: { type: integer, description: Bytes fetched so far. }
+        size_bytes: { type: integer, description: Bytes to fetch. }
+        mine: { type: boolean, description: True for the account that pays for the load. }
+        price_usd_micro_per_min: { type: integer }
+        cap_minutes: { type: integer, description: The most minutes the load is charged for. }
+        hold_usd_micro: { type: integer, description: What was held when the load started. 0 for anyone but the payer. }
+        charged_usd_micro: { type: integer, description: "What the load cost. 0 while it runs, 0 when it failed, 0 for anyone but the payer." }
+        gpu_at:
+          description: When the load reached its GPU stage (`starting`). Null before.
+          oneOf:
+            - $ref: "#/components/schemas/TimeMs"
+            - type: "null"
+        gpu_wait_ms: { type: [integer, "null"], description: "How long the load then waited for a GPU, until the machine with the GPU first reported. Null until known. Not charged." }
+        code:
+          type: string
+          enum: [insufficient_balance, too_big, unsupported_architecture, custom_code, unsupported_quantization, no_chat_template, no_weights, unsupported_format, unsafe_files, too_many_files, no_config, download_failed, wake_failed, timeout, removed, blocked, lane_unavailable, build_error]
+          description: On a failed load, why it failed.
+        detail: { type: string, description: "On a failed load, the same as one sentence for a person." }
+        created_at: { $ref: "#/components/schemas/TimeMs" }
+        ended_at:
+          oneOf:
+            - $ref: "#/components/schemas/TimeMs"
+            - type: "null"
+        now: { $ref: "#/components/schemas/TimeMs" }
+      example:
+        id: load_k3v7x2m4q7w5z6t5
+        model_id: your-org_your-model
+        hf_repo: your-org/your-model
+        sha: 0123456789abcdef0123456789abcdef01234567
+        tier: light
+        state: loading
+        stage: downloading
+        bytes: 2147483648
+        size_bytes: 6442450944
+        mine: true
+        price_usd_micro_per_min: 30000
+        cap_minutes: 5
+        hold_usd_micro: 150000
+        charged_usd_micro: 0
+        gpu_at: null
+        gpu_wait_ms: null
+        created_at: 1794300000000
+        ended_at: null
+        now: 1794300042000
+
+    ChatCompletionRequest:
+      type: object
+      description: "An OpenAI chat completion request. The gateway reads `model`, `stream` and `stream_options`, and checks `n`, `max_tokens` and `max_completion_tokens`. Every other field goes to the model as sent."
+      properties:
+        model:
+          type: string
+          description: "Needed unless the session is named explicitly. Must be the session's model, or the id of the always-awake model, which needs no session."
+        messages:
+          type: array
+          items: { type: object, additionalProperties: true }
+        stream: { type: boolean, description: "Must be a boolean. Any other value answers `400 invalid_request`." }
+        n:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: "Answers per request, each generated in full. Outside 1 to 4 answers `400 invalid_request`."
+        max_tokens: { type: integer, minimum: 0, description: "A whole number of zero or more. Not capped by the gateway." }
+        max_completion_tokens: { type: integer, minimum: 0, description: "A whole number of zero or more." }
+        stream_options:
+          type: object
+          properties:
+            include_usage: { type: boolean }
+          additionalProperties: true
+        tools:
+          type: array
+          items: { type: object, additionalProperties: true }
+          description: "OpenAI tool definitions. Send them only to a model whose `tools_ok` is true."
+        chat_template_kwargs:
+          type: object
+          additionalProperties: true
+          description: "Passed to the model's chat template. `enable_thinking: false` switches thinking off on the Qwen3 models."
+      additionalProperties: true
+
+    JsonRpcMessage:
+      type: object
+      required: [jsonrpc]
+      properties:
+        jsonrpc: { type: string, const: "2.0" }
+        id: { type: [string, integer, "null"] }
+        method: { type: string }
+        params: { type: object, additionalProperties: true }
+      additionalProperties: true
+
+    JsonRpcError:
+      type: object
+      required: [jsonrpc, id, error]
+      properties:
+        jsonrpc: { type: string, const: "2.0" }
+        id: { type: [string, integer, "null"] }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: integer }
+            message: { type: string }
+            data: {}

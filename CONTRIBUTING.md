@@ -4,12 +4,10 @@
 
 | Path | What |
 |---|---|
-| `apps/gateway` | Cloudflare Worker: API, sessions, billing ledger, OpenAI-compatible proxy |
 | `apps/web` | The site (Vite + React) |
 | `packages/tools` | Chain toolkit and MCP handler |
-| `serving/*` | Provider lanes behind one adapter contract |
 | `contracts` | Staking vault (Foundry) |
-| `docs` | Architecture and public docs |
+| `docs` | Decision records and public docs |
 
 ## Working rules
 

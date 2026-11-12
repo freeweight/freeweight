@@ -20,7 +20,7 @@ Split the two jobs.
   seize a stake.
 - **Off-chain: the perk.** Once a day per wallet, the gateway reads the wallet's `positionOf(address)` in the
   vault at one pinned block and writes credit to that day's allowance account in the ledger
-  (`apps/gateway/src/perks.ts`). Staking grants a daily credit proportional to the stake, up to a cap, and only
+  (in the gateway, not in this repository). Staking grants a daily credit proportional to the stake, up to a cap, and only
   for a stake older than a minimum age at the start of the UTC day.
 - **Stake-only in v0.1.** A tier for wallets that hold without staking is roadmap. Read from the current
   balance, it could be collected on several wallets with the same tokens, so it needs a daily snapshot first.

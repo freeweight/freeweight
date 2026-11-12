@@ -1,7 +1,7 @@
 {
   "name": "freeweight",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": ["apps/web", "packages/*"],
   "engines": { "node": ">=22" },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",

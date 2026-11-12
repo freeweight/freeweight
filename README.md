@@ -31,12 +31,12 @@ Status: v0.1, before public launch. The staking vault is written and tested but 
 
 | Path | What |
 | ---- | ---- |
-| `apps/gateway` | The backend: API, sessions, billing ledger, top-up verification and the `/v1` proxy. One Cloudflare Worker with Durable Objects and D1. |
 | `apps/web` | The site and the app (Vite, React). A static bundle that the gateway serves from the same origin. |
 | `packages/tools` | Eleven read-only research tools for on-chain questions, and the MCP handler that serves them. |
-| `serving/modal`, `serving/baseten` | Two serving lanes behind one adapter contract: wake, status, sleep, inference. |
 | `contracts` | `WeightVault`, the staking vault (Foundry). It holds stake and nothing else. Planned: not deployed. |
-| `docs` | Architecture, decision records, threat model, runbook, the OpenAPI file and the pages of the public site. |
+| `docs` | Decision records, the roadmap and the pages of the public site. |
+
+The backend (the gateway and the serving lanes) is not part of this repository.
 
 ## What is deliberately absent
 
@@ -58,42 +58,30 @@ npm run typecheck
 npm test
 ```
 
-The tests need no account, no secrets and no GPU. The gateway's tests run the Worker in a local runtime against a
-mock lane, with the network stubbed. To see the site without a backend:
+The tests need no account, no secrets and no GPU. To see the site without a backend:
 
 ```bash
 npm run dev:mock -w @freeweight/web    # the site against an in-browser mock gateway
 ```
 
-The contracts, and the lanes, which are separate packages with their own dependencies:
+The contracts:
 
 ```bash
 (cd contracts && forge test)
-(cd serving/baseten && npm ci && npm test)
-python -m pip install -r serving/modal/requirements-dev.txt
-python -m pytest serving/modal/tests
 ```
-
-Deploying, secrets (names only) and the operating procedures are in [docs/runbook.md](docs/runbook.md).
 
 ## Docs
 
 | Read | For |
 | ---- | --- |
-| [docs/architecture.md](docs/architecture.md) | Components, request and money flows, the wake pipeline, state machines, the data model and trust boundaries. |
-| [docs/adr](docs/adr/README.md) | Nine decision records: why per-minute billing, shared instances, free wakes, the lane contract, the ledger, on-chain top-ups, the vault, read-only tools and stateless MCP. |
-| [docs/threat-model.md](docs/threat-model.md) | Assets, actors, money paths, what the code mitigates (with file references) and what is still open. |
-| [docs/runbook.md](docs/runbook.md) | Deploy, secrets, adding a model, rotating a provider key, a GPU stuck awake, failing top-ups. |
-| [docs/architecture.md](docs/architecture.md#known-gaps-in-v01) | Known gaps in v0.1: where the parts do not yet agree with each other. |
+| [docs/adr](docs/adr/README.md) | Decision records: why per-minute billing, shared instances, free wakes, on-chain top-ups, the vault, read-only tools and stateless MCP. |
 | [docs/roadmap.md](docs/roadmap.md) | What is live in v0.1, what is planned for launch, and what is open with no date. |
-| [docs/api/openapi.yaml](docs/api/openapi.yaml) | OpenAPI 3.1 for the gateway API as implemented. |
 | [docs/site](docs/site) | The pages of the public docs: quickstart, pricing, API reference, agents, tools, models, policies. |
 | [docs/site/verify.md](docs/site/verify.md) | What runs where, and a request for each public claim that anyone can run without a wallet, key or money. |
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for how to report a vulnerability, and [docs/threat-model.md](docs/threat-model.md)
-for what has been considered. Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
+See [SECURITY.md](SECURITY.md) for how to report a vulnerability. Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 

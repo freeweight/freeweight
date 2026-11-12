@@ -126,7 +126,7 @@ and the OpenAPI file, which is plain text.
 
 ## API
 
-- [OpenAPI 3.1 description](https://freeweight.xyz/openapi.yaml): every route of `/api`, `/v1` and `/mcp`, with schemas for Model, Session, StageEvent, Receipt, RepoCheck, Load and errors.
+- [OpenAPI 3.1 description](https://freeweight.xyz/openapi.yaml): the public routes of `/api`, `/v1` and `/mcp`, with schemas for Model, Session, StageEvent, Receipt, RepoCheck, Load and errors.
 
 ## Optional
 
