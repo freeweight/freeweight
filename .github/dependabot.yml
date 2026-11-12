@@ -1,0 +1,42 @@
+# Weekly, one grouped pull request per ecosystem for minor and patch updates; major updates come
+# one by one. A release must be a week old before it is proposed.
+version: 2
+
+updates:
+  # Root lockfile: covers every workspace under apps/ and packages/.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # Slither and its dependencies, pinned by hash for the contracts job.
+  - package-ecosystem: pip
+    directory: /.github/slither
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    groups:
+      slither:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
