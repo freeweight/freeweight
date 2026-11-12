@@ -85,4 +85,4 @@ See [SECURITY.md](SECURITY.md) for how to report a vulnerability. Contributions:
 
 ## Licence
 
-No licence file has been added yet. Until one is, all rights are reserved.
+MIT. See [LICENSE](LICENSE).
